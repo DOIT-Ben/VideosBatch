@@ -1,8 +1,8 @@
 # VideosBatch
 
-VideosBatch is a **chain-style lesson-to-video workflow** built around the SeeReel production runtime.
+VideosBatch is a **lesson-to-video workflow injected into the SeeReel production base**.
 
-The design deliberately avoids a multi-agent architecture. There is one visible workflow, one runner, and an ordered list of stages. Each stage receives the previous stage's structured output, calls an LLM/media provider or deterministic compiler, validates the result, persists it to the production canvas, and advances to the next stage.
+The key rule is simple: **preserve SeeReel, inject the lesson workflow.** We do not build a second agent platform, a second canvas, or a second video runtime. SeeReel keeps its existing agent/skill/CLI/handoff capabilities, persistent session/canvas, assets, shots, review/repair state, generation pipelines and stitch flow. VideosBatch adds lesson-oriented stage definitions, prompts, schemas and routing.
 
 ## Core flow
 
@@ -12,24 +12,44 @@ LESSON_INPUT
   -> ASSET_PLAN
   -> ASSET_GENERATION
   -> STORYBOARD
-  -> PROMPT_COMPILE
+  -> CANVAS_REVIEW
   -> VIDEO_GENERATION
   -> VIDEO_REVIEW
        -> PASS   -> STITCH -> DONE
-       -> REPAIR -> PROMPT_COMPILE / VIDEO_GENERATION
+       -> REPAIR -> rewind to the owning stage
 ```
 
-## Relationship with SeeReel
+Each stage is still one step in one visible chain. A stage may call an LLM, image model, video model, VLM review, or deterministic SeeReel operation. The workflow state remains visible in the SeeReel canvas so a human can pause, edit and resume at any point.
 
-SeeReel is the production base and remains responsible for the persistent session/canvas, assets, shots, review records, repair-friendly state and final stitch. VideosBatch injects a lesson-oriented stage definition and prompt/schema contracts into that runtime.
+## Preserve SeeReel agent-native capability
 
-This repository starts by validating the workflow contract in isolation so the orchestration can be reviewed without dragging in unrelated FrameFlow infrastructure. The next integration step is to place the same runner/stage definitions inside a SeeReel source checkout and bind the `SeeReelRuntimePort` to its native session/store/API functions.
+SeeReel already supports agent-driven operation through its orchestrator skill, stage skills, CLI, session handoff and web canvas. VideosBatch keeps those capabilities. The injected lesson workflow can be:
 
-## Non-goals
+- advanced automatically by an existing SeeReel/Codex/Claude-style agent;
+- advanced directly by the workflow runner;
+- paused and edited by a human in the canvas;
+- resumed from the same persisted stage.
 
-- no planner agent / asset agent / review agent
-- no hidden autonomous agent graph
-- no FrameFlow artifact/lineage subsystem
-- no provider-specific reference aliases in the canonical workflow state
+The agent is an **operator of the visible workflow**, not a replacement for the workflow state.
 
-The workflow state is the product state. Human edits may pause the chain at any stage, update the visible artifact, and resume from that point.
+## What VideosBatch injects
+
+- lesson-plan -> video-plan prompt contract
+- lesson asset planning rules
+- lesson-oriented storyboard prompt contract
+- stable asset/reference conventions
+- review routing rules for lesson videos
+- one ordered stage definition
+- a small adapter that maps those stages onto existing SeeReel capabilities
+
+## What VideosBatch does not replace
+
+- SeeReel session/store/canvas
+- SeeReel asset and shot nodes
+- SeeReel generation providers
+- SeeReel `seereel-cli` / session handoff
+- SeeReel canvas review and VLM review
+- SeeReel stitch/delivery
+- SeeReel's existing agent/skill mechanism
+
+The current branch validates this injection contract in isolation before importing the full SeeReel source tree into this repository.
