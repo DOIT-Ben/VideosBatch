@@ -1,4 +1,4 @@
-import { rm } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -11,6 +11,7 @@ function assert(condition: unknown, message: string): asserts condition {
 const repoRoot = process.cwd();
 const tmp = path.join(os.tmpdir(), `videosbatch-workflow-${process.pid}-${Date.now()}`);
 await rm(tmp, { recursive: true, force: true });
+await mkdir(tmp, { recursive: true });
 process.chdir(tmp);
 
 const storeModule = await import(`${pathToFileURL(path.join(repoRoot, "src/server/store.ts")).href}?videosbatch=${Date.now()}`);
@@ -55,5 +56,6 @@ const reloaded = reloadedStore.snapshot().sessions.find((item) => item.id === se
 assert(reloaded?.videosBatchWorkflow?.version === 1, "workflow must round-trip through the native SeeReel store");
 assert(reloaded?.videosBatchWorkflow?.stages.LESSON_INPUT?.artifact?.lessonText === lessonText, "lesson artifact must survive reload");
 
+process.chdir(repoRoot);
 await rm(tmp, { recursive: true, force: true });
 console.log("VideosBatch workflow state smoke passed");
