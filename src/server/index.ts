@@ -55,6 +55,8 @@ import {
   transcribeMediaToSrtWithVolcAsr
 } from "./volcAsr";
 import { CinemaStore } from "./store";
+import { registerVideosBatchWorkflowApi } from "./videosBatchWorkflow/api";
+import { createVideosBatchStageRegistry } from "./videosBatchWorkflow/stages";
 import { inferTokenUsageModelFamily, tokenUsageEventFromRaw } from "./tokenUsage";
 import { publishAssetImageToTos, publishLocalMediaToTos, hasTosConfig } from "./tos";
 import {
@@ -720,6 +722,7 @@ app.post("/api/gallery/:galleryId/copy", async (req, res) => {
 });
 
 app.use(ownedResourceGuard);
+registerVideosBatchWorkflowApi(app, store, createVideosBatchStageRegistry());
 
 function resolveAssetPromptOverride(asset: Asset, explicitOverride?: string) {
   const rawPrompt = (asset.prompt || asset.description || asset.name || "").toString().trim();
