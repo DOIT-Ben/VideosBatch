@@ -10,7 +10,7 @@ const executor: VideosBatchLlmExecutor = {
     calls.push(request);
     return {
       data: {
-        candidates: ["A1", "A2", "A3", "B1", "B2", "B3", "C1", "C2", "C3"].map((id) => ({
+        candidates: ["A-01", "A-02", "A-03", "B-01", "B-02", "B-03", "C-01", "C-02", "C-03"].map((id) => ({
           id,
           name: id,
           creativeType: "test",
@@ -20,9 +20,9 @@ const executor: VideosBatchLlmExecutor = {
           truthfulnessNote: "测试"
         })),
         recommendations: [
-          { id: "A1", reason: "test" },
-          { id: "B1", reason: "test" },
-          { id: "C1", reason: "test" }
+          { id: "A-01", reason: "test" },
+          { id: "B-01", reason: "test" },
+          { id: "C-01", reason: "test" }
         ]
       } as T,
       provider: "openai-responses",
@@ -34,9 +34,12 @@ const executor: VideosBatchLlmExecutor = {
 
 const fakeRegistry = createVideosBatchStageRegistry();
 const injectedRegistry = createVideosBatchStageRegistry({ textExecutor: executor });
-assert.ok(fakeRegistry.ASSET_GENERATION, "default registry must preserve fake media stages");
-assert.ok(injectedRegistry.ASSET_GENERATION, "injected registry must preserve media stages");
-assert.ok(injectedRegistry.REFERENCE_BINDING, "injected registry must preserve deterministic/reference stage");
+assert.ok(fakeRegistry.ASSET_CANDIDATES, "default registry must preserve native/fake media stages");
+assert.ok(injectedRegistry.ASSET_CANDIDATES, "injected registry must preserve media stages");
+assert.ok(injectedRegistry.QUOTE, "canonical quote stage must remain present");
+assert.ok(injectedRegistry.EXECUTION, "canonical execution stage must remain present");
+assert.equal(injectedRegistry.COURSE_INTRO_SELECTION, undefined, "manual intro-selection gate must not become a hidden model executor");
+assert.equal(injectedRegistry.ASSET_CONFIRMATION, undefined, "manual asset-confirmation gate must not become a hidden model executor");
 
 const workflow = createVideosBatchWorkflow({ projectId: "P001", lessonText: "观察物体教案" });
 const now = new Date().toISOString();
@@ -51,11 +54,11 @@ const session: Session = {
   updatedAt: now
 } as Session;
 
-await injectedRegistry.INTRO_GENERATION!.execute({ session, workflow, assets: [], shots: [] });
-assert.equal(calls.length, 1, "explicitly injected text executor must power text stages");
-assert.equal(calls[0].operation, "INTRO_GENERATION");
+await injectedRegistry.COURSE_INTRO_CANDIDATES!.execute({ session, workflow, assets: [], shots: [] });
+assert.equal(calls.length, 1, "explicitly injected text executor must power canonical model stages");
+assert.equal(calls[0].operation, "COURSE_INTRO_CANDIDATES");
 
-await fakeRegistry.INTRO_GENERATION!.execute({ session, workflow, assets: [], shots: [] });
-assert.equal(calls.length, 1, "default registry must not call the injected/real LLM path");
+await fakeRegistry.COURSE_INTRO_CANDIDATES!.execute({ session, workflow, assets: [], shots: [] });
+assert.equal(calls.length, 1, "default fake registry must not call the injected/real LLM path");
 
-console.log("VideosBatch stage registry injection smoke passed");
+console.log("VideosBatch canonical stage registry injection smoke passed");
