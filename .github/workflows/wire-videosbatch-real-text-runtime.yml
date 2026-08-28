@@ -1,0 +1,61 @@
+name: wire-videosbatch-real-text-runtime
+
+on:
+  push:
+    branches:
+      - feat/real-provider-text-stages
+
+permissions:
+  contents: write
+
+jobs:
+  wire:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/real-provider-text-stages
+      - name: Wire runtime bootstrap and environment template
+        shell: python
+        run: |
+          from pathlib import Path
+
+          index = Path('src/server/index.ts')
+          text = index.read_text()
+          old_import = 'import { createVideosBatchStageRegistry } from "./videosBatchWorkflow/stages";'
+          new_import = 'import { createVideosBatchRuntimeStageRegistry } from "./videosBatchWorkflow/runtimeProvider";'
+          old_call = 'registerVideosBatchWorkflowApi(app, store, createVideosBatchStageRegistry());'
+          new_call = 'registerVideosBatchWorkflowApi(app, store, createVideosBatchRuntimeStageRegistry());'
+          if old_import not in text or old_call not in text:
+              raise SystemExit('Expected VideosBatch server wiring markers were not found')
+          text = text.replace(old_import, new_import, 1).replace(old_call, new_call, 1)
+          index.write_text(text)
+
+          env_file = Path('.env.example')
+          env_text = env_file.read_text()
+          marker = '# Optional. Without these values the app uses mock generation so the workflow stays usable.\n'
+          block = '''# --- VideosBatch canonical structured text workflow ---
+# Safe default: fake. Existing OPENAI_API_KEY/OAI_KEY values do NOT enable paid VideosBatch calls.
+# Switch to llm only when you intentionally provide the dedicated key and an explicit model.
+VIDEOSBATCH_EXECUTOR_MODE=fake
+VIDEOSBATCH_LLM_PROVIDER=openai-responses
+VIDEOSBATCH_LLM_API_KEY=
+VIDEOSBATCH_LLM_BASE_URL=https://api.openai.com/v1
+VIDEOSBATCH_LLM_MODEL=
+VIDEOSBATCH_LLM_TIMEOUT_MS=120000
+
+'''
+          if 'VIDEOSBATCH_EXECUTOR_MODE=' not in env_text:
+              if marker not in env_text:
+                  raise SystemExit('Expected .env.example insertion marker was not found')
+              env_text = env_text.replace(marker, block + marker, 1)
+              env_file.write_text(env_text)
+      - name: Commit wiring
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/server/index.ts .env.example
+          git diff --cached --exit-code && exit 0
+          git commit -m "feat: wire opt-in VideosBatch real text runtime"
+          git push origin HEAD:feat/real-provider-text-stages
