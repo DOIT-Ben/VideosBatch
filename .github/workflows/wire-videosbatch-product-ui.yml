@@ -1,0 +1,99 @@
+name: wire-videosbatch-product-ui
+
+on:
+  push:
+    branches:
+      - feat/videosbatch-product-ui
+
+permissions:
+  contents: write
+
+jobs:
+  wire:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/videosbatch-product-ui
+          fetch-depth: 0
+      - name: Patch App.tsx precisely
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('src/client/App.tsx')
+          text = path.read_text()
+
+          old_import = 'import { WorkflowRail } from "./videosBatchWorkflow/WorkflowRail";'
+          new_import = 'import { VideosBatchStudio } from "./videosBatchStudio/VideosBatchStudio";\nimport "./videosBatchStudio/videosBatchStudio.css";'
+          if old_import in text:
+              text = text.replace(old_import, new_import, 1)
+          elif new_import not in text:
+              raise SystemExit('VideosBatch import anchor not found')
+
+          type_anchor = 'type CredentialTab = StandardApiKeyRoute | "agent-plan";'
+          type_insert = type_anchor + '\ntype VideosBatchWorkspaceMode = "workflow" | "canvas";'
+          if 'type VideosBatchWorkspaceMode = "workflow" | "canvas";' not in text:
+              if type_anchor not in text:
+                  raise SystemExit('type anchor not found')
+              text = text.replace(type_anchor, type_insert, 1)
+
+          state_anchor = '  const [selectedSessionId, setSelectedSessionId] = useState<string>(() => readRouteFromWindow().sessionId);'
+          state_insert = state_anchor + '\n  const [videosBatchMode, setVideosBatchMode] = useState<VideosBatchWorkspaceMode>("workflow");'
+          if 'const [videosBatchMode, setVideosBatchMode]' not in text:
+              if state_anchor not in text:
+                  raise SystemExit('selected session state anchor not found')
+              text = text.replace(state_anchor, state_insert, 1)
+
+          ref_anchor = '  useEffect(() => { selectedSessionIdRef.current = selectedSessionId; }, [selectedSessionId]);'
+          reset_insert = ref_anchor + '\n  useEffect(() => { setVideosBatchMode("workflow"); }, [selectedSessionId]);'
+          if 'setVideosBatchMode("workflow"); }, [selectedSessionId]' not in text:
+              if ref_anchor not in text:
+                  raise SystemExit('selected session ref anchor not found')
+              text = text.replace(ref_anchor, reset_insert, 1)
+
+          rail_pattern = re.compile(
+              r'\n\s*\{activeView === "studio" && selectedSession && \(\s*<WorkflowRail\b.*?\n\s*\)\}\n\n(?=\s*\{activeView === "gallery" \? \()',
+              re.S,
+          )
+          if '<WorkflowRail' in text:
+              text, count = rail_pattern.subn('\n', text, count=1)
+              if count != 1:
+                  raise SystemExit(f'expected to remove one WorkflowRail block, removed {count}')
+
+          flow_anchor = '        ) : (\n          <Suspense fallback={<div className="flow-loading" role="status">{lang === "en" ? "Loading canvas..." : "正在加载画布..."}</div>}>'
+          guided = '''        ) : selectedSession && videosBatchMode === "workflow" ? (\n          <VideosBatchStudio\n            sessionId={selectedSession.id}\n            sessionTitle={selectedSession.title}\n            workflow={selectedSession.videosBatchWorkflow}\n            onWorkflowChange={(workflow) => {\n              setState((prev) => ({\n                ...prev,\n                sessions: prev.sessions.map((item) =>\n                  item.id === selectedSession.id ? { ...item, videosBatchWorkflow: workflow } : item\n                )\n              }));\n            }}\n            onOpenCanvas={() => setVideosBatchMode("canvas")}\n          />\n        ) : (\n          <>\n            {selectedSession && (\n              <div className="vbs-canvas-mode-bar">\n                <strong>VideosBatch · 制作画布</strong>\n                <div>\n                  <button type="button" onClick={() => setVideosBatchMode("workflow")}>流程制作</button>\n                  <button type="button" className="active" aria-pressed="true">制作画布</button>\n                </div>\n              </div>\n            )}\n          <Suspense fallback={<div className="flow-loading" role="status">{lang === "en" ? "Loading canvas..." : "正在加载画布..."}</div>}>'''
+          if '<VideosBatchStudio' not in text:
+              if flow_anchor not in text:
+                  raise SystemExit('FlowView branch anchor not found')
+              text = text.replace(flow_anchor, guided, 1)
+
+          close_anchor = '          </Suspense>\n        )}\n      </section>\n    </main>'
+          close_replace = '          </Suspense>\n          </>\n        )}\n      </section>\n    </main>'
+          if '<VideosBatchStudio' in text and '</>\n        )}\n      </section>\n    </main>' not in text:
+              if close_anchor not in text:
+                  raise SystemExit('FlowView closing anchor not found')
+              text = text.replace(close_anchor, close_replace, 1)
+
+          if '<WorkflowRail' in text:
+              raise SystemExit('WorkflowRail render still present')
+          for required in ['<VideosBatchStudio', 'videosBatchMode === "workflow"', '<FlowView', 'vbs-canvas-mode-bar']:
+              if required not in text:
+                  raise SystemExit(f'missing expected App wiring: {required}')
+
+          path.write_text(text)
+          PY
+      - name: Commit App wiring
+        shell: bash
+        run: |
+          if git diff --quiet -- src/client/App.tsx; then
+            echo "App already wired"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/client/App.tsx
+          git commit -m "feat: make Guided Studio the default VideosBatch workspace"
+          git push origin HEAD:feat/videosbatch-product-ui
