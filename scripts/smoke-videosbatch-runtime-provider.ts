@@ -12,19 +12,33 @@ import {
 
 const fakeConfig = resolveVideosBatchRuntimeConfig({
   OPENAI_API_KEY: "shared-key-that-must-not-auto-enable",
+  BP_SEEDREAM_API_KEY: "image-key-that-must-not-auto-enable",
+  BP_SEEDANCE_API_KEY: "video-key-that-must-not-auto-enable",
   VIDEOSBATCH_LLM_API_KEY: "dedicated-key-that-must-not-auto-enable",
   VIDEOSBATCH_LLM_MODEL: "test-model"
 });
 assert.equal(fakeConfig.executorMode, "fake", "missing executor mode must stay fake even when keys exist");
+assert.equal(fakeConfig.mediaMode, "fake", "missing media mode must stay fake even when SeeReel media keys exist");
 const fakeReadiness = getVideosBatchProviderReadiness(fakeConfig);
 assert.equal(fakeReadiness.executorMode, "fake");
+assert.equal(fakeReadiness.mediaMode, "fake");
 assert.equal(fakeReadiness.text.enabled, false);
 assert.equal(fakeReadiness.text.ready, true);
+assert.equal(fakeReadiness.media.enabled, false);
 assert.equal(JSON.stringify(fakeReadiness).includes("dedicated-key-that-must-not-auto-enable"), false, "readiness must never expose API key material");
+assert.equal(JSON.stringify(fakeReadiness).includes("image-key-that-must-not-auto-enable"), false, "readiness must never expose media keys");
 
 assert.throws(() => resolveVideosBatchRuntimeConfig({ VIDEOSBATCH_EXECUTOR_MODE: "surprise" }), /VIDEOSBATCH_EXECUTOR_MODE.*fake.*llm/i);
+assert.throws(() => resolveVideosBatchRuntimeConfig({ VIDEOSBATCH_MEDIA_MODE: "surprise" }), /VIDEOSBATCH_MEDIA_MODE.*fake.*native/i);
 assert.throws(() => resolveVideosBatchRuntimeConfig({ VIDEOSBATCH_EXECUTOR_MODE: "llm", VIDEOSBATCH_LLM_MODEL: "test-model", OPENAI_API_KEY: "shared-key-must-not-be-used" }), /VIDEOSBATCH_LLM_API_KEY/);
 assert.throws(() => resolveVideosBatchRuntimeConfig({ VIDEOSBATCH_EXECUTOR_MODE: "llm", VIDEOSBATCH_LLM_API_KEY: "test-key" }), /VIDEOSBATCH_LLM_MODEL/);
+
+const nativeMediaConfig = resolveVideosBatchRuntimeConfig({ VIDEOSBATCH_MEDIA_MODE: "native" });
+assert.equal(nativeMediaConfig.executorMode, "fake");
+assert.equal(nativeMediaConfig.mediaMode, "native");
+const nativeMediaReadiness = getVideosBatchProviderReadiness(nativeMediaConfig);
+assert.equal(nativeMediaReadiness.media.enabled, true);
+assert.equal(nativeMediaReadiness.media.mode, "native");
 
 let requests = 0;
 const server = http.createServer(async (req, res) => {
@@ -71,6 +85,7 @@ if (!address || typeof address === "string") throw new Error("mock provider did 
 try {
   const env = {
     VIDEOSBATCH_EXECUTOR_MODE: "llm",
+    VIDEOSBATCH_MEDIA_MODE: "fake",
     VIDEOSBATCH_LLM_PROVIDER: "openai-responses",
     VIDEOSBATCH_LLM_API_KEY: "test-key",
     VIDEOSBATCH_LLM_BASE_URL: `http://127.0.0.1:${address.port}/v1`,
@@ -79,12 +94,14 @@ try {
   };
   const config = resolveVideosBatchRuntimeConfig(env);
   assert.equal(config.executorMode, "llm");
+  assert.equal(config.mediaMode, "fake");
   const readiness = getVideosBatchProviderReadiness(config);
   assert.equal(readiness.text.enabled, true);
   assert.equal(readiness.text.ready, true);
   assert.equal(readiness.text.provider, "openai-responses");
   assert.equal(readiness.text.model, "test-model");
   assert.equal(readiness.text.keyConfigured, true);
+  assert.equal(readiness.media.enabled, false);
   assert.equal(JSON.stringify(readiness).includes("test-key"), false);
 
   const registry = createVideosBatchRuntimeStageRegistry(env);
