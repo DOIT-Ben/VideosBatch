@@ -27,7 +27,8 @@ function workflowContext(store: CinemaStore, sessionId: string): StageExecutionC
     session,
     workflow: session.videosBatchWorkflow,
     assets,
-    shots: session.shots
+    shots: session.shots,
+    store
   };
 }
 
