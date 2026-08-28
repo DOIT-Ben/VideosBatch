@@ -1,0 +1,69 @@
+name: wire-videosbatch-ui
+
+on:
+  push:
+    branches:
+      - feat/phase1-linear-workflow
+    paths:
+      - .github/videosbatch-ui-wire-request
+
+permissions:
+  contents: write
+
+jobs:
+  wire:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/phase1-linear-workflow
+      - name: Inject VideosBatch client API and workflow rail
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          api_path = Path('src/client/api.ts')
+          api = api_path.read_text()
+          type_anchor = '} from "../shared/types";\n'
+          type_import = type_anchor + 'import type { VideosBatchStageId, VideosBatchWorkflowState } from "../shared/videosBatchWorkflow";\n'
+          if 'VideosBatchWorkflowState' not in api:
+              if type_anchor not in api:
+                  raise SystemExit('shared types import anchor not found')
+              api = api.replace(type_anchor, type_import, 1)
+
+          method_anchor = '''  updateSession: (sessionId: string, patch: Partial<SessionWithShots>) =>\n    request<SessionWithShots>(`/api/sessions/${sessionId}`, { method: "PATCH", body: JSON.stringify(patch) }),\n'''
+          methods = method_anchor + '''  videosBatchWorkflow: (sessionId: string) =>\n    request<VideosBatchWorkflowState>(`/api/sessions/${sessionId}/videosbatch`),\n  startVideosBatch: (sessionId: string, payload: { projectId: string; lessonText: string }) =>\n    request<VideosBatchWorkflowState>(`/api/sessions/${sessionId}/videosbatch/start`, {\n      method: "POST",\n      body: JSON.stringify(payload)\n    }),\n  runNextVideosBatch: (sessionId: string) =>\n    request<VideosBatchWorkflowState>(`/api/sessions/${sessionId}/videosbatch/run-next`, { method: "POST", body: "{}" }),\n  runAllVideosBatch: (sessionId: string) =>\n    request<VideosBatchWorkflowState>(`/api/sessions/${sessionId}/videosbatch/run-all`, { method: "POST", body: "{}" }),\n  saveVideosBatchArtifact: (sessionId: string, stageId: VideosBatchStageId, artifact: unknown) =>\n    request<VideosBatchWorkflowState>(`/api/sessions/${sessionId}/videosbatch/stages/${stageId}/artifact`, {\n      method: "PUT",\n      body: JSON.stringify({ artifact })\n    }),\n  restartVideosBatchFrom: (sessionId: string, stageId: VideosBatchStageId) =>\n    request<VideosBatchWorkflowState>(`/api/sessions/${sessionId}/videosbatch/restart-from/${stageId}`, { method: "POST", body: "{}" }),\n'''
+          if 'startVideosBatch:' not in api:
+              if method_anchor not in api:
+                  raise SystemExit('updateSession method anchor not found')
+              api = api.replace(method_anchor, methods, 1)
+          api_path.write_text(api)
+
+          app_path = Path('src/client/App.tsx')
+          app = app_path.read_text()
+          app_import_anchor = 'import { api } from "./api";\n'
+          app_imports = app_import_anchor + 'import { WorkflowRail } from "./videosBatchWorkflow/WorkflowRail";\n'
+          if 'WorkflowRail' not in app:
+              if app_import_anchor not in app:
+                  raise SystemExit('App api import anchor not found')
+              app = app.replace(app_import_anchor, app_imports, 1)
+
+          render_anchor = '        {activeView === "gallery" ? (\n'
+          rail = '''        {activeView === "studio" && selectedSession && (\n          <WorkflowRail\n            sessionId={selectedSession.id}\n            workflow={selectedSession.videosBatchWorkflow}\n            onWorkflowChange={(workflow) => {\n              setState((prev) => ({\n                ...prev,\n                sessions: prev.sessions.map((item) =>\n                  item.id === selectedSession.id ? { ...item, videosBatchWorkflow: workflow } : item\n                )\n              }));\n            }}\n          />\n        )}\n\n''' + render_anchor
+          if '<WorkflowRail' not in app:
+              if render_anchor not in app:
+                  raise SystemExit('App FlowView render anchor not found')
+              app = app.replace(render_anchor, rail, 1)
+          app_path.write_text(app)
+          PY
+      - name: Commit wiring
+        run: |
+          if git diff --quiet -- src/client/api.ts src/client/App.tsx; then
+            echo "VideosBatch UI already wired"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/client/api.ts src/client/App.tsx
+          git commit -m "feat: wire VideosBatch workflow rail into SeeReel UI"
+          git push origin HEAD:feat/phase1-linear-workflow
