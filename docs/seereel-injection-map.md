@@ -11,11 +11,9 @@ The unique upstream business truth is:
 - Canonical id: `COURSE_VIDEO_WORKFLOW_CANONICAL`
 - Synced FrameFlow commit: `f5a1c78bd14bd2889c1eb7949e9a5983ea4b48e0`
 
-This document is only the SeeReel/VideosBatch integration projection of that canonical workflow.
+This document is only the SeeReel/VideosBatch integration projection of that canonical workflow. If this document, code, prompts, tests, UI labels, or any implementation detail conflicts with the FrameFlow canonical file, FrameFlow wins and the derived VideosBatch material must be updated before new generation or real-provider execution.
 
-If this document, code, prompts, tests, UI labels, a Git history artifact, or any older implementation plan conflicts with the FrameFlow canonical file, FrameFlow wins. Update the derived VideosBatch implementation before using the conflicting path for a new project or a real provider.
-
-Historical stage names are not compatibility aliases. They must not appear in active workflow state, new prompts, current tests, or current product documentation.
+Git history is the archive for superseded designs. Historical workflow vocabulary is not a compatibility surface and must not be used by current code, prompts, tests, UI, or product documentation.
 
 ---
 
@@ -36,9 +34,9 @@ Reuse SeeReel's native:
 - Stitch and delivery;
 - optional VLM review / repair capabilities.
 
-Do not create a second agent graph, generic DAG engine, canvas, asset database, shot model, render model, review model or stitch system.
+Do not create a second agent graph, generic DAG engine, canvas, asset database, shot model, render model, review model, or stitch system.
 
-VideosBatch adds only the canonical lesson-specific stage state, stage contracts, manual gates, prompt contracts and projection adapters required to drive those existing SeeReel objects.
+VideosBatch adds only the canonical lesson-specific stage state, stage contracts, manual gates, prompt contracts, and projection adapters required to drive those existing SeeReel objects.
 
 ---
 
@@ -61,7 +59,7 @@ LESSON_INPUT
   -> DONE
 ```
 
-The FrameFlow machine-readable creative/run stages are `COURSE_INTRO_CANDIDATES`, `STORY_SCRIPT`, `ASSET_PLAN`, `ASSET_CANDIDATES`, `ASSET_CONFIRMATION`, `SCREENPLAY`, `FINAL_STORYBOARD`, `COPYABLE_PROMPT`, `QUOTE`, and `EXECUTION`.
+FrameFlow machine-readable creative/run stages are `COURSE_INTRO_CANDIDATES`, `STORY_SCRIPT`, `ASSET_PLAN`, `ASSET_CANDIDATES`, `ASSET_CONFIRMATION`, `SCREENPLAY`, `FINAL_STORYBOARD`, `COPYABLE_PROMPT`, `QUOTE`, and `EXECUTION`.
 
 VideosBatch adds:
 
@@ -69,7 +67,7 @@ VideosBatch adds:
 - `COURSE_INTRO_SELECTION` as the explicit visible UI/control representation of FrameFlow's `ONE_COURSE_INTRO_LOCKED` gate;
 - `STITCH` as the final projection into native SeeReel assembly/delivery.
 
-`COURSE_INTRO_SELECTION` is not a second LLM generation step.
+`COURSE_INTRO_SELECTION` is a manual/control gate, not a second LLM generation step.
 
 ---
 
@@ -78,13 +76,15 @@ VideosBatch adds:
 ### 3.1 LESSON_INPUT
 
 Input:
+
 - project id;
 - current lesson/teaching material.
 
 Output:
-- visible immutable-root artifact for the current workflow revision.
 
-The lesson material is untrusted model input. Downstream prompt builders must delimit it as data and must not execute instructions embedded inside the lesson text.
+- visible lesson-root artifact for the current workflow revision.
+
+The lesson material is untrusted model input. Downstream prompt builders must delimit it as data and must never execute instructions embedded in that material.
 
 ### 3.2 COURSE_INTRO_CANDIDATES
 
@@ -96,15 +96,20 @@ Output: exactly three categories / nine candidates:
 - `B-01`, `B-02`, `B-03` — 历史需求与古今应用;
 - `C-01`, `C-02`, `C-03` — 创意故事与现代情境.
 
-Each candidate must preserve the canonical FrameFlow requirements, including:
+Each candidate must preserve the complete FrameFlow prompt contract, including:
 
 - 200–300 Chinese-character body;
-- clear conflict/problem and mathematical value;
-- ending question without revealing the lesson's core answer;
+- clear situation, actor need, conflict escalation, mathematical value, and stopping point;
+- opening with a need, anomaly, dispute, or unresolved problem rather than a conventional lesson announcement;
+- ending question without giving away the lesson's core answer;
+- no premature explanation of the target concept, method, property, formula, or rule;
 - one of the three truthfulness categories;
-- genuine differentiation between the nine candidates.
+- reliable handling of real history and explicit labeling of fictional material;
+- genuine differentiation in opening, conflict source, progression, setting, and ending;
+- video-friendly cast and scene complexity;
+- no storyboard, narration list, subtitles, or image-asset advice in this stage.
 
-Exactly three recommendation entries are also produced, but recommendations do not themselves authorize downstream use.
+Exactly three recommendation entries are produced. Each recommendation explains classroom attraction, connection to the core knowledge point, and video-production feasibility. Recommendations do not themselves authorize downstream use.
 
 ### 3.3 COURSE_INTRO_SELECTION
 
@@ -119,7 +124,7 @@ selectionReason: string;
 introLocked: true;
 ```
 
-No downstream stage may infer another candidate or expand multiple candidates in parallel.
+A custom selection must persist its confirmed body. No downstream stage may infer another candidate or expand multiple candidates in parallel.
 
 ### 3.4 STORY_SCRIPT
 
@@ -127,7 +132,16 @@ Input: only the locked intro current version.
 
 Output: one 600–800-character story document.
 
-The story preserves the selected direction, knowledge boundary and truthfulness level. It does not contain storyboard tables, subtitle lists, asset suggestions or provider prompts.
+Requirements:
+
+- preserve the selected topic, knowledge point, story direction, and truthfulness level;
+- start from a real need or suspense;
+- include conflict escalation;
+- make the mathematical knowledge the key clue rather than an appended moral;
+- stop on an unresolved question and do not give the answer;
+- stay inside the lesson's knowledge boundary;
+- use language suitable for the target grade and oral classroom narration;
+- do not produce storyboard, subtitle, shot-table, or image-asset suggestions.
 
 ### 3.5 ASSET_PLAN
 
@@ -140,13 +154,31 @@ Output: structured `VIDEO_ASSET_PLAN` using the four canonical asset categories:
 - `PROP`
 - `CREATURE`
 
-The full FrameFlow image-prompt rules remain in the model prompt contract, including the unified 影视级 3D 国漫 CG style, character three-view + facial close-up layout, scene/prop/creature templates, continuity requirements and unified negative prompt.
+Required process:
+
+1. scan the story paragraph by paragraph and sentence by sentence for all potentially necessary visual objects;
+2. retain uncertain items as candidate considerations rather than silently omitting them;
+3. group by the four canonical categories;
+4. deduplicate the same underlying object while recording meaningful age/outfit/identity/form variants;
+5. perform an omission check against the story;
+6. create one independent image prompt per confirmed plan item.
+
+The full FrameFlow image-prompt rules remain part of the contract:
+
+- project-wide 影视级 3D 国漫 CG style;
+- no mixing of style vocabularies;
+- character/anthropomorphic template with front full body, side full body, back full body, and facial close-up, four-panel horizontal arrangement, pure white background, 16:9, static neutral pose, no action/prop/effect, with detailed face, hair, clothing, material, pattern, accessory, lower-body and footwear description;
+- cross-version character identity continuity for face shape, facial features, eyes, hair, body type, and basic temperament;
+- pure-environment scene template with foreground / midground / background structure, strong spatial depth, no people/animals/story action, natural unified lighting;
+- centered single-prop template on pure white background, complete object, no hands/actions/effects, with geometry/material/colors/surface/edge details;
+- centered non-anthropomorphic creature template with complete body/species/limb/wing/tail/eye/horn/claw/scale/feather/fur/shell details; anthropomorphic or upright human-like creatures route to the character template;
+- unified negative prompt covering text, watermark, logo, gibberish, crop, missing subject, extra people, complex background where forbidden, proportion/structure errors, malformed limbs, extra hands/fingers, broken faces, style inconsistency, and low-resolution blur.
 
 The model owns semantic `assetKey` values only, e.g. `CHARACTER-HERO`.
 
 The model must not generate:
 
-- `P001-A001`-style stable public IDs;
+- stable public asset IDs;
 - native SeeReel `Asset.id` values;
 - selected candidate IDs;
 - provider aliases.
@@ -166,7 +198,7 @@ SCENE-ROOM      -> P001-A002
 ...
 ```
 
-Every required item must have at least one verified candidate before the workflow can be confirmed.
+Every required item must have at least one verified candidate before the workflow can advance to asset confirmation.
 
 ### 3.7 ASSET_CONFIRMATION
 
@@ -174,11 +206,12 @@ Manual/control gate.
 
 Output: every required plan item is bound to exactly one current confirmed image/native asset.
 
-The workflow must stop here while any required asset is missing, unverified, stale, or unselected.
+The workflow must stop here while any required asset is missing, unverified, stale, or unselected. Changing an upstream asset plan or regenerating candidates invalidates dependent confirmation state as appropriate.
 
 ### 3.8 SCREENPLAY
 
 Input:
+
 - current story document;
 - current confirmed asset facts.
 
@@ -190,13 +223,29 @@ The formal screenplay locks `targetDurationSeconds` to exactly one of:
 90, 100, 110, 120, 130, 140, 150
 ```
 
-Historical `120–180` behavior is read-compatibility only and is forbidden in new requests, prompts and artifacts.
+No other duration set is valid for new generation.
 
-Required scene semantics follow FrameFlow's current contract: ordered sequence, knowledge focus, emotional purpose, presentation mode, ambient/effect/interaction sound, voice guidance, visual/action description, dialogue/narration and evidence.
+Required scene semantics follow FrameFlow's current contract:
+
+- continuous scene `sequence` starting at 1;
+- scene title;
+- knowledge focus / theme;
+- emotional purpose;
+- primary visual presentation mode;
+- ambient sound;
+- effect / transition sound;
+- action / interaction sound;
+- voice guidance;
+- visual/action description;
+- dialogue/narration;
+- evidence array for server-supported teaching evidence.
+
+The screenplay covers the complete story from beginning to end but does not generate final storyboard units yet. Confirmed asset facts may be used; invented asset IDs are forbidden.
 
 ### 3.9 FINAL_STORYBOARD
 
 Input:
+
 - current formal screenplay;
 - current confirmed assets.
 
@@ -209,15 +258,19 @@ Hard invariants:
 - every segment is exactly 10 seconds;
 - every segment has 3–5 continuous subshots;
 - subshot durations sum to exactly 10 seconds;
-- segment sequence is continuous from 1;
-- confirmed asset references only;
-- no provider-local positional aliases.
+- segment sequence starts at 1 and is continuous;
+- subshot sequence starts at 1 and is continuous;
+- the full screenplay is covered from start to finish;
+- references use only current confirmed stable public asset IDs;
+- no provider-local positional aliases are used as canonical references;
+- visual continuity records character, scene, prop, and creature continuity requirements.
 
-This structured storyboard is the production truth and must not be rewritten merely to create a convenient copy/paste prompt.
+The structured final storyboard is the production truth and must not be rewritten merely to create a convenient copy/paste prompt.
 
 ### 3.10 COPYABLE_PROMPT
 
 Input:
+
 - current final storyboard;
 - current confirmed assets.
 
@@ -227,22 +280,23 @@ Stable public markers such as `【P001-A001】` may appear only inside visual-ef
 
 - maximum 7 stable IDs;
 - no duplicate marker;
-- no invented/stale ID;
+- no invented or stale ID;
 - every declared reference must appear in the text and vice versa;
-- no `图片1`, `第1张图`, `参考图2` positional naming in the visual-effect copy;
-- dialogue, narration, subtitle, sound, timing, camera and action structure stay unchanged.
+- no position-based image naming in the visual-effect copy;
+- dialogue, narration, subtitle, sound, timing, camera, and action structure stay unchanged;
+- `fullText` must contain every derived segment text.
 
 This stage does not mutate `FINAL_STORYBOARD`.
 
-`COPYABLE_PROMPT` is a display/transfer derivative, not quote or execution truth.
+`COPYABLE_PROMPT` is a display/transfer derivative, not quote or execution truth. If upstream storyboard or asset-plan state changes, the derived copy must be regenerated.
 
 ### 3.11 QUOTE
 
-Input: current structured final storyboard and the current confirmed asset/version lineage.
+Input: current structured final storyboard and current confirmed asset/version lineage.
 
 Output: `QUOTE_SNAPSHOT`.
 
-The quote must bind the current version/hash and asset order. If a relevant ancestor version, storyboard content or confirmed asset order changes, the old quote becomes stale/invalid.
+The quote must bind the current version/hash and asset order. If a relevant ancestor version, storyboard content, or confirmed asset order changes, the quote becomes stale/invalid.
 
 Phase 1 may use a deterministic fake quote implementation while preserving this boundary. Real billing is not required to prove the workflow chain.
 
@@ -252,9 +306,9 @@ Input: current valid quote snapshot.
 
 Output: native SeeReel execution/render state.
 
-Real execution must validate authorization/balance/idempotency according to the canonical FrameFlow boundary before provider submission. Phase 1 may use deterministic fake execution while keeping this stage and contract visible.
+Real execution must validate authorization, balance, idempotency, and current-source requirements according to the canonical FrameFlow boundary before provider submission. Phase 1 may use deterministic fake execution while keeping this stage and contract visible.
 
-Provider-specific reference aliases are compiled only now, from canonical stable public IDs resolved to current confirmed native assets.
+Provider-specific reference aliases are compiled only here, from canonical stable public IDs resolved to current confirmed native assets. Provider aliases must never become canonical workflow state.
 
 ### 3.13 STITCH
 
@@ -287,9 +341,10 @@ provider-local alias
 Rules:
 
 1. Model output never owns `P001-A001`.
-2. Stable public IDs survive image regeneration/candidate changes.
+2. Stable public IDs survive image regeneration/candidate changes for the same plan item.
 3. Native `Asset.id` is an implementation identity, not user-facing semantic identity.
 4. Provider aliases never enter canonical workflow state.
+5. Asset order used by quote/execution is derived from the current confirmed plan snapshot, not incidental Canvas ordering.
 
 ---
 
@@ -313,7 +368,7 @@ export interface VideosBatchWorkflowState {
   selectedIntroId?: string;
   selectionMode?: "user_selected" | "system_recommended" | "custom";
   selectionReason?: string;
-  introLocked?: boolean;
+  introLocked: boolean;
   stages: Partial<Record<VideosBatchStageId, VideosBatchStageState>>;
   updatedAt: string;
 }
@@ -328,20 +383,21 @@ Required manual stops:
 
 ---
 
-## 6. Edits, versions and stale propagation
+## 6. Edits, versions, and stale propagation
 
 Every user-visible artifact may be edited within its legal outer contract.
 
-When an upstream stage is changed:
+When an upstream stage changes:
 
 1. increment its revision;
 2. keep the edited stage visible/ready;
 3. mark completed downstream stages `stale`;
 4. preserve prior outputs for inspection;
-5. invalidate downstream manual confirmations and quote/execution bindings that depended on the old version;
-6. require regeneration/reconfirmation from the earliest affected stage.
+5. invalidate downstream manual confirmations and quote/execution bindings that depended on the old revision;
+6. require regeneration/reconfirmation from the earliest affected stage;
+7. set the workflow back to an unfinished state when previously completed downstream output is no longer current.
 
-Do not silently delete old outputs and do not pretend a stale quote or selected asset is still current.
+Do not silently delete old outputs and do not treat stale quote, selected asset, storyboard, or execution state as current.
 
 ---
 
@@ -361,7 +417,7 @@ export interface StageDefinition<T = unknown> {
 The runner performs only:
 
 ```text
-load current Session/workflow
+load current Session/workflow/native state
   -> enforce manual/current-source gate
   -> execute current stage
   -> validate structural/business contract
@@ -384,11 +440,11 @@ Projection ownership:
 - `ASSET_CANDIDATES` -> native `Asset[]` candidate/generated image state;
 - `ASSET_CONFIRMATION` -> current stable-public-ID to confirmed native `Asset.id` mapping;
 - `FINAL_STORYBOARD` -> native `Shot[]` inspection/execution units;
-- `COPYABLE_PROMPT` -> derived text only; may resolve references for display but must not mutate final storyboard truth;
-- `EXECUTION` -> native render/`ShotRender[]` / `WorkflowExecutionPlan` behavior;
+- `COPYABLE_PROMPT` -> derived text only and never authoritative execution state;
+- `EXECUTION` -> native render / `ShotRender[]` / `WorkflowExecutionPlan` behavior;
 - `STITCH` -> native `StitchJob`.
 
-Keep existing SeeReel generator, prompt composition, TOS, Canvas and review/stitch implementations unless a concrete adapter gap requires a narrow change.
+Keep existing SeeReel generator, prompt composition, TOS, Canvas, review, and stitch implementations unless a concrete adapter gap requires a narrow change.
 
 ---
 
@@ -414,7 +470,7 @@ Labels:
 最终拼接
 ```
 
-Every stage shows status and current artifact. Long editing, selection and candidate confirmation may open in the current artifact panel/inspector/drawer. Do not turn Canvas into a second generic workflow editor.
+Every stage shows status and current artifact. Long editing, selection, and candidate confirmation may open in the current artifact panel/inspector/drawer. Do not turn Canvas into a second generic workflow editor.
 
 Media remains inspectable as native SeeReel nodes.
 
@@ -460,23 +516,4 @@ scripts/smoke-videosbatch-*
 docs/seereel-injection-map.md
 ```
 
-There is no active legacy `src/workflow/*` pipeline.
-
-Do not reintroduce old VideosBatch stage IDs such as:
-
-```text
-INTRO_GENERATION
-STORY_EXPANSION
-STORY_SELECTION
-ASSET_PROMPT_GENERATION
-ASSET_GENERATION
-SCREENPLAY_GENERATION
-STORYBOARD_GENERATION
-REFERENCE_BINDING
-VIDEO_GENERATION
-LESSON_PLAN
-CANVAS_REVIEW
-VIDEO_REVIEW
-```
-
-Git history is the archive for superseded designs. The current working tree should expose only the canonical workflow.
+Only the canonical stage vocabulary and contracts in this document are valid for current VideosBatch development. Superseded source trees and implementation plans are removed from the working tree; Git history is the only archive for them.
