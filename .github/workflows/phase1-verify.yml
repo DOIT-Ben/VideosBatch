@@ -3,8 +3,7 @@ name: phase1-verify
 on:
   push:
     branches:
-      - feat/phase1-linear-workflow
-      - feat/native-projection
+      - feat/real-provider-text-stages
   pull_request:
     branches:
       - master
@@ -67,6 +66,10 @@ jobs:
           if [ -f scripts/smoke-videosbatch-llm-executor.ts ]; then
             npx tsx scripts/smoke-videosbatch-llm-executor.ts
           fi
+      - name: Verify VideosBatch runtime provider readiness
+        run: npx tsx scripts/smoke-videosbatch-runtime-provider.ts
+      - name: Verify VideosBatch real text mode through SeeReel server
+        run: npx tsx scripts/smoke-videosbatch-real-text-server.ts
       - name: Verify VideosBatch text-stage specs when test exists
         shell: bash
         run: |
