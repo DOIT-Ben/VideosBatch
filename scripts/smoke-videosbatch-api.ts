@@ -41,15 +41,15 @@ type WorkflowStageState = {
 type WorkflowState = {
   version: 1;
   currentStage: string;
-  selectedStoryId?: string;
+  selectedIntroId?: string;
+  selectionMode?: string;
+  selectionReason?: string;
+  introLocked: boolean;
   completed?: boolean;
   stages: Record<string, WorkflowStageState>;
 };
 
-type Session = {
-  id: string;
-  videosBatchWorkflow?: WorkflowState;
-};
+type Session = { id: string };
 
 async function isServerReachable() {
   try {
@@ -81,7 +81,6 @@ function terminateServer(child: ChildProcess) {
 
 async function withServer<T>(fn: () => Promise<T>): Promise<T> {
   if (await isServerReachable()) return fn();
-
   const child = spawn("npm", ["run", "dev"], {
     cwd: process.cwd(),
     env: { ...process.env, PORT: new URL(baseUrl).port || "5173", VIDEOSBATCH_EXECUTOR_MODE: "fake" },
@@ -90,7 +89,6 @@ async function withServer<T>(fn: () => Promise<T>): Promise<T> {
   });
   child.stdout?.on("data", (chunk) => process.stdout.write(`[server] ${chunk}`));
   child.stderr?.on("data", (chunk) => process.stderr.write(`[server] ${chunk}`));
-
   try {
     await waitForServer();
     return await fn();
@@ -103,8 +101,8 @@ await withServer(async () => {
   const session = await request<Session>("/api/sessions", {
     method: "POST",
     body: JSON.stringify({
-      title: "VideosBatch API smoke",
-      logline: "Linear workflow API contract",
+      title: "VideosBatch canonical API smoke",
+      logline: "Canonical workflow API contract",
       style: "test",
       targetDurationSec: 120,
       shotCount: 0
@@ -116,57 +114,90 @@ await withServer(async () => {
       method: "POST",
       body: JSON.stringify({ projectId: "P001", lessonText: "完整教案：观察物体。" })
     });
-    assert.equal(workflow.currentStage, "INTRO_GENERATION");
+    assert.equal(workflow.currentStage, "COURSE_INTRO_CANDIDATES");
+    assert.equal(workflow.introLocked, false);
     assert.equal(workflow.stages.LESSON_INPUT.status, "ready");
 
     const fetched = await request<WorkflowState>(`/api/sessions/${session.id}/videosbatch`);
     assert.equal(fetched.stages.LESSON_INPUT.artifact.projectId, "P001");
 
-    workflow = await request<WorkflowState>(`/api/sessions/${session.id}/videosbatch/run-next`, {
+    workflow = await request<WorkflowState>(`/api/sessions/${session.id}/videosbatch/run-all`, {
       method: "POST",
       body: "{}"
     });
-    assert.equal(workflow.stages.INTRO_GENERATION.status, "ready");
-    assert.equal(workflow.currentStage, "STORY_EXPANSION");
+    assert.equal(workflow.currentStage, "COURSE_INTRO_SELECTION", "run-all must stop at intro confirmation");
+    assert.equal(workflow.stages.COURSE_INTRO_CANDIDATES.status, "ready");
+    assert.equal(workflow.stages.COURSE_INTRO_CANDIDATES.artifact.candidates.length, 9);
+    assert.equal(workflow.stages.COURSE_INTRO_CANDIDATES.artifact.recommendations.length, 3);
+    assert.equal(workflow.stages.STORY_SCRIPT.status, "pending");
+
+    workflow = await request<WorkflowState>(`/api/sessions/${session.id}/videosbatch/stages/COURSE_INTRO_SELECTION/artifact`, {
+      method: "PUT",
+      body: JSON.stringify({
+        artifact: {
+          selectedIntroId: "A-01",
+          selectionMode: "user_selected",
+          selectionReason: "用户确认该方案最适合课堂导入",
+          locked: true
+        }
+      })
+    });
+    assert.equal(workflow.selectedIntroId, "A-01");
+    assert.equal(workflow.introLocked, true);
+    assert.equal(workflow.currentStage, "STORY_SCRIPT");
 
     workflow = await request<WorkflowState>(`/api/sessions/${session.id}/videosbatch/run-all`, {
       method: "POST",
       body: "{}"
     });
-    assert.equal(workflow.currentStage, "STORY_SELECTION");
-    assert.equal(workflow.stages.STORY_EXPANSION.status, "ready");
+    assert.equal(workflow.currentStage, "ASSET_CONFIRMATION", "run-all must stop at asset confirmation");
+    assert.equal(workflow.stages.STORY_SCRIPT.status, "ready");
+    assert.equal(workflow.stages.ASSET_PLAN.status, "ready");
+    assert.equal(workflow.stages.ASSET_CANDIDATES.status, "ready");
+    assert.equal(workflow.stages.SCREENPLAY.status, "pending");
 
-    workflow = await request<WorkflowState>(`/api/sessions/${session.id}/videosbatch/stages/STORY_SELECTION/artifact`, {
+    const candidateItems = workflow.stages.ASSET_CANDIDATES.artifact.items;
+    workflow = await request<WorkflowState>(`/api/sessions/${session.id}/videosbatch/stages/ASSET_CONFIRMATION/artifact`, {
       method: "PUT",
-      body: JSON.stringify({ artifact: { selectedStoryId: "story-1" } })
+      body: JSON.stringify({
+        artifact: {
+          confirmed: true,
+          items: candidateItems.map((item: any) => ({
+            assetKey: item.assetKey,
+            publicAssetId: item.publicAssetId,
+            candidateAssetIds: item.candidateAssetIds,
+            selectedAssetId: item.candidateAssetIds[0]
+          }))
+        }
+      })
     });
-    assert.equal(workflow.selectedStoryId, "story-1");
-    assert.equal(workflow.currentStage, "ASSET_PROMPT_GENERATION");
+    assert.equal(workflow.currentStage, "SCREENPLAY");
 
     workflow = await request<WorkflowState>(`/api/sessions/${session.id}/videosbatch/run-all`, {
       method: "POST",
       body: "{}"
     });
     assert.equal(workflow.completed, true);
+    assert.equal(workflow.stages.SCREENPLAY.artifact.targetDurationSeconds, 120);
+    assert.equal(workflow.stages.FINAL_STORYBOARD.artifact.segments.length, 12);
+    assert.equal(workflow.stages.COPYABLE_PROMPT.status, "ready");
+    assert.equal(workflow.stages.QUOTE.status, "ready");
+    assert.equal(workflow.stages.EXECUTION.status, "ready");
     assert.equal(workflow.stages.STITCH.status, "ready");
 
-    workflow = await request<WorkflowState>(`/api/sessions/${session.id}/videosbatch/stages/INTRO_GENERATION/artifact`, {
-      method: "PUT",
-      body: JSON.stringify({ artifact: { candidates: [{ id: "A1", title: "edited" }] } })
-    });
-    assert.equal(workflow.stages.INTRO_GENERATION.status, "ready");
-    assert.equal(workflow.stages.STORY_EXPANSION.status, "stale");
-    assert.ok(workflow.stages.STORY_EXPANSION.artifact, "editing upstream must keep old downstream artifacts");
-
-    workflow = await request<WorkflowState>(`/api/sessions/${session.id}/videosbatch/restart-from/STORY_EXPANSION`, {
+    workflow = await request<WorkflowState>(`/api/sessions/${session.id}/videosbatch/restart-from/COURSE_INTRO_SELECTION`, {
       method: "POST",
       body: "{}"
     });
-    assert.equal(workflow.currentStage, "STORY_EXPANSION");
+    assert.equal(workflow.currentStage, "COURSE_INTRO_SELECTION");
     assert.equal(workflow.completed, false);
+    assert.equal(workflow.introLocked, false);
+    assert.equal(workflow.selectedIntroId, undefined);
+    assert.equal(workflow.stages.STORY_SCRIPT.status, "stale");
+    assert.ok(workflow.stages.STORY_SCRIPT.artifact, "upstream restart must preserve stale downstream artifacts for inspection");
   } finally {
     await request<{ ok: true }>(`/api/sessions/${session.id}`, { method: "DELETE" }).catch(() => undefined);
   }
 });
 
-console.log("VideosBatch workflow API smoke passed");
+console.log("VideosBatch canonical workflow API smoke passed");

@@ -1,116 +1,79 @@
+import { strict as assert } from "node:assert";
+import { createVideosBatchWorkflow } from "../src/shared/videosBatchWorkflow";
 import type { Session } from "../src/shared/types";
-import {
-  VIDEOS_BATCH_STAGE_ORDER,
-  createVideosBatchWorkflow,
-  type VideosBatchStageId,
-  type VideosBatchWorkflowState
-} from "../src/shared/videosBatchWorkflow";
-import type { StageDefinition, StageExecutionContext, StageRegistry } from "../src/server/videosBatchWorkflow/stageContracts";
-import { replaceStageArtifact, runAll, runNext } from "../src/server/videosBatchWorkflow/runner";
+import { replaceStageArtifact, restartFrom, runAll } from "../src/server/videosBatchWorkflow/runner";
+import { createPhase1FakeStageRegistry } from "../src/server/videosBatchWorkflow/stages";
 
-function assert(condition: unknown, message: string): asserts condition {
-  if (!condition) throw new Error(message);
-}
-
-function makeSession(workflow: VideosBatchWorkflowState): Session {
+function context(workflow: any): any {
   const now = new Date().toISOString();
-  return {
+  const session: Session = {
     id: "ses_runner",
-    title: "Runner smoke",
+    title: "canonical runner",
     logline: "",
-    style: "default",
+    style: "test",
     targetDurationSec: 120,
+    shots: [],
     videosBatchWorkflow: workflow,
     createdAt: now,
     updatedAt: now
-  };
+  } as Session;
+  return { session, workflow, assets: [], shots: [] };
 }
 
-function context(workflow: VideosBatchWorkflowState): StageExecutionContext {
-  return {
-    session: makeSession(workflow),
-    workflow,
-    assets: [],
-    shots: []
-  };
-}
+const registry = createPhase1FakeStageRegistry();
+let workflow = createVideosBatchWorkflow({ projectId: "P001", lessonText: "观察物体完整教案" });
 
-function passingStage(id: VideosBatchStageId): StageDefinition {
-  return {
-    id,
-    async execute() {
-      return { artifact: { stage: id, value: `artifact:${id}` } };
-    },
-    validate() {
-      return { ok: true, errors: [] };
-    }
-  };
-}
-
-const executableStages = VIDEOS_BATCH_STAGE_ORDER.filter(
-  (stageId) => stageId !== "LESSON_INPUT" && stageId !== "STORY_SELECTION"
-);
-const registry: StageRegistry = Object.fromEntries(
-  executableStages.map((stageId) => [stageId, passingStage(stageId)])
-);
-
-// runNext executes exactly one stage.
-let workflow = createVideosBatchWorkflow({ projectId: "P001", lessonText: "完整教案" }, "2026-08-28T00:00:00.000Z");
-workflow = await runNext(context(workflow), registry);
-assert(workflow.stages.INTRO_GENERATION?.status === "ready", "runNext must complete the current stage");
-assert(workflow.currentStage === "STORY_EXPANSION", "runNext must advance by exactly one stage");
-assert(workflow.stages.STORY_EXPANSION?.status === "pending", "runNext must not execute the next stage");
-
-// runAll advances until the manual STORY_SELECTION gate.
 workflow = await runAll(context(workflow), registry);
-assert(workflow.stages.STORY_EXPANSION?.status === "ready", "runAll must execute automatic stages");
-assert(workflow.currentStage === "STORY_SELECTION", "runAll must stop at manual story selection");
-assert(workflow.completed !== true, "workflow must not complete before story selection");
+assert.equal(workflow.currentStage, "COURSE_INTRO_SELECTION", "runAll must stop at the first manual confirmation gate");
+assert.equal(workflow.stages.COURSE_INTRO_CANDIDATES?.status, "ready");
+assert.equal(workflow.introLocked, false);
+assert.equal(workflow.stages.STORY_SCRIPT?.status, "pending", "story generation must not run before one intro is locked");
 
-// Selecting one story is a visible artifact and lets runAll resume to completion.
-workflow = replaceStageArtifact(workflow, "STORY_SELECTION", { selectedStoryId: "story-1" }, "2026-08-28T00:01:00.000Z");
-assert(workflow.selectedStoryId === "story-1", "story selection must persist selectedStoryId");
-assert(workflow.stages.STORY_SELECTION?.status === "ready", "story selection artifact must be ready");
-assert(workflow.currentStage === "ASSET_PROMPT_GENERATION", "selecting the current story must advance to the next stage");
-workflow = await runAll(context(workflow), registry);
-assert(workflow.stages.STITCH?.status === "ready", "runAll must reach stitch after selection");
-assert(workflow.completed === true, "workflow must become completed after stitch succeeds");
-
-// Validation failure fails only the current stage and does not advance.
-let invalidWorkflow = createVideosBatchWorkflow({ projectId: "P002", lessonText: "另一份教案" });
-const invalidIntro: StageDefinition = {
-  id: "INTRO_GENERATION",
-  async execute() {
-    return { artifact: { candidates: [] } };
-  },
-  validate() {
-    return { ok: false, errors: ["expected 9 intro candidates"] };
-  }
-};
-invalidWorkflow = await runNext(context(invalidWorkflow), {
-  ...registry,
-  INTRO_GENERATION: invalidIntro
+workflow = replaceStageArtifact(workflow, "COURSE_INTRO_SELECTION", {
+  selectedIntroId: "A-01",
+  selectionMode: "user_selected",
+  selectionReason: "用户确认课堂吸引力与知识连接最合适",
+  locked: true
 });
-assert(invalidWorkflow.stages.INTRO_GENERATION?.status === "failed", "validator failure must fail the current stage");
-assert(invalidWorkflow.currentStage === "INTRO_GENERATION", "validator failure must not advance the cursor");
-assert(invalidWorkflow.stages.STORY_EXPANSION?.status === "pending", "validator failure must not mutate unrelated stages");
-assert(invalidWorkflow.stages.INTRO_GENERATION?.error?.includes("expected 9"), "validator errors must be visible on the stage");
+assert.equal(workflow.selectedIntroId, "A-01");
+assert.equal(workflow.introLocked, true);
+assert.equal(workflow.currentStage, "STORY_SCRIPT");
 
-// Editing an upstream artifact marks completed downstream stages stale but keeps old artifacts.
-let editedWorkflow = createVideosBatchWorkflow({ projectId: "P003", lessonText: "第三份教案" });
-editedWorkflow.stages.INTRO_GENERATION = { status: "ready", revision: 1, artifact: { old: "intro" } };
-editedWorkflow.stages.STORY_EXPANSION = { status: "ready", revision: 1, artifact: { old: "stories" } };
-editedWorkflow.stages.STORY_SELECTION = { status: "ready", revision: 1, artifact: { selectedStoryId: "story-old" } };
-editedWorkflow.stages.ASSET_PROMPT_GENERATION = { status: "ready", revision: 1, artifact: { old: "assets" } };
-const oldStories = editedWorkflow.stages.STORY_EXPANSION.artifact;
-const oldAssets = editedWorkflow.stages.ASSET_PROMPT_GENERATION.artifact;
-editedWorkflow = replaceStageArtifact(editedWorkflow, "INTRO_GENERATION", { new: "intro" });
-assert(editedWorkflow.stages.INTRO_GENERATION?.status === "ready", "edited stage remains ready");
-assert(editedWorkflow.stages.INTRO_GENERATION?.revision === 2, "editing increments revision");
-assert(editedWorkflow.stages.STORY_EXPANSION?.status === "stale", "completed downstream stage must become stale");
-assert(editedWorkflow.stages.STORY_SELECTION?.status === "stale", "manual downstream stage must become stale");
-assert(editedWorkflow.stages.ASSET_PROMPT_GENERATION?.status === "stale", "later completed stage must become stale");
-assert(editedWorkflow.stages.STORY_EXPANSION?.artifact === oldStories, "stale propagation must preserve old story artifact");
-assert(editedWorkflow.stages.ASSET_PROMPT_GENERATION?.artifact === oldAssets, "stale propagation must preserve old asset artifact");
+workflow = await runAll(context(workflow), registry);
+assert.equal(workflow.currentStage, "ASSET_CONFIRMATION", "runAll must stop until every required image asset is confirmed");
+assert.equal(workflow.stages.STORY_SCRIPT?.status, "ready");
+assert.equal(workflow.stages.ASSET_PLAN?.status, "ready");
+assert.equal(workflow.stages.ASSET_CANDIDATES?.status, "ready");
+assert.equal(workflow.stages.SCREENPLAY?.status, "pending", "formal screenplay must not run before asset confirmation");
 
-console.log("VideosBatch linear runner smoke passed");
+const candidateItems = (workflow.stages.ASSET_CANDIDATES?.artifact as any)?.items || [];
+assert.ok(candidateItems.length > 0, "asset candidate stage must expose candidates");
+workflow = replaceStageArtifact(workflow, "ASSET_CONFIRMATION", {
+  confirmed: true,
+  items: candidateItems.map((item: any) => ({
+    assetKey: item.assetKey,
+    publicAssetId: item.publicAssetId,
+    candidateAssetIds: item.candidateAssetIds,
+    selectedAssetId: item.candidateAssetIds[0]
+  }))
+});
+assert.equal(workflow.currentStage, "SCREENPLAY");
+
+workflow = await runAll(context(workflow), registry);
+assert.equal(workflow.completed, true, "canonical fake chain must reach DONE after both manual gates are confirmed");
+assert.equal(workflow.stages.SCREENPLAY?.status, "ready");
+assert.equal((workflow.stages.SCREENPLAY?.artifact as any)?.targetDurationSeconds, 120);
+assert.equal((workflow.stages.FINAL_STORYBOARD?.artifact as any)?.segments?.length, 12, "120-second screenplay must produce exactly 12 ten-second segments");
+assert.equal(workflow.stages.COPYABLE_PROMPT?.status, "ready");
+assert.equal(workflow.stages.QUOTE?.status, "ready");
+assert.equal(workflow.stages.EXECUTION?.status, "ready");
+assert.equal(workflow.stages.STITCH?.status, "ready");
+
+const restarted = restartFrom(workflow, "COURSE_INTRO_SELECTION");
+assert.equal(restarted.completed, false);
+assert.equal(restarted.currentStage, "COURSE_INTRO_SELECTION");
+assert.equal(restarted.introLocked, false, "restarting from intro selection must clear the old lock");
+assert.equal(restarted.selectedIntroId, undefined);
+assert.equal(restarted.stages.STORY_SCRIPT?.status, "stale", "downstream artifacts must be visibly stale after upstream restart");
+
+console.log("VideosBatch canonical linear runner smoke passed");

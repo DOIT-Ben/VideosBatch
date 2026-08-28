@@ -1,104 +1,360 @@
-# SeeReel Injection Map v2
+# VideosBatch / SeeReel Canonical Injection Map
 
-## 0. Scope
+## 0. Authority and synchronization
 
-VideosBatch is an **overlay on SeeReel**. The Phase 1 goal is not to redesign SeeReel and not to optimize model quality. The goal is to prove one fixed, visible, resumable lesson-to-video production chain.
+VideosBatch does **not** define a competing course-video workflow.
 
-Phase 1 assumes every LLM / image / video call can produce the desired content. The system only needs to:
+The unique upstream business truth is:
 
-1. execute stages in order;
-2. persist the output of every stage;
-3. make every output visible and editable;
-4. run a thin contract validator before advancing;
-5. reuse SeeReel native media production objects wherever they already exist.
+- Repository: `DOIT-Ben/FrameFlow`
+- Canonical file: `docs/视频制作工作流完整步骤.md`
+- Canonical id: `COURSE_VIDEO_WORKFLOW_CANONICAL`
+- Synced FrameFlow commit: `f5a1c78bd14bd2889c1eb7949e9a5983ea4b48e0`
 
-No semantic quality review, no review agent, no repair agent, no hidden agent graph, no general DAG engine.
+This document is only the SeeReel/VideosBatch integration projection of that canonical workflow. If this document, code, prompts, tests, UI labels, or any implementation detail conflicts with the FrameFlow canonical file, FrameFlow wins and the derived VideosBatch material must be updated before new generation or real-provider execution.
+
+Git history is the archive for superseded designs. Historical workflow vocabulary is not a compatibility surface and must not be used by current code, prompts, tests, UI, or product documentation.
 
 ---
 
-## 1. Source workflow preserved
+## 1. Product boundary
 
-The business workflow comes from the existing VideosBatch production prompts and is intentionally kept recognizable:
+VideosBatch is a thin educational workflow overlay on the pinned SeeReel runtime.
+
+Reuse SeeReel's native:
+
+- `Session` persistence;
+- Agent / Skills / CLI / Handoff;
+- Canvas / Inspector;
+- `Asset` and image generation/import;
+- `Shot` and storyboard surface;
+- `ShotRender` / generation task lifecycle;
+- `WorkflowExecutionPlan`;
+- provider reference compilation;
+- Stitch and delivery;
+- optional VLM review / repair capabilities.
+
+Do not create a second agent graph, generic DAG engine, canvas, asset database, shot model, render model, review model, or stitch system.
+
+VideosBatch adds only the canonical lesson-specific stage state, stage contracts, manual gates, prompt contracts, and projection adapters required to drive those existing SeeReel objects.
+
+---
+
+## 2. Canonical visible stage order
 
 ```text
 LESSON_INPUT
-  -> INTRO_GENERATION
-  -> STORY_EXPANSION
-  -> STORY_SELECTION
-  -> ASSET_PROMPT_GENERATION
-  -> ASSET_GENERATION
-  -> SCREENPLAY_GENERATION
-  -> STORYBOARD_GENERATION
-  -> REFERENCE_BINDING
-  -> VIDEO_GENERATION
+  -> COURSE_INTRO_CANDIDATES
+  -> COURSE_INTRO_SELECTION
+  -> STORY_SCRIPT
+  -> ASSET_PLAN
+  -> ASSET_CANDIDATES
+  -> ASSET_CONFIRMATION
+  -> SCREENPLAY
+  -> FINAL_STORYBOARD
+  -> COPYABLE_PROMPT
+  -> QUOTE
+  -> EXECUTION
   -> STITCH
   -> DONE
 ```
 
-Meaning:
+FrameFlow machine-readable creative/run stages are `COURSE_INTRO_CANDIDATES`, `STORY_SCRIPT`, `ASSET_PLAN`, `ASSET_CANDIDATES`, `ASSET_CONFIRMATION`, `SCREENPLAY`, `FINAL_STORYBOARD`, `COPYABLE_PROMPT`, `QUOTE`, and `EXECUTION`.
 
-- `LESSON_INPUT`: complete lesson plan input.
-- `INTRO_GENERATION`: lesson -> three categories / nine course-intro candidates + recommended three.
-- `STORY_EXPANSION`: selected three intros -> three complete stories.
-- `STORY_SELECTION`: human chooses the story that continues downstream. This stage is a control/artifact stage, not an LLM stage.
-- `ASSET_PROMPT_GENERATION`: story -> candidate assets, final asset list, stable asset ids, per-asset image prompts.
-- `ASSET_GENERATION`: batch-generate the actual reusable character / scene / prop / creature images.
-- `SCREENPLAY_GENERATION`: story -> video screenplay with scenes, visuals, audio and dialogue/narration.
-- `STORYBOARD_GENERATION`: screenplay -> ordered 10-second storyboards with 3-5 subshots each.
-- `REFERENCE_BINDING`: storyboard + asset list -> insert canonical asset ids such as `P001-A001` into the storyboard without changing its content.
-- `VIDEO_GENERATION`: batch-generate native SeeReel shot renders.
-- `STITCH`: use native SeeReel stitch to assemble the final video.
+VideosBatch adds:
 
-`VIDEO_GENERATION` and `STITCH` are product runtime stages added after the existing prompt workflow. They are not new creative-planning stages.
+- `LESSON_INPUT` as the local persisted lesson root;
+- `COURSE_INTRO_SELECTION` as the explicit visible UI/control representation of FrameFlow's `ONE_COURSE_INTRO_LOCKED` gate;
+- `STITCH` as the final projection into native SeeReel assembly/delivery.
+
+`COURSE_INTRO_SELECTION` is a manual/control gate, not a second LLM generation step.
 
 ---
 
-## 2. Core rule: one visible chain
+## 3. Canonical stage contracts
 
-The product state is the workflow state.
+### 3.1 LESSON_INPUT
 
-There is one ordered list of stages. Every stage has one visible artifact and one status.
+Input:
+
+- project id;
+- current lesson/teaching material.
+
+Output:
+
+- visible lesson-root artifact for the current workflow revision.
+
+The lesson material is untrusted model input. Downstream prompt builders must delimit it as data and must never execute instructions embedded in that material.
+
+### 3.2 COURSE_INTRO_CANDIDATES
+
+Input: current lesson input.
+
+Output: exactly three categories / nine candidates:
+
+- `A-01`, `A-02`, `A-03` — 数学史与知识由来;
+- `B-01`, `B-02`, `B-03` — 历史需求与古今应用;
+- `C-01`, `C-02`, `C-03` — 创意故事与现代情境.
+
+Each candidate must preserve the complete FrameFlow prompt contract, including:
+
+- 200–300 Chinese-character body;
+- clear situation, actor need, conflict escalation, mathematical value, and stopping point;
+- opening with a need, anomaly, dispute, or unresolved problem rather than a conventional lesson announcement;
+- ending question without giving away the lesson's core answer;
+- no premature explanation of the target concept, method, property, formula, or rule;
+- one of the three truthfulness categories;
+- reliable handling of real history and explicit labeling of fictional material;
+- genuine differentiation in opening, conflict source, progression, setting, and ending;
+- video-friendly cast and scene complexity;
+- no storyboard, narration list, subtitles, or image-asset advice in this stage.
+
+Exactly three recommendation entries are produced. Each recommendation explains classroom attraction, connection to the core knowledge point, and video-production feasibility. Recommendations do not themselves authorize downstream use.
+
+### 3.3 COURSE_INTRO_SELECTION
+
+Manual/control gate.
+
+Persist exactly one current selection:
 
 ```ts
-export type VideosBatchStageId =
-  | "LESSON_INPUT"
-  | "INTRO_GENERATION"
-  | "STORY_EXPANSION"
-  | "STORY_SELECTION"
-  | "ASSET_PROMPT_GENERATION"
-  | "ASSET_GENERATION"
-  | "SCREENPLAY_GENERATION"
-  | "STORYBOARD_GENERATION"
-  | "REFERENCE_BINDING"
-  | "VIDEO_GENERATION"
-  | "STITCH";
-
-export type VideosBatchStageStatus =
-  | "pending"
-  | "running"
-  | "ready"
-  | "failed"
-  | "stale";
+selectedIntroId: "A-01" | ... | "C-03" | "CUSTOM";
+selectionMode: "user_selected" | "system_recommended" | "custom";
+selectionReason: string;
+introLocked: true;
 ```
 
-`stale` means an upstream artifact was manually edited after this stage completed. Old outputs are preserved; they are not silently deleted.
+A custom selection must persist its confirmed body. No downstream stage may infer another candidate or expand multiple candidates in parallel.
 
-The runner needs only two execution modes:
+### 3.4 STORY_SCRIPT
 
-- `runNext`: execute exactly the current stage.
-- `runAll`: keep calling `runNext` until the chain completes or a stage fails / requires a manual selection.
+Input: only the locked intro current version.
 
-No separate pause/resume state machine is required in Phase 1 because stage boundaries are already natural pause points.
+Output: one 600–800-character story document.
+
+Requirements:
+
+- preserve the selected topic, knowledge point, story direction, and truthfulness level;
+- start from a real need or suspense;
+- include conflict escalation;
+- make the mathematical knowledge the key clue rather than an appended moral;
+- stop on an unresolved question and do not give the answer;
+- stay inside the lesson's knowledge boundary;
+- use language suitable for the target grade and oral classroom narration;
+- do not produce storyboard, subtitle, shot-table, or image-asset suggestions.
+
+### 3.5 ASSET_PLAN
+
+Input: current story document.
+
+Output: structured `VIDEO_ASSET_PLAN` using the four canonical asset categories:
+
+- `CHARACTER`
+- `SCENE`
+- `PROP`
+- `CREATURE`
+
+Required process:
+
+1. scan the story paragraph by paragraph and sentence by sentence for all potentially necessary visual objects;
+2. retain uncertain items as candidate considerations rather than silently omitting them;
+3. group by the four canonical categories;
+4. deduplicate the same underlying object while recording meaningful age/outfit/identity/form variants;
+5. perform an omission check against the story;
+6. create one independent image prompt per confirmed plan item.
+
+The full FrameFlow image-prompt rules remain part of the contract:
+
+- project-wide 影视级 3D 国漫 CG style;
+- no mixing of style vocabularies;
+- character/anthropomorphic template with front full body, side full body, back full body, and facial close-up, four-panel horizontal arrangement, pure white background, 16:9, static neutral pose, no action/prop/effect, with detailed face, hair, clothing, material, pattern, accessory, lower-body and footwear description;
+- cross-version character identity continuity for face shape, facial features, eyes, hair, body type, and basic temperament;
+- pure-environment scene template with foreground / midground / background structure, strong spatial depth, no people/animals/story action, natural unified lighting;
+- centered single-prop template on pure white background, complete object, no hands/actions/effects, with geometry/material/colors/surface/edge details;
+- centered non-anthropomorphic creature template with complete body/species/limb/wing/tail/eye/horn/claw/scale/feather/fur/shell details; anthropomorphic or upright human-like creatures route to the character template;
+- unified negative prompt covering text, watermark, logo, gibberish, crop, missing subject, extra people, complex background where forbidden, proportion/structure errors, malformed limbs, extra hands/fingers, broken faces, style inconsistency, and low-resolution blur.
+
+The model owns semantic `assetKey` values only, e.g. `CHARACTER-HERO`.
+
+The model must not generate:
+
+- stable public asset IDs;
+- native SeeReel `Asset.id` values;
+- selected candidate IDs;
+- provider aliases.
+
+### 3.6 ASSET_CANDIDATES
+
+Input: persisted asset plan.
+
+Output: image candidate state for every required asset.
+
+Use SeeReel's native image/asset path. The server assigns stable public asset IDs after the plan is persisted, in deterministic plan order:
+
+```text
+assetKey        -> publicAssetId
+CHARACTER-HERO  -> P001-A001
+SCENE-ROOM      -> P001-A002
+...
+```
+
+Every required item must have at least one verified candidate before the workflow can advance to asset confirmation.
+
+### 3.7 ASSET_CONFIRMATION
+
+Manual/control gate.
+
+Output: every required plan item is bound to exactly one current confirmed image/native asset.
+
+The workflow must stop here while any required asset is missing, unverified, stale, or unselected. Changing an upstream asset plan or regenerating candidates invalidates dependent confirmation state as appropriate.
+
+### 3.8 SCREENPLAY
+
+Input:
+
+- current story document;
+- current confirmed asset facts.
+
+Output: structured `VIDEO_SCREENPLAY`.
+
+The formal screenplay locks `targetDurationSeconds` to exactly one of:
+
+```text
+90, 100, 110, 120, 130, 140, 150
+```
+
+No other duration set is valid for new generation.
+
+Required scene semantics follow FrameFlow's current contract:
+
+- continuous scene `sequence` starting at 1;
+- scene title;
+- knowledge focus / theme;
+- emotional purpose;
+- primary visual presentation mode;
+- ambient sound;
+- effect / transition sound;
+- action / interaction sound;
+- voice guidance;
+- visual/action description;
+- dialogue/narration;
+- evidence array for server-supported teaching evidence.
+
+The screenplay covers the complete story from beginning to end but does not generate final storyboard units yet. Confirmed asset facts may be used; invented asset IDs are forbidden.
+
+### 3.9 FINAL_STORYBOARD
+
+Input:
+
+- current formal screenplay;
+- current confirmed assets.
+
+Output: structured `VIDEO_STORYBOARD` with `format = FINAL_10_SECOND`.
+
+Hard invariants:
+
+- storyboard `targetDuration` equals screenplay `targetDurationSeconds`;
+- segment count equals `targetDuration / 10` (9–15 segments);
+- every segment is exactly 10 seconds;
+- every segment has 3–5 continuous subshots;
+- subshot durations sum to exactly 10 seconds;
+- segment sequence starts at 1 and is continuous;
+- subshot sequence starts at 1 and is continuous;
+- the full screenplay is covered from start to finish;
+- references use only current confirmed stable public asset IDs;
+- no provider-local positional aliases are used as canonical references;
+- visual continuity records character, scene, prop, and creature continuity requirements.
+
+The structured final storyboard is the production truth and must not be rewritten merely to create a convenient copy/paste prompt.
+
+### 3.10 COPYABLE_PROMPT
+
+Input:
+
+- current final storyboard;
+- current confirmed assets.
+
+Output: derived `copyableStoryboardPrompt` only.
+
+Stable public markers such as `【P001-A001】` may appear only inside visual-effect text. Per segment:
+
+- maximum 7 stable IDs;
+- no duplicate marker;
+- no invented or stale ID;
+- every declared reference must appear in the text and vice versa;
+- no position-based image naming in the visual-effect copy;
+- dialogue, narration, subtitle, sound, timing, camera, and action structure stay unchanged;
+- `fullText` must contain every derived segment text.
+
+This stage does not mutate `FINAL_STORYBOARD`.
+
+`COPYABLE_PROMPT` is a display/transfer derivative, not quote or execution truth. If upstream storyboard or asset-plan state changes, the derived copy must be regenerated.
+
+### 3.11 QUOTE
+
+Input: current structured final storyboard and current confirmed asset/version lineage.
+
+Output: `QUOTE_SNAPSHOT`.
+
+The quote must bind the current version/hash and asset order. If a relevant ancestor version, storyboard content, or confirmed asset order changes, the quote becomes stale/invalid.
+
+Phase 1 may use a deterministic fake quote implementation while preserving this boundary. Real billing is not required to prove the workflow chain.
+
+### 3.12 EXECUTION
+
+Input: current valid quote snapshot.
+
+Output: native SeeReel execution/render state.
+
+Real execution must validate authorization, balance, idempotency, and current-source requirements according to the canonical FrameFlow boundary before provider submission. Phase 1 may use deterministic fake execution while keeping this stage and contract visible.
+
+Provider-specific reference aliases are compiled only here, from canonical stable public IDs resolved to current confirmed native assets. Provider aliases must never become canonical workflow state.
+
+### 3.13 STITCH
+
+Input: successful native execution results.
+
+Output: native SeeReel `StitchJob` / final video.
+
+Reuse SeeReel's existing stitch and delivery path.
 
 ---
 
-## 3. Every stage produces an artifact
+## 4. Stable identity ownership
 
-Phase 1 does not create a generic artifact database/table. The early text/JSON outputs are persisted inside an optional VideosBatch workflow object attached to the native SeeReel `Session`.
+Canonical identity layering is one-way:
+
+```text
+model semantic identity
+assetKey = CHARACTER-HERO
+        ↓ server after persisted plan
+stable public identity
+P001-A001
+        ↓ SeeReel resolution
+native Asset.id
+asset_xxx
+        ↓ provider compiler at execution boundary
+provider-local alias
+@图片1
+```
+
+Rules:
+
+1. Model output never owns `P001-A001`.
+2. Stable public IDs survive image regeneration/candidate changes for the same plan item.
+3. Native `Asset.id` is an implementation identity, not user-facing semantic identity.
+4. Provider aliases never enter canonical workflow state.
+5. Asset order used by quote/execution is derived from the current confirmed plan snapshot, not incidental Canvas ordering.
+
+---
+
+## 5. Workflow state and manual gates
+
+VideosBatch keeps one optional workflow object on native SeeReel `Session`:
 
 ```ts
 export interface VideosBatchStageState<T = unknown> {
-  status: VideosBatchStageStatus;
+  status: "pending" | "running" | "ready" | "failed" | "stale";
   revision: number;
   artifact?: T;
   error?: string;
@@ -108,352 +364,156 @@ export interface VideosBatchStageState<T = unknown> {
 export interface VideosBatchWorkflowState {
   version: 1;
   currentStage: VideosBatchStageId;
-  selectedStoryId?: string;
+  completed: boolean;
+  selectedIntroId?: string;
+  selectionMode?: "user_selected" | "system_recommended" | "custom";
+  selectionReason?: string;
+  introLocked: boolean;
   stages: Partial<Record<VideosBatchStageId, VideosBatchStageState>>;
   updatedAt: string;
 }
-
-export interface Session {
-  // native SeeReel fields remain unchanged
-  videosBatchWorkflow?: VideosBatchWorkflowState;
-}
 ```
 
-This is the only new persistent workflow model required for Phase 1.
+Required manual stops:
 
-Native media entities remain native SeeReel entities:
+- `COURSE_INTRO_SELECTION` until one intro is explicitly locked;
+- `ASSET_CONFIRMATION` until every required asset is selected/confirmed.
 
-- generated asset images -> `Asset[]`
-- generated storyboards/shots -> `Shot[]`
-- video attempts -> `ShotRender[]`
-- final assembly -> `StitchJob`
-
-Do not add `LessonAsset`, `LessonShot`, `LessonRender`, `LessonReview` or `LessonStitch`.
+`runAll` must stop at these gates rather than silently inventing a selection.
 
 ---
 
-## 4. Stage runner
+## 6. Edits, versions, and stale propagation
 
-The entire orchestration core can be one generic runner and one stage registry.
+Every user-visible artifact may be edited within its legal outer contract.
+
+When an upstream stage changes:
+
+1. increment its revision;
+2. keep the edited stage visible/ready;
+3. mark completed downstream stages `stale`;
+4. preserve prior outputs for inspection;
+5. invalidate downstream manual confirmations and quote/execution bindings that depended on the old revision;
+6. require regeneration/reconfirmation from the earliest affected stage;
+7. set the workflow back to an unfinished state when previously completed downstream output is no longer current.
+
+Do not silently delete old outputs and do not treat stale quote, selected asset, storyboard, or execution state as current.
+
+---
+
+## 7. Runner architecture
+
+Use one linear runner and one stage registry.
 
 ```ts
-export interface StageExecutionContext {
-  session: Session;
-  workflow: VideosBatchWorkflowState;
-  assets: Asset[];
-  shots: Shot[];
-}
-
-export interface StageResult<T = unknown> {
-  artifact: T;
-}
-
 export interface StageDefinition<T = unknown> {
   id: VideosBatchStageId;
-  execute(ctx: StageExecutionContext): Promise<StageResult<T>>;
+  execute(ctx: StageExecutionContext): Promise<{ artifact: T }>;
   validate(artifact: T, ctx: StageExecutionContext): ValidationResult;
   project?(artifact: T, ctx: StageExecutionContext): Promise<void>;
 }
 ```
 
-Execution order:
+The runner performs only:
 
 ```text
-load Session
-  -> resolve current StageDefinition
-  -> execute
-  -> validate contract
-  -> persist artifact
-  -> project into native SeeReel entities when needed
-  -> mark stage ready
-  -> advance currentStage
+load current Session/workflow/native state
+  -> enforce manual/current-source gate
+  -> execute current stage
+  -> validate structural/business contract
+  -> persist stage artifact
+  -> project to native SeeReel state when applicable
+  -> mark ready
+  -> advance
 ```
 
-`project` is only needed when a stage must create/update native SeeReel state:
+It is not a hidden Agent loop and does not perform semantic quality review in Phase 1.
 
-- `ASSET_GENERATION` -> native `Asset[]`
-- `STORYBOARD_GENERATION` -> native `Shot[]`
-- `REFERENCE_BINDING` -> update native `Shot.assetIds` / prompt draft fields
-- `VIDEO_GENERATION` -> native `ShotRender[]`
-- `STITCH` -> native `StitchJob`
-
-All creative text stages remain ordinary structured artifacts.
+Dedicated text-model stages use strict structured output. Do not add a hidden finalizer or a generic Chat Agent round after the stage output.
 
 ---
 
-## 5. Contract validation only
+## 8. Native SeeReel projection
 
-Phase 1 does **not** decide whether content is good, creative, pedagogically perfect, cinematic or aesthetically strong.
+Projection ownership:
 
-Validation answers only: "Can this output legally enter the next stage?"
+- `ASSET_CANDIDATES` -> native `Asset[]` candidate/generated image state;
+- `ASSET_CONFIRMATION` -> current stable-public-ID to confirmed native `Asset.id` mapping;
+- `FINAL_STORYBOARD` -> native `Shot[]` inspection/execution units;
+- `COPYABLE_PROMPT` -> derived text only and never authoritative execution state;
+- `EXECUTION` -> native render / `ShotRender[]` / `WorkflowExecutionPlan` behavior;
+- `STITCH` -> native `StitchJob`.
 
-Examples:
-
-### INTRO_GENERATION
-
-- exactly 9 intro candidates;
-- three major categories are represented;
-- each candidate contains id/name/type/content/question/truthfulness;
-- exactly 3 recommended candidate ids;
-- recommended ids exist in the 9 candidates.
-
-### STORY_EXPANSION
-
-- exactly 3 stories;
-- every story has id/title/type/truthfulness/content;
-- source intro id exists.
-
-### STORY_SELECTION
-
-- one valid story id selected in Phase 1.
-
-### ASSET_PROMPT_GENERATION
-
-- stable asset ids match project id convention;
-- ids are unique;
-- type is character/scene/prop/creature;
-- every final asset has name/source/usage/prompt;
-- final asset list can be resolved by id.
-
-### STORYBOARD_GENERATION
-
-- every storyboard segment is 10 seconds;
-- every segment contains 3-5 subshots;
-- subshot durations sum to 10 seconds;
-- sequence ids are unique and ordered;
-- required visual/audio/dialogue fields exist.
-
-### REFERENCE_BINDING
-
-- every referenced asset id exists;
-- no invented asset id;
-- max 7 unique asset ids per storyboard segment.
-
-No LLM semantic-review loop in Phase 1.
-
-If validation fails, the stage becomes `failed` and displays the validation error. Automatic "repair prompt" can be added later.
-
-No new schema dependency is required; use focused TypeScript validators.
+Keep existing SeeReel generator, prompt composition, TOS, Canvas, review, and stitch implementations unless a concrete adapter gap requires a narrow change.
 
 ---
 
-## 6. Visibility: Workflow Rail + native Canvas
+## 9. UI
 
-Do not turn SeeReel Canvas into a generic workflow editor.
+Use a lightweight fixed Workflow Rail plus the native SeeReel Canvas.
 
-Add one lightweight left/top `WorkflowRail` that renders the fixed ordered stages:
+Labels:
 
 ```text
 教案
-  ↓
-九套课程导入
-  ↓
-三个完整故事
-  ↓
-选定故事
-  ↓
-资产拆解/提示词
-  ↓
-资产图片
-  ↓
-视频剧本
-  ↓
-10秒分镜
-  ↓
-资产引用
-  ↓
-视频生成
-  ↓
+三类九套课程导入
+锁定课程导入
+故事文稿
+资产计划与提示词
+资产候选图
+确认资产
+正式视频剧本
+最终10秒分镜
+垫图副本
+报价
+视频执行
 最终拼接
 ```
 
-Each stage card shows:
+Every stage shows status and current artifact. Long editing, selection, and candidate confirmation may open in the current artifact panel/inspector/drawer. Do not turn Canvas into a second generic workflow editor.
 
-- status;
-- short summary;
-- `查看`;
-- `编辑` when the artifact is editable;
-- `重新生成`;
-- `从这里继续`.
-
-Clicking a text stage opens a `WorkflowArtifactPanel` / Inspector view.
-
-Native stages remain visible through existing SeeReel Canvas nodes:
-
-- asset images -> native Asset nodes;
-- storyboards/shots -> native Shot / storyboard nodes;
-- videos -> native Shot Video nodes;
-- stitch -> native Stitch node.
-
-The Workflow Rail may link/focus the corresponding native Canvas nodes instead of duplicating them.
-
-This preserves SeeReel's own design principle that Canvas is the inspectable production surface rather than a free-form general graph.
+Media remains inspectable as native SeeReel nodes.
 
 ---
 
-## 7. Manual edits and stale propagation
+## 10. Phase 1 fake-first acceptance
 
-Every visible artifact can be edited.
-
-When an artifact is edited:
-
-1. increment that stage revision;
-2. keep the edited stage `ready`;
-3. mark all downstream completed stages as `stale`;
-4. keep old downstream artifacts visible;
-5. user may choose `从这里重新生成后续`.
-
-No automatic destructive deletion.
-
-Example:
+Before real providers, a deterministic fake E2E must prove:
 
 ```text
-STORY_EXPANSION  ready (manual edit)
-STORY_SELECTION  stale
-ASSET_PROMPT_GENERATION stale
-ASSET_GENERATION stale
-SCREENPLAY_GENERATION stale
-...
+lesson
+ -> 9 intro candidates
+ -> lock exactly 1 intro
+ -> 1 story document
+ -> asset plan with semantic assetKeys
+ -> candidate native assets with server-owned Pxxx-Axxx ids
+ -> confirm all required assets
+ -> formal screenplay with allowed locked duration
+ -> exact N x 10-second final storyboard segments
+ -> derived copyable prompts
+ -> quote snapshot
+ -> execution/render state
+ -> native stitch
+ -> DONE
 ```
 
-This is sufficient lineage for Phase 1. No separate lineage database is required.
+At every step the artifact is inspectable and structural/business-contract violations stop advancement.
+
+Only after this E2E and SeeReel regressions are green should fake executors be replaced by real LLM/image/video/quote/provider integrations.
 
 ---
 
-## 8. Reuse SeeReel without redesign
+## 11. Current authoritative local files
 
-Keep these SeeReel systems and code paths:
-
-- `Session` and persistence;
-- Agent / Skills / CLI / Handoff;
-- `Asset` creation and image generation;
-- `Shot` and storyboard state;
-- `ShotRender` / generation task lifecycle;
-- prompt composition / Seedance reference logic;
-- `WorkflowExecutionPlan` for native shot generation dependencies;
-- Stitch and final video output;
-- existing Canvas / Inspector / node graph;
-- VLM review / repair capabilities remain available but are not a required Phase 1 stage.
-
-Particularly avoid rewriting:
-
-```text
-src/server/generators.ts
-src/server/promptCompose.ts
-src/server/visionReview.ts
-src/server/tos.ts
-src/shared/shotGenerationState.ts
-src/client/flow/* existing node semantics
-```
-
-VideosBatch adds a thin workflow layer around them.
-
----
-
-## 9. Minimal new files
-
-Preferred overlay:
+Current VideosBatch implementation sources are:
 
 ```text
 src/shared/videosBatchWorkflow.ts
-
-src/server/videosBatchWorkflow/
-  stages.ts
-  runner.ts
-  validators.ts
-  prompts.ts
-  api.ts
-
-src/client/videosBatchWorkflow/
-  WorkflowRail.tsx
-  WorkflowArtifactPanel.tsx
+src/server/videosBatchWorkflow/*
+src/client/videosBatchWorkflow/*
+scripts/smoke-videosbatch-*
+.agents/skills/videosbatch-lesson-workflow/SKILL.md
+docs/seereel-injection-map.md
 ```
 
-Existing SeeReel files should receive only wiring-level changes:
-
-```text
-src/shared/types.ts
-  -> optional Session.videosBatchWorkflow
-
-src/server/index.ts
-  -> mount VideosBatch workflow API
-
-src/server/store.ts
-  -> persist the optional workflow object if existing Session serialization requires it
-
-src/client/App.tsx or FlowView.tsx
-  -> mount WorkflowRail / artifact panel
-```
-
-Do not modify core generator/review/stitch implementations unless an actual adapter gap is discovered during integration.
-
----
-
-## 10. Minimal API
-
-Phase 1 needs only:
-
-```text
-POST /api/sessions/:id/videosbatch/start
-POST /api/sessions/:id/videosbatch/run-next
-POST /api/sessions/:id/videosbatch/run-all
-PUT  /api/sessions/:id/videosbatch/stages/:stageId/artifact
-POST /api/sessions/:id/videosbatch/restart-from/:stageId
-GET  /api/sessions/:id/videosbatch
-```
-
-`start` receives the lesson text and project id.
-
-`run-next` executes one stage.
-
-`run-all` executes until `DONE`, `FAILED`, or the manual `STORY_SELECTION` gate.
-
-Editing an artifact through `PUT` automatically marks downstream stages stale.
-
----
-
-## 11. Phase 1 acceptance
-
-Phase 1 is complete when one real SeeReel session can do this:
-
-```text
-paste lesson plan
-  -> run chain
-  -> see 9 intro candidates
-  -> see 3 expanded stories
-  -> select 1 story
-  -> see asset prompts/list
-  -> see generated native asset nodes
-  -> see video screenplay
-  -> see full 10-second storyboard set
-  -> see canonical asset references bound into the storyboard
-  -> generate native SeeReel shot videos
-  -> stitch final video
-```
-
-At every stage the user can inspect the current output. Text artifacts are editable. Native media objects use the existing SeeReel Inspector.
-
-Contract failure stops the chain and shows the error.
-
-That is the entire Phase 1 product requirement.
-
----
-
-## 12. Explicitly deferred
-
-Do not implement in the Phase 1 workflow core:
-
-- semantic quality scoring;
-- teaching-objective coverage engine;
-- VLM as a mandatory gate;
-- automatic repair agent;
-- multi-agent orchestration;
-- general DAG editor;
-- multi-story branching after story selection;
-- cost/billing optimization;
-- model routing optimization;
-- complex retry policies;
-- automatic prompt optimization;
-- new timeline editor.
-
-SeeReel's existing optional review/repair/agent capabilities stay intact and can be used manually, but VideosBatch Phase 1 does not depend on them.
+Only the canonical stage vocabulary and contracts in this document are valid for current VideosBatch development. Superseded source trees and implementation plans are removed from the working tree; Git history is the only archive for them.
