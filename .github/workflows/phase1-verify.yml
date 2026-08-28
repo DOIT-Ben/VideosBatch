@@ -68,6 +68,8 @@ jobs:
           fi
       - name: Verify VideosBatch runtime provider readiness
         run: npx tsx scripts/smoke-videosbatch-runtime-provider.ts
+      - name: Verify VideosBatch real text mode through SeeReel server
+        run: npx tsx scripts/smoke-videosbatch-real-text-server.ts
       - name: Verify VideosBatch text-stage specs when test exists
         shell: bash
         run: |
