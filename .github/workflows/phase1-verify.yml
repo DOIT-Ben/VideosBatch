@@ -3,7 +3,7 @@ name: phase1-verify
 on:
   push:
     branches:
-      - feat/real-provider-text-stages
+      - feat/native-media-execution
   pull_request:
     branches:
       - master
@@ -70,6 +70,8 @@ jobs:
         run: npx tsx scripts/smoke-videosbatch-runtime-provider.ts
       - name: Verify VideosBatch real text mode through SeeReel server
         run: npx tsx scripts/smoke-videosbatch-real-text-server.ts
+      - name: Verify VideosBatch native media stages
+        run: npx tsx scripts/smoke-videosbatch-native-media-stages.ts
       - name: Verify VideosBatch text-stage specs when test exists
         shell: bash
         run: |

@@ -4,19 +4,23 @@ import {
   type VideosBatchLlmConfig
 } from "./llmExecutor";
 import { createVideosBatchLlmTextStageRegistry } from "./llmTextStages";
+import { createVideosBatchNativeMediaStageRegistry } from "./nativeMediaStages";
 import { createPhase1FakeStageRegistry } from "./stages";
 import type { StageRegistry } from "./stageContracts";
 
 export type VideosBatchExecutorMode = "fake" | "llm";
+export type VideosBatchMediaMode = "fake" | "native";
 export type VideosBatchRuntimeEnv = Record<string, string | undefined>;
 
 export interface VideosBatchRuntimeConfig {
   executorMode: VideosBatchExecutorMode;
+  mediaMode: VideosBatchMediaMode;
   llm?: VideosBatchLlmConfig;
 }
 
 export interface VideosBatchProviderReadiness {
   executorMode: VideosBatchExecutorMode;
+  mediaMode: VideosBatchMediaMode;
   text: {
     enabled: boolean;
     ready: boolean;
@@ -24,6 +28,10 @@ export interface VideosBatchProviderReadiness {
     model?: string;
     baseUrl?: string;
     keyConfigured: boolean;
+  };
+  media: {
+    enabled: boolean;
+    mode: VideosBatchMediaMode;
   };
 }
 
@@ -34,19 +42,25 @@ function trimmed(env: VideosBatchRuntimeEnv, key: string) {
 /**
  * Runtime provider selection is intentionally explicit.
  *
- * A key already present elsewhere in the SeeReel process must never make VideosBatch start
- * spending provider credits. Missing mode always means deterministic fake execution. Real text
- * generation requires BOTH an explicit llm mode and VideosBatch-specific key/model variables.
+ * Generic keys already present in the SeeReel process never auto-enable paid VideosBatch work.
+ * Text and media are independent switches: missing modes always mean deterministic fake execution.
+ * Real text requires a dedicated VideosBatch key/model. Native media intentionally reuses SeeReel's
+ * existing Seedream / Seedance credential routing, but only after VIDEOSBATCH_MEDIA_MODE=native.
  */
 export function resolveVideosBatchRuntimeConfig(
   env: VideosBatchRuntimeEnv = process.env
 ): VideosBatchRuntimeConfig {
-  const rawMode = trimmed(env, "VIDEOSBATCH_EXECUTOR_MODE").toLowerCase() || "fake";
-  if (rawMode !== "fake" && rawMode !== "llm") {
-    throw new Error(`VIDEOSBATCH_EXECUTOR_MODE must be one of: fake, llm (received: ${rawMode})`);
+  const executorMode = (trimmed(env, "VIDEOSBATCH_EXECUTOR_MODE").toLowerCase() || "fake") as VideosBatchExecutorMode;
+  if (executorMode !== "fake" && executorMode !== "llm") {
+    throw new Error(`VIDEOSBATCH_EXECUTOR_MODE must be one of: fake, llm (received: ${executorMode})`);
   }
 
-  if (rawMode === "fake") return { executorMode: "fake" };
+  const mediaMode = (trimmed(env, "VIDEOSBATCH_MEDIA_MODE").toLowerCase() || "fake") as VideosBatchMediaMode;
+  if (mediaMode !== "fake" && mediaMode !== "native") {
+    throw new Error(`VIDEOSBATCH_MEDIA_MODE must be one of: fake, native (received: ${mediaMode})`);
+  }
+
+  if (executorMode === "fake") return { executorMode, mediaMode };
 
   const apiKey = trimmed(env, "VIDEOSBATCH_LLM_API_KEY");
   if (!apiKey) {
@@ -69,26 +83,34 @@ export function resolveVideosBatchRuntimeConfig(
     VIDEOSBATCH_LLM_TIMEOUT_MS: trimmed(env, "VIDEOSBATCH_LLM_TIMEOUT_MS") || "120000"
   });
 
-  return { executorMode: "llm", llm };
+  return { executorMode, mediaMode, llm };
 }
 
 export function getVideosBatchProviderReadiness(
   config: VideosBatchRuntimeConfig
 ): VideosBatchProviderReadiness {
+  const media = {
+    enabled: config.mediaMode === "native",
+    mode: config.mediaMode
+  } as const;
+
   if (config.executorMode === "fake") {
     return {
       executorMode: "fake",
+      mediaMode: config.mediaMode,
       text: {
         enabled: false,
         ready: true,
         keyConfigured: false
-      }
+      },
+      media
     };
   }
 
   const llm = config.llm;
   return {
     executorMode: "llm",
+    mediaMode: config.mediaMode,
     text: {
       enabled: true,
       ready: Boolean(llm?.apiKey && llm?.model),
@@ -96,7 +118,8 @@ export function getVideosBatchProviderReadiness(
       model: llm?.model,
       baseUrl: llm?.baseUrl,
       keyConfigured: Boolean(llm?.apiKey)
-    }
+    },
+    media
   };
 }
 
@@ -104,13 +127,23 @@ export function createVideosBatchRuntimeStageRegistry(
   env: VideosBatchRuntimeEnv = process.env
 ): StageRegistry {
   const config = resolveVideosBatchRuntimeConfig(env);
-  const registry = createPhase1FakeStageRegistry();
-  if (config.executorMode === "fake") return registry;
+  let registry: StageRegistry = createPhase1FakeStageRegistry();
 
-  if (!config.llm) throw new Error("VideosBatch llm runtime config was not resolved");
-  const textExecutor = createVideosBatchLlmExecutor(config.llm);
-  return {
-    ...registry,
-    ...createVideosBatchLlmTextStageRegistry(textExecutor)
-  };
+  if (config.executorMode === "llm") {
+    if (!config.llm) throw new Error("VideosBatch llm runtime config was not resolved");
+    const textExecutor = createVideosBatchLlmExecutor(config.llm);
+    registry = {
+      ...registry,
+      ...createVideosBatchLlmTextStageRegistry(textExecutor)
+    };
+  }
+
+  if (config.mediaMode === "native") {
+    registry = {
+      ...registry,
+      ...createVideosBatchNativeMediaStageRegistry()
+    };
+  }
+
+  return registry;
 }
