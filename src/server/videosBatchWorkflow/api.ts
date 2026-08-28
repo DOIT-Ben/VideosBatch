@@ -4,6 +4,11 @@ import type { CinemaStore } from "../store";
 import type { StageExecutionContext, StageRegistry } from "./stageContracts";
 import { replaceStageArtifact, restartFrom, runAll, runNext } from "./runner";
 
+function routeParam(req: Request, key: string) {
+  const value = req.params[key];
+  return Array.isArray(value) ? value[0] || "" : value || "";
+}
+
 function isStageId(value: string): value is VideosBatchStageId {
   return (VIDEOS_BATCH_STAGE_ORDER as readonly string[]).includes(value);
 }
@@ -32,7 +37,7 @@ async function persistWorkflow(store: CinemaStore, sessionId: string, workflow: 
 }
 
 function requireSession(store: CinemaStore, req: Request, res: Response) {
-  const session = store.getSession(req.params.sessionId);
+  const session = store.getSession(routeParam(req, "sessionId"));
   if (!session) {
     res.status(404).json({ error: "Session not found" });
     return undefined;
@@ -76,45 +81,51 @@ export function registerVideosBatchWorkflowApi(
   });
 
   app.post("/api/sessions/:sessionId/videosbatch/run-next", async (req, res) => {
-    const ctx = workflowContext(store, req.params.sessionId);
+    const sessionId = routeParam(req, "sessionId");
+    const ctx = workflowContext(store, sessionId);
     if (!ctx) {
-      if (!store.getSession(req.params.sessionId)) return res.status(404).json({ error: "Session not found" });
+      if (!store.getSession(sessionId)) return res.status(404).json({ error: "Session not found" });
       return res.status(409).json({ error: "VideosBatch workflow has not been started" });
     }
     const workflow = await runNext(ctx, registry);
-    await persistWorkflow(store, req.params.sessionId, workflow);
+    await persistWorkflow(store, sessionId, workflow);
     res.json(workflow);
   });
 
   app.post("/api/sessions/:sessionId/videosbatch/run-all", async (req, res) => {
-    const ctx = workflowContext(store, req.params.sessionId);
+    const sessionId = routeParam(req, "sessionId");
+    const ctx = workflowContext(store, sessionId);
     if (!ctx) {
-      if (!store.getSession(req.params.sessionId)) return res.status(404).json({ error: "Session not found" });
+      if (!store.getSession(sessionId)) return res.status(404).json({ error: "Session not found" });
       return res.status(409).json({ error: "VideosBatch workflow has not been started" });
     }
     const workflow = await runAll(ctx, registry);
-    await persistWorkflow(store, req.params.sessionId, workflow);
+    await persistWorkflow(store, sessionId, workflow);
     res.json(workflow);
   });
 
   app.put("/api/sessions/:sessionId/videosbatch/stages/:stageId/artifact", async (req, res) => {
     const workflow = requireWorkflow(store, req, res);
     if (!workflow) return;
-    if (!isStageId(req.params.stageId)) return res.status(400).json({ error: "Unknown VideosBatch stage" });
+    const stageId = routeParam(req, "stageId");
+    const sessionId = routeParam(req, "sessionId");
+    if (!isStageId(stageId)) return res.status(400).json({ error: "Unknown VideosBatch stage" });
     if (!Object.hasOwn(req.body || {}, "artifact")) return res.status(400).json({ error: "artifact is required" });
 
-    const next = replaceStageArtifact(workflow, req.params.stageId, req.body.artifact);
-    await persistWorkflow(store, req.params.sessionId, next);
+    const next = replaceStageArtifact(workflow, stageId, req.body.artifact);
+    await persistWorkflow(store, sessionId, next);
     res.json(next);
   });
 
   app.post("/api/sessions/:sessionId/videosbatch/restart-from/:stageId", async (req, res) => {
     const workflow = requireWorkflow(store, req, res);
     if (!workflow) return;
-    if (!isStageId(req.params.stageId)) return res.status(400).json({ error: "Unknown VideosBatch stage" });
+    const stageId = routeParam(req, "stageId");
+    const sessionId = routeParam(req, "sessionId");
+    if (!isStageId(stageId)) return res.status(400).json({ error: "Unknown VideosBatch stage" });
 
-    const next = restartFrom(workflow, req.params.stageId);
-    await persistWorkflow(store, req.params.sessionId, next);
+    const next = restartFrom(workflow, stageId);
+    await persistWorkflow(store, sessionId, next);
     res.json(next);
   });
 }
