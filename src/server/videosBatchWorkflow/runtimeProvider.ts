@@ -3,7 +3,8 @@ import {
   resolveVideosBatchLlmConfig,
   type VideosBatchLlmConfig
 } from "./llmExecutor";
-import { createVideosBatchStageRegistry } from "./stages";
+import { createVideosBatchLlmTextStageRegistry } from "./llmTextStages";
+import { createPhase1FakeStageRegistry } from "./stages";
 import type { StageRegistry } from "./stageContracts";
 
 export type VideosBatchExecutorMode = "fake" | "llm";
@@ -103,9 +104,13 @@ export function createVideosBatchRuntimeStageRegistry(
   env: VideosBatchRuntimeEnv = process.env
 ): StageRegistry {
   const config = resolveVideosBatchRuntimeConfig(env);
-  if (config.executorMode === "fake") return createVideosBatchStageRegistry();
+  const registry = createPhase1FakeStageRegistry();
+  if (config.executorMode === "fake") return registry;
 
   if (!config.llm) throw new Error("VideosBatch llm runtime config was not resolved");
   const textExecutor = createVideosBatchLlmExecutor(config.llm);
-  return createVideosBatchStageRegistry({ textExecutor });
+  return {
+    ...registry,
+    ...createVideosBatchLlmTextStageRegistry(textExecutor)
+  };
 }
