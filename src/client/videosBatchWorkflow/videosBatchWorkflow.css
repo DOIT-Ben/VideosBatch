@@ -1,0 +1,148 @@
+.videosbatch-workflow-shell {
+  margin: 10px 14px 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  background: rgba(18, 20, 24, 0.9);
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.videosbatch-workflow-heading,
+.videosbatch-artifact-panel > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.videosbatch-workflow-heading > div:first-child,
+.videosbatch-artifact-panel > header > div:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.videosbatch-workflow-heading small,
+.videosbatch-artifact-panel small,
+.videosbatch-stage-card small {
+  opacity: 0.62;
+}
+
+.videosbatch-workflow-controls,
+.videosbatch-artifact-actions,
+.videosbatch-stage-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.videosbatch-stage-rail {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.videosbatch-stage-card {
+  flex: 0 0 190px;
+  min-width: 190px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.025);
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 8px;
+}
+
+.videosbatch-stage-card.current {
+  outline: 2px solid rgba(255, 255, 255, 0.22);
+}
+
+.videosbatch-stage-card.status-ready {
+  border-color: rgba(112, 202, 142, 0.35);
+}
+
+.videosbatch-stage-card.status-failed {
+  border-color: rgba(232, 111, 111, 0.5);
+}
+
+.videosbatch-stage-card.status-stale {
+  border-style: dashed;
+}
+
+.videosbatch-stage-index {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.45;
+  padding-top: 4px;
+}
+
+.videosbatch-stage-main {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  padding: 2px 0;
+  display: grid;
+  gap: 2px;
+}
+
+.videosbatch-stage-actions {
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
+}
+
+.videosbatch-stage-actions button,
+.videosbatch-workflow-controls button,
+.videosbatch-artifact-actions button {
+  font-size: 12px;
+}
+
+.videosbatch-artifact-panel {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.videosbatch-artifact-panel pre,
+.videosbatch-artifact-panel textarea {
+  margin: 0;
+  width: 100%;
+  max-height: 320px;
+  overflow: auto;
+  box-sizing: border-box;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.22);
+  color: inherit;
+  padding: 10px;
+  font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+}
+
+.videosbatch-start-fields {
+  display: grid;
+  grid-template-columns: 120px 1fr auto;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.videosbatch-start-fields input,
+.videosbatch-start-fields textarea {
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.videosbatch-workflow-error,
+.videosbatch-artifact-error {
+  color: #ff9b9b;
+  font-size: 12px;
+}
+
+@media (max-width: 900px) {
+  .videosbatch-start-fields {
+    grid-template-columns: 1fr;
+  }
+}
