@@ -6,73 +6,136 @@ import { createVideosBatchLlmTextStageRegistry } from "../src/server/videosBatch
 import type { StageExecutionContext } from "../src/server/videosBatchWorkflow/stageContracts";
 
 const calls: StructuredGenerationRequest[] = [];
+
+const introArtifact = {
+  candidates: ["A-01", "A-02", "A-03", "B-01", "B-02", "B-03", "C-01", "C-02", "C-03"].map((id) => ({
+    id,
+    name: `导入${id}`,
+    creativeType: "测试",
+    body: "字".repeat(220),
+    endingQuestion: "到底应该怎样解决？",
+    truthfulnessCategory: "完全虚构的故事化情境",
+    truthfulnessNote: "用于课堂导入的虚构情境。"
+  })),
+  recommendations: [
+    { id: "A-01", reason: "吸引力强" },
+    { id: "B-01", reason: "知识连接强" },
+    { id: "C-01", reason: "适合视频化" }
+  ]
+};
+
+const storyArtifact = {
+  schemaVersion: "2",
+  kind: "LESSON_INTRO_VIDEO_SCRIPT",
+  title: "蒙眼侦探",
+  storyType: "故事叙事型",
+  truthfulnessNote: "完全虚构的故事化情境。",
+  content: "故".repeat(650)
+};
+
+const assetPlanArtifact = {
+  schemaVersion: "1",
+  title: "资产计划",
+  kind: "VIDEO_ASSET_PLAN",
+  subject: "数学",
+  gradeBand: "小学",
+  candidateAssets: ["小宇"],
+  omissionCheck: "已逐段回看并完成四类资产遗漏检查。",
+  items: [
+    {
+      assetKey: "CHARACTER-HERO",
+      category: "CHARACTER",
+      name: "小宇",
+      description: "主要观察者",
+      prompt: "高级影视级3D国漫CG人物三视图提示词",
+      aspectRatio: "16:9",
+      continuityNotes: "保持脸型、五官、发色和服装一致",
+      sourceEvidence: "故事主角"
+    }
+  ]
+};
+
+const screenplayArtifact = {
+  schemaVersion: "1",
+  kind: "VIDEO_SCREENPLAY",
+  title: "正式剧本",
+  subject: "数学",
+  gradeBand: "小学",
+  storyType: "STORY",
+  targetDurationSeconds: 90,
+  scenes: [{
+    sequence: 1,
+    title: "第一场",
+    knowledgeFocus: "观察与判断",
+    emotionalPurpose: "产生好奇和冲突",
+    visualPresentation: "角色故事",
+    ambientSound: "环境声",
+    effectSound: "提示音",
+    interactionSound: "轻响",
+    voice: "自然对白",
+    visualAction: "角色观察并比较",
+    dialogue: "为什么会不一样？",
+    evidence: []
+  }]
+};
+
+const confirmedItem = {
+  assetKey: "CHARACTER-HERO",
+  publicAssetId: "P001-A001",
+  candidateAssetIds: ["asset_candidate_1"],
+  selectedAssetId: "asset_candidate_1"
+};
+
+const finalStoryboardArtifact = {
+  schemaVersion: "1",
+  title: "最终分镜",
+  kind: "VIDEO_STORYBOARD",
+  goal: "完整呈现课程导入",
+  overallScript: "连续覆盖正式剧本",
+  visualContinuity: "角色连续一致",
+  targetDuration: 90,
+  aspectRatio: "16:9",
+  deliveryMode: "SEGMENTED_MP4",
+  format: "FINAL_10_SECOND",
+  storyType: "STORY",
+  segments: Array.from({ length: 9 }, (_, index) => ({
+    sequence: index + 1,
+    screenplaySceneSequence: 1,
+    duration: 10,
+    visualPrompt: `第${index + 1}条画面`,
+    narration: `第${index + 1}条旁白`,
+    subtitles: `第${index + 1}条字幕`,
+    teachingPurpose: "推进问题",
+    transition: "自然转场",
+    evidence: [],
+    references: [{ assetId: "P001-A001", publicAssetId: "P001-A001", label: "小宇" }],
+    subshots: [
+      { sequence: 1, duration: 3, visual: "画面1", action: "动作1", camera: "中景", sound: "环境声", voice: "旁白1" },
+      { sequence: 2, duration: 3, visual: "画面2", action: "动作2", camera: "近景", sound: "轻响", voice: "对白2" },
+      { sequence: 3, duration: 4, visual: "画面3", action: "动作3", camera: "稳定", sound: "提示音", voice: "悬问3" }
+    ]
+  }))
+};
+
+const copyableArtifact = {
+  schemaVersion: "1",
+  status: "READY",
+  failedSegments: [],
+  segments: finalStoryboardArtifact.segments.map((segment) => ({
+    sequence: segment.sequence,
+    text: `分镜${segment.sequence}\n画面效果：【P001-A001】 ${segment.visualPrompt}\n教师旁白：${segment.narration}\n字幕：${segment.subtitles}`,
+    referenceAssetIds: ["P001-A001"]
+  }))
+};
+(copyableArtifact as any).fullText = copyableArtifact.segments.map((segment) => segment.text).join("\n\n");
+
 const artifacts: Record<string, any> = {
-  INTRO_GENERATION: {
-    candidates: ["A1", "A2", "A3", "B1", "B2", "B3", "C1", "C2", "C3"].map((id) => ({
-      id,
-      name: `导入${id}`,
-      creativeType: "测试",
-      body: "字".repeat(220),
-      endingQuestion: "到底应该怎样解决？",
-      truthfulnessCategory: "完全虚构的故事化情境",
-      truthfulnessNote: "用于课堂导入的虚构情境。"
-    })),
-    recommendations: [
-      { id: "A1", reason: "吸引力强" },
-      { id: "B1", reason: "知识连接强" },
-      { id: "C1", reason: "适合视频化" }
-    ]
-  },
-  STORY_EXPANSION: {
-    stories: [1, 2, 3].map((index) => ({
-      id: `story-${index}`,
-      sourceIntroId: ["A1", "B1", "C1"][index - 1],
-      title: `故事${index}`,
-      type: "测试",
-      truthfulnessNote: "完全虚构的故事化情境。",
-      content: "故".repeat(650)
-    }))
-  },
-  ASSET_PROMPT_GENERATION: {
-    candidateAssets: ["小宇", "教室"],
-    omissionCheck: "已按人物、场景、道具、生物四类完成二次核对。",
-    assets: [
-      { referenceId: "P001-A001", type: "character", name: "小宇", source: "主角", usage: "角色一致性", prompt: "角色设定" },
-      { referenceId: "P001-A002", type: "scene", name: "教室", source: "主要场景", usage: "场景一致性", prompt: "场景空镜" }
-    ]
-  },
-  SCREENPLAY_GENERATION: {
-    scenes: [{
-      id: "scene-1",
-      title: "第一场",
-      theme: "观察",
-      audienceEmotion: "好奇",
-      presentationModes: ["角色扮演"],
-      soundEffects: { ambience: [], transition: [], action: [], voiceCue: [] },
-      visuals: ["小宇走到观察台前"],
-      dialogue: [{ speaker: "小宇", tone: "好奇", text: "为什么会不一样？" }],
-      knowledgePackaging: []
-    }]
-  },
-  STORYBOARD_GENERATION: {
-    storyboardType: "story",
-    shots: [{
-      id: "shot-plan-1",
-      chapter: "第1章",
-      sequence: "1-1",
-      title: "观察",
-      scene: "教室",
-      subjects: ["小宇"],
-      props: [],
-      durationSec: 10,
-      prompt: "小宇在教室观察物体",
-      subshots: [
-        { startSec: 0, endSec: 3, durationSec: 3, visual: "画面1", camera: "中景", sound: "无", dialogue: "无" },
-        { startSec: 3, endSec: 6, durationSec: 3, visual: "画面2", camera: "近景", sound: "无", dialogue: "无" },
-        { startSec: 6, endSec: 10, durationSec: 4, visual: "画面3", camera: "特写", sound: "无", dialogue: "无" }
-      ]
-    }]
-  }
+  COURSE_INTRO_CANDIDATES: introArtifact,
+  STORY_SCRIPT: storyArtifact,
+  ASSET_PLAN: assetPlanArtifact,
+  SCREENPLAY: screenplayArtifact,
+  FINAL_STORYBOARD: finalStoryboardArtifact,
+  COPYABLE_PROMPT: copyableArtifact
 };
 
 const executor: VideosBatchLlmExecutor = {
@@ -89,21 +152,20 @@ const executor: VideosBatchLlmExecutor = {
 };
 
 const registry = createVideosBatchLlmTextStageRegistry(executor);
-assert.ok(registry.INTRO_GENERATION);
-assert.ok(registry.STORY_EXPANSION);
-assert.ok(registry.ASSET_PROMPT_GENERATION);
-assert.ok(registry.SCREENPLAY_GENERATION);
-assert.ok(registry.STORYBOARD_GENERATION);
-assert.equal(registry.REFERENCE_BINDING, undefined, "REFERENCE_BINDING must not call the LLM adapter");
+for (const stageId of ["COURSE_INTRO_CANDIDATES", "STORY_SCRIPT", "ASSET_PLAN", "SCREENPLAY", "FINAL_STORYBOARD", "COPYABLE_PROMPT"] as const) {
+  assert.ok(registry[stageId], `missing canonical LLM stage ${stageId}`);
+}
+assert.equal(registry.COURSE_INTRO_SELECTION, undefined, "manual selection gate must not call the LLM adapter");
+assert.equal(registry.ASSET_CONFIRMATION, undefined, "manual asset gate must not call the LLM adapter");
 
 function session(workflow: any): Session {
   const now = new Date().toISOString();
   return {
     id: "ses_llm_stage",
-    title: "LLM stages",
+    title: "Canonical LLM stages",
     logline: "",
     style: "test",
-    targetDurationSec: 120,
+    targetDurationSec: 90,
     videosBatchWorkflow: workflow,
     createdAt: now,
     updatedAt: now
@@ -116,44 +178,68 @@ function context(workflow: any): StageExecutionContext {
 
 const workflow = createVideosBatchWorkflow({ projectId: "P001", lessonText: "观察物体完整教案" });
 let ctx = context(workflow);
-const introResult = await registry.INTRO_GENERATION!.execute(ctx);
-assert.equal(calls[0].operation, "INTRO_GENERATION");
-assert.equal(calls[0].schemaName, "videosbatch_intro_generation");
-assert.equal(registry.INTRO_GENERATION!.validate(introResult.artifact, ctx).ok, true);
-
-const invalidIntro = structuredClone(artifacts.INTRO_GENERATION);
+const introResult = await registry.COURSE_INTRO_CANDIDATES!.execute(ctx);
+assert.equal(calls[0].operation, "COURSE_INTRO_CANDIDATES");
+assert.equal(registry.COURSE_INTRO_CANDIDATES!.validate(introResult.artifact, ctx).ok, true);
+const invalidIntro = structuredClone(introArtifact);
 invalidIntro.candidates.pop();
-const invalidIntroValidation = registry.INTRO_GENERATION!.validate(invalidIntro, ctx);
-assert.equal(invalidIntroValidation.ok, false);
-assert.ok(invalidIntroValidation.errors.some((error) => error.includes("9")));
+assert.equal(registry.COURSE_INTRO_CANDIDATES!.validate(invalidIntro, ctx).ok, false);
 
-workflow.stages.INTRO_GENERATION = { status: "ready", revision: 1, artifact: artifacts.INTRO_GENERATION };
+workflow.stages.COURSE_INTRO_CANDIDATES = { status: "ready", revision: 1, artifact: introArtifact };
+workflow.stages.COURSE_INTRO_SELECTION = {
+  status: "ready",
+  revision: 1,
+  artifact: { selectedIntroId: "A-01", selectionMode: "user_selected", selectionReason: "用户确认", locked: true }
+};
+workflow.selectedIntroId = "A-01";
+workflow.selectionMode = "user_selected";
+workflow.selectionReason = "用户确认";
+workflow.introLocked = true;
 ctx = context(workflow);
-const storyResult = await registry.STORY_EXPANSION!.execute(ctx);
-assert.equal(registry.STORY_EXPANSION!.validate(storyResult.artifact, ctx).ok, true);
+const storyResult = await registry.STORY_SCRIPT!.execute(ctx);
+assert.equal(registry.STORY_SCRIPT!.validate(storyResult.artifact, ctx).ok, true);
+const invalidStory = { ...storyArtifact, content: "太短" };
+assert.equal(registry.STORY_SCRIPT!.validate(invalidStory, ctx).ok, false);
 
-workflow.stages.STORY_EXPANSION = { status: "ready", revision: 1, artifact: artifacts.STORY_EXPANSION };
-workflow.selectedStoryId = "story-1";
+workflow.stages.STORY_SCRIPT = { status: "ready", revision: 1, artifact: storyArtifact };
 ctx = context(workflow);
-const assetResult = await registry.ASSET_PROMPT_GENERATION!.execute(ctx);
-assert.equal(registry.ASSET_PROMPT_GENERATION!.validate(assetResult.artifact, ctx).ok, true);
-const invalidAssets = structuredClone(artifacts.ASSET_PROMPT_GENERATION);
-invalidAssets.assets[1].referenceId = "P001-A003";
-const invalidAssetValidation = registry.ASSET_PROMPT_GENERATION!.validate(invalidAssets, ctx);
+const assetResult = await registry.ASSET_PLAN!.execute(ctx);
+assert.equal(registry.ASSET_PLAN!.validate(assetResult.artifact, ctx).ok, true);
+const invalidAsset = structuredClone(assetPlanArtifact) as any;
+invalidAsset.items[0].assetId = "P001-A001";
+const invalidAssetValidation = registry.ASSET_PLAN!.validate(invalidAsset, ctx);
 assert.equal(invalidAssetValidation.ok, false);
-assert.ok(invalidAssetValidation.errors.some((error) => error.includes("P001-A002")));
+assert.ok(invalidAssetValidation.errors.some((error) => error.includes("must not own assetId")));
 
-const screenplayResult = await registry.SCREENPLAY_GENERATION!.execute(ctx);
-assert.equal(registry.SCREENPLAY_GENERATION!.validate(screenplayResult.artifact, ctx).ok, true);
-workflow.stages.SCREENPLAY_GENERATION = { status: "ready", revision: 1, artifact: artifacts.SCREENPLAY_GENERATION };
+workflow.stages.ASSET_PLAN = {
+  status: "ready",
+  revision: 1,
+  artifact: {
+    ...assetPlanArtifact,
+    items: [{ ...assetPlanArtifact.items[0], assetId: "P001-A001", candidateAssetIds: ["asset_candidate_1"], selectedAssetId: "asset_candidate_1" }]
+  }
+};
+workflow.stages.ASSET_CONFIRMATION = { status: "ready", revision: 1, artifact: { confirmed: true, items: [confirmedItem] } };
 ctx = context(workflow);
-const storyboardResult = await registry.STORYBOARD_GENERATION!.execute(ctx);
-assert.equal(registry.STORYBOARD_GENERATION!.validate(storyboardResult.artifact, ctx).ok, true);
-const invalidStoryboard = structuredClone(artifacts.STORYBOARD_GENERATION);
-invalidStoryboard.shots[0].subshots[2].durationSec = 3;
-invalidStoryboard.shots[0].subshots[2].endSec = 9;
-const invalidStoryboardValidation = registry.STORYBOARD_GENERATION!.validate(invalidStoryboard, ctx);
-assert.equal(invalidStoryboardValidation.ok, false);
-assert.ok(invalidStoryboardValidation.errors.some((error) => error.includes("10")));
+const screenplayResult = await registry.SCREENPLAY!.execute(ctx);
+assert.equal(registry.SCREENPLAY!.validate(screenplayResult.artifact, ctx).ok, true);
+const invalidDuration = { ...screenplayArtifact, targetDurationSeconds: 95 };
+assert.equal(registry.SCREENPLAY!.validate(invalidDuration, ctx).ok, false);
 
-console.log("VideosBatch LLM text-stage adapter smoke passed");
+workflow.stages.SCREENPLAY = { status: "ready", revision: 1, artifact: screenplayArtifact };
+ctx = context(workflow);
+const storyboardResult = await registry.FINAL_STORYBOARD!.execute(ctx);
+assert.equal(registry.FINAL_STORYBOARD!.validate(storyboardResult.artifact, ctx).ok, true);
+const invalidStoryboard = structuredClone(finalStoryboardArtifact);
+invalidStoryboard.segments.pop();
+assert.equal(registry.FINAL_STORYBOARD!.validate(invalidStoryboard, ctx).ok, false, "storyboard segment count must match locked duration");
+
+workflow.stages.FINAL_STORYBOARD = { status: "ready", revision: 1, artifact: finalStoryboardArtifact };
+ctx = context(workflow);
+const copyResult = await registry.COPYABLE_PROMPT!.execute(ctx);
+assert.equal(registry.COPYABLE_PROMPT!.validate(copyResult.artifact, ctx).ok, true);
+const invalidCopy = structuredClone(copyableArtifact);
+invalidCopy.segments[0].text = invalidCopy.segments[0].text.replace("【P001-A001】", "图片1");
+assert.equal(registry.COPYABLE_PROMPT!.validate(invalidCopy, ctx).ok, false, "copyable visual text must reject positional image references");
+
+console.log("VideosBatch canonical LLM text-stage adapter smoke passed");
