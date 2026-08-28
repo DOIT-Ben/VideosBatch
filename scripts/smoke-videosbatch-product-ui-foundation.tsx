@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
+import { renderToStaticMarkup } from "react-dom/server";
+import { createVideosBatchWorkflow } from "../src/shared/videosBatchWorkflow";
 import { VIDEOS_BATCH_PRODUCT_STEPS, productStepForStage } from "../src/client/videosBatchStudio/stageModel";
+import { VideosBatchStudio } from "../src/client/videosBatchStudio/VideosBatchStudio";
 
 assert.equal(VIDEOS_BATCH_PRODUCT_STEPS.length, 9, "product UI must group the canonical workflow into 9 user-facing steps");
 assert.deepEqual(
@@ -15,5 +18,45 @@ assert.equal(productStepForStage("COPYABLE_PROMPT"), "storyboard");
 assert.equal(productStepForStage("QUOTE"), "execution");
 assert.equal(productStepForStage("EXECUTION"), "execution");
 assert.equal(productStepForStage("STITCH"), "final");
+
+const workflow = createVideosBatchWorkflow({ projectId: "P001", lessonText: "这是一份完整教案，用于产品界面测试。" }, "2026-08-29T00:00:00.000Z");
+workflow.stages.COURSE_INTRO_CANDIDATES = {
+  status: "ready",
+  revision: 1,
+  artifact: {
+    candidates: [
+      {
+        id: "A-01",
+        name: "原始问题导入",
+        creativeType: "数学史与知识由来",
+        body: "学生从一个真实问题进入课堂。",
+        endingQuestion: "应该怎样判断？"
+      }
+    ],
+    recommendations: [{ id: "A-01", reason: "知识连接清晰" }]
+  }
+};
+workflow.currentStage = "COURSE_INTRO_SELECTION";
+
+const markup = renderToStaticMarkup(
+  <VideosBatchStudio
+    sessionId="session-product-ui"
+    sessionTitle="观察物体（1）"
+    workflow={workflow}
+    onWorkflowChange={() => undefined}
+    onOpenCanvas={() => undefined}
+  />
+);
+
+for (const text of ["VideosBatch", "流程制作", "制作画布", "教案", "课程导入", "故事文稿", "资产计划", "资产图片", "视频剧本", "视频分镜", "视频生成", "最终成片"]) {
+  assert.ok(markup.includes(text), `guided studio must render ${text}`);
+}
+assert.ok(markup.includes("videosbatch-studio"), "guided studio must own a scoped product shell");
+assert.ok(markup.includes("vbs-sidebar"), "guided studio must render a vertical workflow sidebar");
+assert.ok(markup.includes("vbs-workspace"), "guided studio must render a semantic main workspace");
+assert.ok(markup.includes("vbs-context"), "guided studio must render a context rail");
+assert.ok(markup.includes("选择课程导入方案"), "intro step must render semantic content instead of raw JSON");
+assert.ok(!markup.includes("videosbatch-stage-rail"), "old horizontal engineering rail must not be the primary product UI");
+assert.ok(!markup.includes("revision 1"), "revision/debug metadata must not dominate the primary workspace");
 
 console.log("VideosBatch product UI foundation smoke: PASS");
