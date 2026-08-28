@@ -1,14 +1,16 @@
 export const VIDEOS_BATCH_STAGE_ORDER = [
   "LESSON_INPUT",
-  "INTRO_GENERATION",
-  "STORY_EXPANSION",
-  "STORY_SELECTION",
-  "ASSET_PROMPT_GENERATION",
-  "ASSET_GENERATION",
-  "SCREENPLAY_GENERATION",
-  "STORYBOARD_GENERATION",
-  "REFERENCE_BINDING",
-  "VIDEO_GENERATION",
+  "COURSE_INTRO_CANDIDATES",
+  "COURSE_INTRO_SELECTION",
+  "STORY_SCRIPT",
+  "ASSET_PLAN",
+  "ASSET_CANDIDATES",
+  "ASSET_CONFIRMATION",
+  "SCREENPLAY",
+  "FINAL_STORYBOARD",
+  "COPYABLE_PROMPT",
+  "QUOTE",
+  "EXECUTION",
   "STITCH"
 ] as const;
 
@@ -20,6 +22,11 @@ export type VideosBatchStageStatus =
   | "ready"
   | "failed"
   | "stale";
+
+export type VideosBatchIntroSelectionMode =
+  | "user_selected"
+  | "system_recommended"
+  | "custom";
 
 export interface VideosBatchLessonInputArtifact {
   projectId: string;
@@ -38,7 +45,11 @@ export interface VideosBatchWorkflowState {
   version: 1;
   currentStage: VideosBatchStageId;
   completed: boolean;
-  selectedStoryId?: string;
+  /** The canonical flow locks exactly one course intro before story generation. */
+  selectedIntroId?: string;
+  selectionMode?: VideosBatchIntroSelectionMode;
+  selectionReason?: string;
+  introLocked: boolean;
   stages: Partial<Record<VideosBatchStageId, VideosBatchStageState<any>>>;
   updatedAt: string;
 }
@@ -78,8 +89,9 @@ export function createVideosBatchWorkflow(
 
   return {
     version: 1,
-    currentStage: "INTRO_GENERATION",
+    currentStage: "COURSE_INTRO_CANDIDATES",
     completed: false,
+    introLocked: false,
     stages,
     updatedAt: now
   };
