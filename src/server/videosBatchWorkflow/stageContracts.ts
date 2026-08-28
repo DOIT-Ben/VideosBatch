@@ -1,5 +1,6 @@
 import type { Asset, Session, Shot } from "../../shared/types";
 import type { VideosBatchStageId, VideosBatchWorkflowState } from "../../shared/videosBatchWorkflow";
+import type { CinemaStore } from "../store";
 
 export interface ValidationResult {
   ok: boolean;
@@ -11,6 +12,8 @@ export interface StageExecutionContext {
   workflow: VideosBatchWorkflowState;
   assets: Asset[];
   shots: Shot[];
+  /** Present on the real API execution path; omitted by pure runner tests. */
+  store?: CinemaStore;
 }
 
 export interface StageResult<T = unknown> {
