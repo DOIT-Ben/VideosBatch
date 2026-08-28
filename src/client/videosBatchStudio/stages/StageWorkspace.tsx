@@ -1,4 +1,4 @@
-import type { VideosBatchWorkflowState } from "../../../shared/videosBatchWorkflow";
+import type { VideosBatchStageId, VideosBatchWorkflowState } from "../../../shared/videosBatchWorkflow";
 import type { VideosBatchProductStepId } from "../stageModel";
 import { LessonStage } from "./LessonStage";
 import { IntroCandidatesStage } from "./IntroCandidatesStage";
@@ -29,7 +29,7 @@ export function StageWorkspace({
   onConfirmAssets: () => Promise<void> | void;
   onOpenCanvas: () => void;
 }) {
-  const stage = (id: keyof VideosBatchWorkflowState["stages"]) => workflow?.stages[id as any]?.artifact as any;
+  const stage = (id: VideosBatchStageId) => workflow?.stages[id]?.artifact as any;
   switch (stepId) {
     case "lesson":
       return <LessonStage sessionTitle={sessionTitle} lessonText={stage("LESSON_INPUT")?.lessonText} busy={busy} started={Boolean(workflow)} onStart={onStart} />;
