@@ -32,3 +32,9 @@ jobs:
         run: npm run smoke:seereel-skill-boundaries
       - name: Verify stitch pipeline
         run: npm run smoke:libtv-style-stitch
+      - name: Verify VideosBatch workflow state when test exists
+        shell: bash
+        run: |
+          if [ -f scripts/smoke-videosbatch-workflow-state.ts ]; then
+            npx tsx scripts/smoke-videosbatch-workflow-state.ts
+          fi
