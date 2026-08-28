@@ -1,7 +1,8 @@
 import { Archive, BarChart3, CircleHelp, Copy, Download, FileUp, Github, Images, KeyRound, Loader2, Plus, RefreshCw, ShieldCheck, Trash2, UploadCloud } from "lucide-react";
 import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { api } from "./api";
-import { WorkflowRail } from "./videosBatchWorkflow/WorkflowRail";
+import { VideosBatchStudio } from "./videosBatchStudio/VideosBatchStudio";
+import "./videosBatchStudio/videosBatchStudio.css";
 import type { AdminAgentPlanStatus, AdminSecurityStatus, AdminUserAgentPlanCredentialList, AgentPlanCredentialStatus, ApiKeyCredentialStatus, Asset, AssetType, CreateSessionPayload, GalleryItem, Session, SessionPackage, Shot, StandardApiKeyRoute, StitchJob, StoreSnapshot, TokenUsageEvent, TokenUsageModelFamily } from "../shared/types";
 import { PendingGenerationsProvider } from "./flow/PendingGenerations";
 import { useUndoKeyboardShortcut, useUndoStack } from "./flow/useUndoStack";
@@ -35,6 +36,7 @@ type TokenUsageNodeSummary = {
 
 type TrackedTokenUsageModelFamily = Extract<TokenUsageModelFamily, "seedream-4" | "seedream-4-5" | "seedream-5-lite" | "seedance-2-0" | "seedance-2-0-fast">;
 type CredentialTab = StandardApiKeyRoute | "agent-plan";
+type VideosBatchWorkspaceMode = "workflow" | "canvas";
 
 function activeStandardApiRoute(tab: CredentialTab): StandardApiKeyRoute {
   return tab === "volcengine-cn" ? "volcengine-cn" : "byteplus";
@@ -554,8 +556,10 @@ export function App() {
   // Session id is mirrored to `/canvas/<sessionId>` so each session has a shareable clean link.
   // Legacy `#/s/<sessionId>` links are still readable during boot for older handoffs.
   const [selectedSessionId, setSelectedSessionId] = useState<string>(() => readRouteFromWindow().sessionId);
+  const [videosBatchMode, setVideosBatchMode] = useState<VideosBatchWorkspaceMode>("workflow");
   const selectedSessionIdRef = useRef(selectedSessionId);
   useEffect(() => { selectedSessionIdRef.current = selectedSessionId; }, [selectedSessionId]);
+  useEffect(() => { setVideosBatchMode("workflow"); }, [selectedSessionId]);
   const sessionImportInputRef = useRef<HTMLInputElement | null>(null);
   const [stateLoaded, setStateLoaded] = useState(false);
   const [sessionTitleDraft, setSessionTitleDraft] = useState("");
@@ -1997,21 +2001,6 @@ export function App() {
       <section className="workspace">
         <header className="topbar">
           <div>
-            {activeView === "studio" && selectedSession && (
-          <WorkflowRail
-            sessionId={selectedSession.id}
-            workflow={selectedSession.videosBatchWorkflow}
-            onWorkflowChange={(workflow) => {
-              setState((prev) => ({
-                ...prev,
-                sessions: prev.sessions.map((item) =>
-                  item.id === selectedSession.id ? { ...item, videosBatchWorkflow: workflow } : item
-                )
-              }));
-            }}
-          />
-        )}
-
         {activeView === "gallery" ? (
               <h1>{t.app.galleryTitle}</h1>
             ) : selectedSession ? (
@@ -2441,7 +2430,32 @@ export function App() {
             onOpenCanvas={openCanvas}
             t={t}
           />
+        ) : selectedSession && videosBatchMode === "workflow" ? (
+          <VideosBatchStudio
+            sessionId={selectedSession.id}
+            sessionTitle={selectedSession.title}
+            workflow={selectedSession.videosBatchWorkflow}
+            onWorkflowChange={(workflow) => {
+              setState((prev) => ({
+                ...prev,
+                sessions: prev.sessions.map((item) =>
+                  item.id === selectedSession.id ? { ...item, videosBatchWorkflow: workflow } : item
+                )
+              }));
+            }}
+            onOpenCanvas={() => setVideosBatchMode("canvas")}
+          />
         ) : (
+          <>
+            {selectedSession && (
+              <div className="vbs-canvas-mode-bar">
+                <strong>VideosBatch · 制作画布</strong>
+                <div>
+                  <button type="button" onClick={() => setVideosBatchMode("workflow")}>流程制作</button>
+                  <button type="button" className="active" aria-pressed="true">制作画布</button>
+                </div>
+              </div>
+            )}
           <Suspense fallback={<div className="flow-loading" role="status">{lang === "en" ? "Loading canvas..." : "正在加载画布..."}</div>}>
             <FlowView
               snapshot={flowSnapshot}
@@ -2467,6 +2481,7 @@ export function App() {
               toolbarPrimaryAction={galleryPublishControl}
             />
           </Suspense>
+          </>
         )}
       </section>
     </main>
