@@ -46,6 +46,10 @@ type Workflow = {
 };
 
 type Session = { id: string };
+type NativeState = {
+  assets: Array<{ id: string; ownerSessionId?: string; workflowReferenceId?: string }>;
+  shots: Array<{ id: string; sessionId: string; assetIds: string[]; rawPrompt?: string }>;
+};
 
 async function isServerReachable() {
   try {
@@ -153,6 +157,15 @@ await withServer(async () => {
     assert.equal(finalSnapshot.completed, true, "completed chain must survive a fresh GET");
     assert.equal(finalSnapshot.stages.VIDEO_GENERATION.artifact.renderIds[0], "render_fake_1");
     assert.equal(finalSnapshot.stages.STITCH.artifact.finalVideoUrl, "fake://videosbatch/final.mp4");
+
+    const nativeState = await request<NativeState>("/api/state");
+    const sessionAssets = nativeState.assets.filter((asset) => asset.ownerSessionId === session.id);
+    const sessionShots = nativeState.shots.filter((shot) => shot.sessionId === session.id);
+    assert.equal(sessionAssets.length, 1, "ASSET_GENERATION must create a native SeeReel Asset");
+    assert.equal(sessionAssets[0].workflowReferenceId, "P001-A001", "native Asset must preserve the stable business reference");
+    assert.equal(sessionShots.length, 1, "STORYBOARD_GENERATION must create a native SeeReel Shot");
+    assert.deepEqual(sessionShots[0].assetIds, [sessionAssets[0].id], "REFERENCE_BINDING must resolve stable refs into native Shot.assetIds");
+    assert.match(sessionShots[0].rawPrompt || "", /P001-A001/, "native Shot must keep the visible stable-reference prompt");
 
     const oldAssetArtifact = finalSnapshot.stages.ASSET_PROMPT_GENERATION.artifact;
     const edited = await request<Workflow>(`/api/sessions/${session.id}/videosbatch/stages/STORY_EXPANSION/artifact`, {
