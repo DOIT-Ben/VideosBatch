@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createVideosBatchWorkflow } from "../src/shared/videosBatchWorkflow";
 import { VIDEOS_BATCH_PRODUCT_STEPS, productStepForStage } from "../src/client/videosBatchStudio/stageModel";
 import { VideosBatchStudio } from "../src/client/videosBatchStudio/VideosBatchStudio";
+import { ArtifactDebugDrawer } from "../src/client/videosBatchStudio/components/ArtifactDebugDrawer";
 
 assert.equal(VIDEOS_BATCH_PRODUCT_STEPS.length, 9, "product UI must group the canonical workflow into 9 user-facing steps");
 assert.deepEqual(
@@ -58,5 +60,24 @@ assert.ok(markup.includes("vbs-context"), "guided studio must render a context r
 assert.ok(markup.includes("选择课程导入方案"), "intro step must render semantic content instead of raw JSON");
 assert.ok(!markup.includes("videosbatch-stage-rail"), "old horizontal engineering rail must not be the primary product UI");
 assert.ok(!markup.includes("revision 1"), "revision/debug metadata must not dominate the primary workspace");
+assert.ok(!markup.includes("高级 · 原始数据"), "raw JSON must stay hidden until the advanced drawer is explicitly opened");
+
+const debugMarkup = renderToStaticMarkup(
+  <ArtifactDebugDrawer
+    open
+    title="课程导入"
+    artifact={workflow.stages.COURSE_INTRO_CANDIDATES?.artifact}
+    onClose={() => undefined}
+  />
+);
+assert.ok(debugMarkup.includes("高级 · 原始数据"), "advanced drawer must preserve raw artifact access");
+assert.ok(debugMarkup.includes("A-01"), "advanced drawer must expose the selected artifact JSON when opened");
+
+const appSource = readFileSync(new URL("../src/client/App.tsx", import.meta.url), "utf8");
+assert.ok(appSource.includes('import { VideosBatchStudio } from "./videosBatchStudio/VideosBatchStudio"'), "App must import the Guided Studio product boundary");
+assert.ok(appSource.includes("<VideosBatchStudio"), "App must render Guided Studio in workflow mode");
+assert.ok(appSource.includes("videosBatchMode === \"workflow\""), "App must own an explicit workflow/canvas mode branch");
+assert.ok(appSource.includes("<FlowView"), "App must preserve the native SeeReel Canvas");
+assert.ok(!appSource.includes("<WorkflowRail"), "App must not render the old horizontal WorkflowRail");
 
 console.log("VideosBatch product UI foundation smoke: PASS");
