@@ -37,6 +37,7 @@ export interface VideosBatchStageState<T = unknown> {
 export interface VideosBatchWorkflowState {
   version: 1;
   currentStage: VideosBatchStageId;
+  completed: boolean;
   selectedStoryId?: string;
   stages: Partial<Record<VideosBatchStageId, VideosBatchStageState<any>>>;
   updatedAt: string;
@@ -78,6 +79,7 @@ export function createVideosBatchWorkflow(
   return {
     version: 1,
     currentStage: "INTRO_GENERATION",
+    completed: false,
     stages,
     updatedAt: now
   };
