@@ -40,7 +40,8 @@ type StageState = {
 
 type Workflow = {
   currentStage: string;
-  selectedStoryId?: string;
+  selectedIntroId?: string;
+  introLocked: boolean;
   completed?: boolean;
   stages: Record<string, StageState>;
 };
@@ -48,7 +49,7 @@ type Workflow = {
 type Session = { id: string };
 type NativeState = {
   assets: Array<{ id: string; ownerSessionId?: string; workflowReferenceId?: string }>;
-  shots: Array<{ id: string; sessionId: string; assetIds: string[]; rawPrompt?: string }>;
+  shots: Array<{ id: string; sessionId: string; assetIds: string[]; rawPrompt?: string; durationSec: number }>;
 };
 
 async function isServerReachable() {
@@ -100,8 +101,8 @@ await withServer(async () => {
   const session = await request<Session>("/api/sessions", {
     method: "POST",
     body: JSON.stringify({
-      title: "VideosBatch Phase 1 E2E",
-      logline: "Deterministic lesson-to-video chain",
+      title: "VideosBatch canonical Phase 1 E2E",
+      logline: "Deterministic canonical lesson-to-video chain",
       style: "test",
       targetDurationSec: 120,
       shotCount: 0
@@ -116,35 +117,68 @@ await withServer(async () => {
         lessonText: "完整教案：通过从正面、左面、上面观察物体，理解同一物体在不同方向看到的图形可能不同。"
       })
     });
-
     assert.equal(workflow.stages.LESSON_INPUT.status, "ready");
-    assert.ok(workflow.stages.LESSON_INPUT.artifact, "lesson input must be a visible artifact");
+    assert.equal(workflow.currentStage, "COURSE_INTRO_CANDIDATES");
 
     workflow = await request<Workflow>(`/api/sessions/${session.id}/videosbatch/run-all`, {
       method: "POST",
       body: "{}"
     });
+    assert.equal(workflow.currentStage, "COURSE_INTRO_SELECTION", "canonical chain must pause before story generation");
+    assert.equal(workflow.stages.COURSE_INTRO_CANDIDATES.artifact.candidates.length, 9);
+    assert.equal(workflow.stages.COURSE_INTRO_CANDIDATES.artifact.recommendations.length, 3);
+    assert.equal(workflow.stages.STORY_SCRIPT.status, "pending");
 
-    assert.equal(workflow.currentStage, "STORY_SELECTION", "automatic chain must pause at the human story-selection gate");
-    assert.equal(workflow.stages.INTRO_GENERATION.status, "ready");
-    assert.equal(workflow.stages.STORY_EXPANSION.status, "ready");
-    assert.equal(workflow.stages.INTRO_GENERATION.artifact.candidates.length, 9, "fake intro stage must expose 9 candidates");
-    assert.equal(workflow.stages.INTRO_GENERATION.artifact.recommendedIds.length, 3, "fake intro stage must expose 3 recommendations");
-    assert.equal(workflow.stages.STORY_EXPANSION.artifact.stories.length, 3, "fake story stage must expose 3 stories");
-
-    workflow = await request<Workflow>(`/api/sessions/${session.id}/videosbatch/stages/STORY_SELECTION/artifact`, {
+    workflow = await request<Workflow>(`/api/sessions/${session.id}/videosbatch/stages/COURSE_INTRO_SELECTION/artifact`, {
       method: "PUT",
-      body: JSON.stringify({ artifact: { selectedStoryId: "story-1" } })
+      body: JSON.stringify({
+        artifact: {
+          selectedIntroId: "A-01",
+          selectionMode: "user_selected",
+          selectionReason: "用户确认该方案最适合继续制作",
+          locked: true
+        }
+      })
     });
-    assert.equal(workflow.selectedStoryId, "story-1");
+    assert.equal(workflow.selectedIntroId, "A-01");
+    assert.equal(workflow.introLocked, true);
 
     workflow = await request<Workflow>(`/api/sessions/${session.id}/videosbatch/run-all`, {
       method: "POST",
       body: "{}"
     });
+    assert.equal(workflow.currentStage, "ASSET_CONFIRMATION", "canonical chain must pause until all assets are confirmed");
+    assert.equal(workflow.stages.STORY_SCRIPT.status, "ready");
+    assert.equal(workflow.stages.STORY_SCRIPT.artifact.kind, "LESSON_INTRO_VIDEO_SCRIPT");
+    assert.equal(Array.isArray(workflow.stages.STORY_SCRIPT.artifact.stories), false, "story stage must expose one story document only");
+    assert.equal(workflow.stages.ASSET_PLAN.artifact.items[0].assetKey, "CHARACTER-HERO");
+    assert.equal(workflow.stages.ASSET_PLAN.artifact.items[0].assetId, undefined, "model-owned asset plan must not contain stable public ids before server projection/confirmation");
 
-    assert.equal(workflow.completed, true, "workflow must reach DONE after STITCH");
-    assert.equal(workflow.stages.STITCH.status, "ready");
+    const candidateItems = workflow.stages.ASSET_CANDIDATES.artifact.items;
+    assert.equal(candidateItems[0].publicAssetId, "P001-A001");
+    assert.ok(candidateItems[0].candidateAssetIds[0], "asset candidate stage must expose a native candidate id");
+
+    workflow = await request<Workflow>(`/api/sessions/${session.id}/videosbatch/stages/ASSET_CONFIRMATION/artifact`, {
+      method: "PUT",
+      body: JSON.stringify({
+        artifact: {
+          confirmed: true,
+          items: candidateItems.map((item: any) => ({
+            assetKey: item.assetKey,
+            publicAssetId: item.publicAssetId,
+            candidateAssetIds: item.candidateAssetIds,
+            selectedAssetId: item.candidateAssetIds[0]
+          }))
+        }
+      })
+    });
+    assert.equal(workflow.currentStage, "SCREENPLAY");
+
+    workflow = await request<Workflow>(`/api/sessions/${session.id}/videosbatch/run-all`, {
+      method: "POST",
+      body: "{}"
+    });
+    assert.equal(workflow.completed, true, "workflow must reach DONE after native/fake stitch");
 
     for (const stageId of VIDEOS_BATCH_STAGE_ORDER) {
       const stage = workflow.stages[stageId];
@@ -153,39 +187,52 @@ await withServer(async () => {
       assert.notEqual(stage.artifact, undefined, `${stageId} must have an inspectable artifact`);
     }
 
+    const screenplay = workflow.stages.SCREENPLAY.artifact;
+    assert.equal(screenplay.targetDurationSeconds, 120);
+    assert.ok([90, 100, 110, 120, 130, 140, 150].includes(screenplay.targetDurationSeconds));
+
+    const storyboard = workflow.stages.FINAL_STORYBOARD.artifact;
+    assert.equal(storyboard.targetDuration, screenplay.targetDurationSeconds);
+    assert.equal(storyboard.segments.length, screenplay.targetDurationSeconds / 10);
+    assert.ok(storyboard.segments.every((segment: any) => segment.duration === 10));
+    assert.ok(storyboard.segments.every((segment: any) => segment.subshots.length >= 3 && segment.subshots.length <= 5));
+    assert.ok(storyboard.segments.every((segment: any) => segment.subshots.reduce((sum: number, item: any) => sum + item.duration, 0) === 10));
+
+    const copyable = workflow.stages.COPYABLE_PROMPT.artifact;
+    assert.equal(copyable.status, "READY");
+    assert.equal(copyable.segments.length, storyboard.segments.length);
+    assert.ok(copyable.segments.every((segment: any) => segment.referenceAssetIds.length <= 7));
+    assert.ok(copyable.segments[0].text.includes("【P001-A001】"));
+
+    assert.ok(workflow.stages.QUOTE.artifact.quoteId);
+    assert.equal(workflow.stages.EXECUTION.artifact.status, "READY");
+    assert.equal(workflow.stages.STITCH.artifact.finalVideoUrl, "fake://videosbatch/final.mp4");
+
     const finalSnapshot = await request<Workflow>(`/api/sessions/${session.id}/videosbatch`);
-    assert.equal(finalSnapshot.completed, true, "completed chain must survive a fresh GET");
-    assert.equal(finalSnapshot.stages.VIDEO_GENERATION.artifact.renderIds[0], "render_fake_1");
-    assert.equal(finalSnapshot.stages.STITCH.artifact.finalVideoUrl, "fake://videosbatch/final.mp4");
+    assert.equal(finalSnapshot.completed, true, "completed canonical chain must survive a fresh GET");
 
     const nativeState = await request<NativeState>("/api/state");
     const sessionAssets = nativeState.assets.filter((asset) => asset.ownerSessionId === session.id);
     const sessionShots = nativeState.shots.filter((shot) => shot.sessionId === session.id);
-    assert.equal(sessionAssets.length, 1, "ASSET_GENERATION must create a native SeeReel Asset");
-    assert.equal(sessionAssets[0].workflowReferenceId, "P001-A001", "native Asset must preserve the stable business reference");
-    assert.equal(sessionShots.length, 1, "STORYBOARD_GENERATION must create a native SeeReel Shot");
-    assert.deepEqual(sessionShots[0].assetIds, [sessionAssets[0].id], "REFERENCE_BINDING must resolve stable refs into native Shot.assetIds");
-    assert.match(sessionShots[0].rawPrompt || "", /P001-A001/, "native Shot must keep the visible stable-reference prompt");
+    assert.equal(sessionAssets.length, 1, "ASSET_CANDIDATES must project one native SeeReel Asset for the fake plan");
+    assert.equal(sessionAssets[0].workflowReferenceId, "P001-A001");
+    assert.equal(sessionShots.length, 12, "120-second FINAL_STORYBOARD must project twelve native SeeReel Shots");
+    assert.ok(sessionShots.every((shot) => shot.durationSec === 10));
+    assert.ok(sessionShots.every((shot) => shot.assetIds.includes(sessionAssets[0].id)), "EXECUTION projection must resolve stable public refs to the confirmed native asset");
+    assert.ok(!(sessionShots[0].rawPrompt || "").includes("【P001-A001】"), "native execution prompt must stay based on FINAL_STORYBOARD, not COPYABLE_PROMPT display text");
 
-    const oldAssetArtifact = finalSnapshot.stages.ASSET_PROMPT_GENERATION.artifact;
-    const edited = await request<Workflow>(`/api/sessions/${session.id}/videosbatch/stages/STORY_EXPANSION/artifact`, {
-      method: "PUT",
-      body: JSON.stringify({
-        artifact: {
-          stories: [
-            { id: "story-1", title: "人工修改后的故事", content: "edited" },
-            { id: "story-2", title: "故事2", content: "old" },
-            { id: "story-3", title: "故事3", content: "old" }
-          ]
-        }
-      })
+    workflow = await request<Workflow>(`/api/sessions/${session.id}/videosbatch/restart-from/COURSE_INTRO_SELECTION`, {
+      method: "POST",
+      body: "{}"
     });
-    assert.equal(edited.stages.STORY_EXPANSION.status, "ready");
-    assert.equal(edited.stages.ASSET_PROMPT_GENERATION.status, "stale");
-    assert.deepEqual(edited.stages.ASSET_PROMPT_GENERATION.artifact, oldAssetArtifact, "stale propagation must preserve old artifacts for inspection");
+    assert.equal(workflow.completed, false);
+    assert.equal(workflow.currentStage, "COURSE_INTRO_SELECTION");
+    assert.equal(workflow.introLocked, false);
+    assert.equal(workflow.stages.STORY_SCRIPT.status, "stale");
+    assert.ok(workflow.stages.STORY_SCRIPT.artifact, "stale propagation must preserve prior artifacts for inspection");
   } finally {
     await request<{ ok: true }>(`/api/sessions/${session.id}`, { method: "DELETE" }).catch(() => undefined);
   }
 });
 
-console.log("VideosBatch Phase 1 orchestration E2E passed");
+console.log("VideosBatch canonical Phase 1 orchestration E2E passed");
