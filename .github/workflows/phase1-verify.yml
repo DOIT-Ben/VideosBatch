@@ -3,8 +3,6 @@ name: phase1-verify
 on:
   push:
     branches:
-      - feat/phase1-linear-workflow
-      - feat/native-projection
       - feat/real-provider-text-stages
   pull_request:
     branches:
