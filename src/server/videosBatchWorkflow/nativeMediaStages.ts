@@ -8,7 +8,8 @@ import {
   generateShotVideo,
   stitchShotVideos
 } from "../generators";
-import type { StageDefinition, StageRegistry } from "./stageContracts";
+import type { CinemaStore } from "../store";
+import type { StageDefinition, StageExecutionContext, StageRegistry } from "./stageContracts";
 import {
   applyConfirmedReferencesToNativeShots,
   projectAssetCandidatesIntoSeeReel
@@ -51,12 +52,12 @@ export const defaultVideosBatchNativeMediaDeps: VideosBatchNativeMediaDeps = {
   stitchShotVideos: async (sessionId, shots) => stitchShotVideos(sessionId, shots)
 };
 
-function requireStore(ctx: any) {
+function requireStore(ctx: StageExecutionContext): CinemaStore {
   if (!ctx.store) throw new Error("Native VideosBatch media execution requires CinemaStore");
   return ctx.store;
 }
 
-function projectIdFromWorkflow(ctx: any) {
+function projectIdFromWorkflow(ctx: StageExecutionContext) {
   const projectId = String(ctx.workflow.stages.LESSON_INPUT?.artifact?.projectId || "").trim();
   if (!projectId) throw new Error("LESSON_INPUT.projectId is required for native media execution");
   return projectId;
@@ -110,10 +111,10 @@ export function createVideosBatchNativeMediaStageRegistry(
       const items = Array.isArray(plan?.items) ? plan.items : [];
       if (!items.length) throw new Error("ASSET_PLAN must contain items before native image generation");
 
-      const beforeByStable = new Map(
+      const beforeByStable = new Map<string, Asset>(
         store.snapshot().assets
-          .filter((asset: Asset) => asset.ownerSessionId === ctx.session.id && asset.workflowReferenceId)
-          .map((asset: Asset) => [asset.workflowReferenceId!, asset])
+          .filter((asset) => asset.ownerSessionId === ctx.session.id && asset.workflowReferenceId)
+          .map((asset) => [asset.workflowReferenceId!, asset] as [string, Asset])
       );
 
       const projected = await projectAssetCandidatesIntoSeeReel(
@@ -127,7 +128,7 @@ export function createVideosBatchNativeMediaStageRegistry(
       for (const item of projected.items) {
         const nativeId = item.candidateAssetIds[0];
         const planned = items.find((candidate: any) => String(candidate?.assetKey) === item.assetKey);
-        let asset = store.snapshot().assets.find((candidate: Asset) => candidate.id === nativeId);
+        let asset = store.snapshot().assets.find((candidate) => candidate.id === nativeId);
         if (!asset) throw new Error(`Projected native asset not found: ${nativeId}`);
 
         const previous = beforeByStable.get(item.publicAssetId);
@@ -185,7 +186,7 @@ export function createVideosBatchNativeMediaStageRegistry(
 
       const renderIds: string[] = [];
       const nativeShotIds: string[] = [];
-      for (const current of nativeSession.shots.sort((a, b) => a.index - b.index)) {
+      for (const current of [...nativeSession.shots].sort((a: Shot, b: Shot) => a.index - b.index)) {
         nativeShotIds.push(current.id);
         const reusable = current.status === "ready" && current.videoUrl ? newestReadyRenderId(current) : undefined;
         if (reusable) {
@@ -244,12 +245,14 @@ export function createVideosBatchNativeMediaStageRegistry(
         }
       };
     },
-    validate(artifact, ctx) {
+    validate(artifact) {
       const errors: string[] = [];
       if (!String(artifact?.executionId || "").trim()) errors.push("EXECUTION requires executionId");
       if (artifact?.status !== "READY") errors.push("EXECUTION must finish READY");
-      if (!Array.isArray(artifact?.renderIds) || artifact.renderIds.length !== ctx.session.shots.length) {
-        errors.push("EXECUTION requires one renderId for every native shot");
+      const renderIds = Array.isArray(artifact?.renderIds) ? artifact.renderIds : [];
+      const nativeShotIds = Array.isArray(artifact?.nativeShotIds) ? artifact.nativeShotIds : [];
+      if (!renderIds.length || renderIds.length !== nativeShotIds.length) {
+        errors.push("EXECUTION requires exactly one renderId for every nativeShotId");
       }
       return { ok: errors.length === 0, errors };
     }
@@ -261,7 +264,7 @@ export function createVideosBatchNativeMediaStageRegistry(
       const store = requireStore(ctx);
       const session = store.getSession(ctx.session.id);
       if (!session) throw new Error(`Session not found: ${ctx.session.id}`);
-      const shots = [...session.shots].sort((a, b) => a.index - b.index);
+      const shots = [...session.shots].sort((a: Shot, b: Shot) => a.index - b.index);
       if (!shots.length) throw new Error("STITCH requires at least one native shot");
       const missing = shots.filter((shot) => !shot.videoUrl || shot.status !== "ready");
       if (missing.length) throw new Error(`STITCH requires every shot ready; missing: ${missing.map((shot) => shot.id).join(", ")}`);
