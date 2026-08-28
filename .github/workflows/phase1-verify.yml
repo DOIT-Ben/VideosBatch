@@ -71,6 +71,12 @@ jobs:
           if [ -f scripts/smoke-videosbatch-text-stage-specs.ts ]; then
             npx tsx scripts/smoke-videosbatch-text-stage-specs.ts
           fi
+      - name: Verify VideosBatch LLM text-stage adapter when test exists
+        shell: bash
+        run: |
+          if [ -f scripts/smoke-videosbatch-llm-text-stages.ts ]; then
+            npx tsx scripts/smoke-videosbatch-llm-text-stages.ts
+          fi
       - name: Build upstream SeeReel baseline
         run: npm run build
       - name: Verify Canvas CRUD
