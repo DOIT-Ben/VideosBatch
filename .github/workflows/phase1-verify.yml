@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feat/phase1-linear-workflow
+      - feat/native-projection
   pull_request:
     branches:
       - master
@@ -51,6 +52,12 @@ jobs:
         run: |
           if [ -f scripts/smoke-videosbatch-e2e.ts ]; then
             npx tsx scripts/smoke-videosbatch-e2e.ts
+          fi
+      - name: Verify VideosBatch native projection when test exists
+        shell: bash
+        run: |
+          if [ -f scripts/smoke-videosbatch-native-projection.ts ]; then
+            npx tsx scripts/smoke-videosbatch-native-projection.ts
           fi
       - name: Build upstream SeeReel baseline
         run: npm run build
