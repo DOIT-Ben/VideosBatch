@@ -17,110 +17,118 @@ try {
   const store = new CinemaStore();
   await store.load();
   const created = await store.createSession({
-    title: "Native projection smoke",
+    title: "Canonical native projection smoke",
     logline: "VideosBatch projection contract",
     style: "test",
     targetDurationSec: 20,
     shotCount: 0
   });
-
   const sessionId = created.id;
+
   const assetPlan = {
-    assets: [
+    items: [
       {
-        referenceId: "P001-A001",
-        type: "character",
+        assetKey: "CHARACTER-HERO",
+        category: "CHARACTER",
         name: "小宇",
-        source: "故事主角",
-        usage: "角色一致性参考",
-        prompt: "少年学生角色设定"
+        description: "故事主角",
+        sourceEvidence: "故事主角参与观察推理",
+        continuityNotes: "保持角色脸型和服装一致",
+        prompt: "高级影视级3D国漫CG人物三视图"
       },
       {
-        referenceId: "P001-A002",
-        type: "scene",
+        assetKey: "SCENE-MATH-CLUB",
+        category: "SCENE",
         name: "数学社团教室",
-        source: "故事主要场景",
-        usage: "场景一致性参考",
-        prompt: "小学数学社团教室"
+        description: "故事主要场景",
+        sourceEvidence: "故事在数学社团教室发生",
+        continuityNotes: "空间布局保持一致",
+        prompt: "高级影视级3D国漫CG数学社团教室空镜"
       }
     ]
   };
 
-  const nativeAssets = await projection.projectAssetsIntoSeeReel(store, sessionId, assetPlan);
+  const candidates = await projection.projectAssetCandidatesIntoSeeReel(store, sessionId, "P001", assetPlan);
+  assert.deepEqual(candidates.items.map((item: any) => item.publicAssetId), ["P001-A001", "P001-A002"]);
+  assert.ok(candidates.items.every((item: any) => item.candidateAssetIds.length === 1));
+
+  const snapshotAfterAssets = store.snapshot();
+  const nativeAssets = snapshotAfterAssets.assets.filter((asset: any) => asset.ownerSessionId === sessionId);
   assert.equal(nativeAssets.length, 2);
   assert.deepEqual(nativeAssets.map((asset: any) => asset.workflowReferenceId), ["P001-A001", "P001-A002"]);
   assert.ok(nativeAssets.every((asset: any) => asset.id.startsWith("asset_")));
-  assert.ok(nativeAssets.every((asset: any) => asset.ownerSessionId === sessionId));
-  assert.ok(nativeAssets.every((asset: any) => asset.mediaKind === "none"));
 
   const storyboard = {
-    shots: [
+    segments: [
       {
-        id: "shot-plan-1",
-        title: "发现正方形",
-        script: "小宇观察黑布窗口。",
-        camera: "中景推进",
-        durationSec: 10,
-        prompt: "小宇在数学社团教室观察黑布窗口"
+        sequence: 1,
+        duration: 10,
+        visualPrompt: "小宇在数学社团教室观察黑布窗口",
+        narration: "小宇发现了一个正方形窗口。",
+        references: [
+          { assetId: "P001-A001", publicAssetId: "P001-A001", label: "小宇" },
+          { assetId: "P001-A002", publicAssetId: "P001-A002", label: "数学社团教室" }
+        ],
+        subshots: [
+          { sequence: 1, duration: 3, visual: "中景", action: "观察", camera: "固定", sound: "环境声", voice: "旁白" },
+          { sequence: 2, duration: 3, visual: "近景", action: "比较", camera: "推近", sound: "轻响", voice: "对白" },
+          { sequence: 3, duration: 4, visual: "中景", action: "提问", camera: "稳定", sound: "提示音", voice: "悬问" }
+        ]
       },
       {
-        id: "shot-plan-2",
-        title: "继续推理",
-        script: "同学们继续讨论。",
-        camera: "全景固定",
-        durationSec: 10,
-        prompt: "学生在数学社团教室继续讨论"
+        sequence: 2,
+        duration: 10,
+        visualPrompt: "同学们继续在数学社团教室讨论",
+        narration: "大家开始怀疑原来的判断。",
+        references: [
+          { assetId: "P001-A002", publicAssetId: "P001-A002", label: "数学社团教室" }
+        ],
+        subshots: [
+          { sequence: 1, duration: 3, visual: "全景", action: "讨论", camera: "固定", sound: "环境声", voice: "旁白" },
+          { sequence: 2, duration: 3, visual: "近景", action: "指向物体", camera: "推近", sound: "轻响", voice: "对白" },
+          { sequence: 3, duration: 4, visual: "中景", action: "继续思考", camera: "稳定", sound: "提示音", voice: "悬问" }
+        ]
       }
     ]
   };
 
-  const nativeShots = await projection.projectStoryboardIntoSeeReel(store, sessionId, storyboard);
+  const nativeShots = await projection.projectFinalStoryboardIntoSeeReel(store, sessionId, storyboard);
   assert.equal(nativeShots.length, 2);
   assert.deepEqual(nativeShots.map((shot: any) => shot.index), [1, 2]);
-  assert.ok(nativeShots.every((shot: any) => shot.id.startsWith("shot_")));
-  assert.ok(nativeShots.every((shot: any) => shot.assetIds.length === 0));
+  assert.ok(nativeShots.every((shot: any) => shot.durationSec === 10));
+  assert.ok(nativeShots.every((shot: any) => shot.assetIds.length === 0), "asset refs resolve only at execution boundary");
 
-  const bound = {
-    shots: [
-      {
-        id: "shot-plan-1",
-        assetIds: ["P001-A001", "P001-A002"],
-        prompt: "[P001-A001] 在 [P001-A002] 中观察"
-      },
-      {
-        id: "shot-plan-2",
-        assetIds: ["P001-A002"],
-        prompt: "学生继续在 [P001-A002] 中讨论"
-      }
-    ]
+  const confirmation = {
+    confirmed: true,
+    items: candidates.items.map((item: any) => ({
+      assetKey: item.assetKey,
+      publicAssetId: item.publicAssetId,
+      candidateAssetIds: item.candidateAssetIds,
+      selectedAssetId: item.candidateAssetIds[0]
+    }))
   };
 
-  const boundShots = await projection.bindStableReferencesIntoShots(store, sessionId, bound);
+  const resolvedShots = await projection.applyConfirmedReferencesToNativeShots(store, sessionId, storyboard, confirmation);
   const snapshot = store.snapshot();
-  const assetByStable = new Map(snapshot.assets.map((asset: any) => [asset.workflowReferenceId, asset.id]));
-
-  assert.deepEqual(boundShots[0].assetIds, [assetByStable.get("P001-A001"), assetByStable.get("P001-A002")]);
-  assert.deepEqual(boundShots[1].assetIds, [assetByStable.get("P001-A002")]);
-  assert.equal(boundShots[0].rawPrompt, "[P001-A001] 在 [P001-A002] 中观察");
-  assert.ok(boundShots.every((shot: any) => shot.assetIds.every((assetId: string) => snapshot.assets.some((asset: any) => asset.id === assetId))));
+  const selectedByStable = new Map(confirmation.items.map((item: any) => [item.publicAssetId, item.selectedAssetId]));
+  assert.deepEqual(resolvedShots[0].assetIds, [selectedByStable.get("P001-A001"), selectedByStable.get("P001-A002")]);
+  assert.deepEqual(resolvedShots[1].assetIds, [selectedByStable.get("P001-A002")]);
+  assert.equal(resolvedShots[0].rawPrompt, "小宇在数学社团教室观察黑布窗口", "execution projection must retain FINAL_STORYBOARD visualPrompt, not COPYABLE_PROMPT text");
 
   const session = store.getSession(sessionId)!;
-  assert.equal(session.shots.length, 2);
-  assert.deepEqual(session.shots.map((shot: any) => shot.id), boundShots.map((shot: any) => shot.id));
-
   const graph = buildSessionGraph(snapshot, session);
   for (const asset of nativeAssets) {
     assert.ok(graph.nodes.some((node) => node.id === `image-${asset.id}`), `Canvas must show projected asset ${asset.workflowReferenceId}`);
   }
-  for (const shot of boundShots) {
+  for (const shot of resolvedShots) {
     assert.ok(graph.nodes.some((node) => node.id === `shot-${shot.id}`), `Canvas must show projected shot ${shot.id}`);
   }
   assert.ok(
-    graph.edges.some((edge) => edge.source === `image-${nativeAssets[0].id}` && edge.target === `shot-${boundShots[0].id}`),
-    "Canvas must show the resolved Asset → Shot binding"
+    graph.edges.some((edge) => edge.source === `image-${nativeAssets[0].id}` && edge.target === `shot-${resolvedShots[0].id}`),
+    "Canvas must show confirmed native Asset → Shot binding"
   );
 
-  console.log("VideosBatch native projection smoke passed");
+  console.log("VideosBatch canonical native projection smoke passed");
 } finally {
   process.chdir(originalCwd);
   await rm(tmp, { recursive: true, force: true });
