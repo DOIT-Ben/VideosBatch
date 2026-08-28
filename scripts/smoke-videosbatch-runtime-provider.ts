@@ -40,6 +40,23 @@ const nativeMediaReadiness = getVideosBatchProviderReadiness(nativeMediaConfig);
 assert.equal(nativeMediaReadiness.media.enabled, true);
 assert.equal(nativeMediaReadiness.media.mode, "native");
 
+const mediaWorkflow = createVideosBatchWorkflow({ projectId: "P001", lessonText: "完整教案：观察物体。" });
+mediaWorkflow.stages.ASSET_PLAN = {
+  status: "ready",
+  revision: 1,
+  artifact: { items: [{ assetKey: "CHARACTER-HERO", category: "CHARACTER", name: "小宇", prompt: "角色三视图" }] }
+};
+mediaWorkflow.currentStage = "ASSET_CANDIDATES";
+const mediaNow = new Date().toISOString();
+const mediaSession = { id: "ses_media_overlay", title: "Media overlay", logline: "", style: "test", targetDurationSec: 120, videosBatchWorkflow: mediaWorkflow, createdAt: mediaNow, updatedAt: mediaNow } as Session;
+const mediaCtx: StageExecutionContext = { session: mediaSession, workflow: mediaWorkflow, assets: [], shots: [] };
+const nativeMediaRegistry = createVideosBatchRuntimeStageRegistry({ VIDEOSBATCH_MEDIA_MODE: "native" });
+await assert.rejects(
+  () => nativeMediaRegistry.ASSET_CANDIDATES!.execute(mediaCtx),
+  /CinemaStore/,
+  "native media mode must overlay the fake ASSET_CANDIDATES stage with the SeeReel-native executor"
+);
+
 let requests = 0;
 const server = http.createServer(async (req, res) => {
   if (req.method !== "POST" || req.url !== "/v1/responses") {
