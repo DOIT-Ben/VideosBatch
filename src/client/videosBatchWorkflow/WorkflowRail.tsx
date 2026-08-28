@@ -7,7 +7,6 @@ import {
 } from "../../shared/videosBatchWorkflow";
 import { WorkflowArtifactPanel } from "./WorkflowArtifactPanel";
 import { WORKFLOW_LABELS, WORKFLOW_STATUS_LABELS } from "./workflowLabels";
-import "./videosBatchWorkflow.css";
 
 function initialSelectedStage(workflow: VideosBatchWorkflowState): VideosBatchStageId {
   const currentIndex = VIDEOS_BATCH_STAGE_ORDER.indexOf(workflow.currentStage);
