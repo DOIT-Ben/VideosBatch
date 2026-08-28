@@ -28,6 +28,7 @@ import type {
   SubStoryboardModel,
   WorkflowExecutionPlan
 } from "../shared/types";
+import type { VideosBatchStageId, VideosBatchWorkflowState } from "../shared/videosBatchWorkflow";
 import { networkDownMessage } from "./i18n";
 
 /**
@@ -195,6 +196,24 @@ export const api = {
     request<SessionWithShots>("/api/sessions", { method: "POST", body: JSON.stringify(payload) }),
   updateSession: (sessionId: string, patch: Partial<SessionWithShots>) =>
     request<SessionWithShots>(`/api/sessions/${sessionId}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  videosBatchWorkflow: (sessionId: string) =>
+    request<VideosBatchWorkflowState>(`/api/sessions/${sessionId}/videosbatch`),
+  startVideosBatch: (sessionId: string, payload: { projectId: string; lessonText: string }) =>
+    request<VideosBatchWorkflowState>(`/api/sessions/${sessionId}/videosbatch/start`, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  runNextVideosBatch: (sessionId: string) =>
+    request<VideosBatchWorkflowState>(`/api/sessions/${sessionId}/videosbatch/run-next`, { method: "POST", body: "{}" }),
+  runAllVideosBatch: (sessionId: string) =>
+    request<VideosBatchWorkflowState>(`/api/sessions/${sessionId}/videosbatch/run-all`, { method: "POST", body: "{}" }),
+  saveVideosBatchArtifact: (sessionId: string, stageId: VideosBatchStageId, artifact: unknown) =>
+    request<VideosBatchWorkflowState>(`/api/sessions/${sessionId}/videosbatch/stages/${stageId}/artifact`, {
+      method: "PUT",
+      body: JSON.stringify({ artifact })
+    }),
+  restartVideosBatchFrom: (sessionId: string, stageId: VideosBatchStageId) =>
+    request<VideosBatchWorkflowState>(`/api/sessions/${sessionId}/videosbatch/restart-from/${stageId}`, { method: "POST", body: "{}" }),
   clearTokenUsage: (sessionId: string) =>
     request<SessionWithShots>(`/api/sessions/${sessionId}/token-usage`, { method: "DELETE" }),
   createStitchJob: (sessionId: string, job?: Partial<import("../shared/types").StitchJob>) =>

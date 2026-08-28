@@ -1,6 +1,7 @@
 import { Archive, BarChart3, CircleHelp, Copy, Download, FileUp, Github, Images, KeyRound, Loader2, Plus, RefreshCw, ShieldCheck, Trash2, UploadCloud } from "lucide-react";
 import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { api } from "./api";
+import { WorkflowRail } from "./videosBatchWorkflow/WorkflowRail";
 import type { AdminAgentPlanStatus, AdminSecurityStatus, AdminUserAgentPlanCredentialList, AgentPlanCredentialStatus, ApiKeyCredentialStatus, Asset, AssetType, CreateSessionPayload, GalleryItem, Session, SessionPackage, Shot, StandardApiKeyRoute, StitchJob, StoreSnapshot, TokenUsageEvent, TokenUsageModelFamily } from "../shared/types";
 import { PendingGenerationsProvider } from "./flow/PendingGenerations";
 import { useUndoKeyboardShortcut, useUndoStack } from "./flow/useUndoStack";
@@ -1996,7 +1997,22 @@ export function App() {
       <section className="workspace">
         <header className="topbar">
           <div>
-            {activeView === "gallery" ? (
+            {activeView === "studio" && selectedSession && (
+          <WorkflowRail
+            sessionId={selectedSession.id}
+            workflow={selectedSession.videosBatchWorkflow}
+            onWorkflowChange={(workflow) => {
+              setState((prev) => ({
+                ...prev,
+                sessions: prev.sessions.map((item) =>
+                  item.id === selectedSession.id ? { ...item, videosBatchWorkflow: workflow } : item
+                )
+              }));
+            }}
+          />
+        )}
+
+        {activeView === "gallery" ? (
               <h1>{t.app.galleryTitle}</h1>
             ) : selectedSession ? (
               <>
