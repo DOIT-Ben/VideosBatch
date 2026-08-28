@@ -8,9 +8,10 @@ const tmp = await mkdtemp(path.join(os.tmpdir(), "videosbatch-native-projection-
 process.chdir(tmp);
 
 try {
-  const [{ CinemaStore }, projection] = await Promise.all([
+  const [{ CinemaStore }, projection, { buildSessionGraph }] = await Promise.all([
     import("../src/server/store"),
-    import("../src/server/videosBatchWorkflow/nativeProjection")
+    import("../src/server/videosBatchWorkflow/nativeProjection"),
+    import("../src/client/flow/buildGraph")
   ]);
 
   const store = new CinemaStore();
@@ -106,6 +107,18 @@ try {
   const session = store.getSession(sessionId)!;
   assert.equal(session.shots.length, 2);
   assert.deepEqual(session.shots.map((shot: any) => shot.id), boundShots.map((shot: any) => shot.id));
+
+  const graph = buildSessionGraph(snapshot, session);
+  for (const asset of nativeAssets) {
+    assert.ok(graph.nodes.some((node) => node.id === `image-${asset.id}`), `Canvas must show projected asset ${asset.workflowReferenceId}`);
+  }
+  for (const shot of boundShots) {
+    assert.ok(graph.nodes.some((node) => node.id === `shot-${shot.id}`), `Canvas must show projected shot ${shot.id}`);
+  }
+  assert.ok(
+    graph.edges.some((edge) => edge.source === `image-${nativeAssets[0].id}` && edge.target === `shot-${boundShots[0].id}`),
+    "Canvas must show the resolved Asset → Shot binding"
+  );
 
   console.log("VideosBatch native projection smoke passed");
 } finally {
