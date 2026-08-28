@@ -21,29 +21,22 @@ const server = http.createServer(async (req, res) => {
   assert.equal(body.model, "test-model");
   assert.equal(body.store, false);
   assert.equal(body.text.format.type, "json_schema");
-  assert.equal(body.text.format.name, "intro_candidates");
+  assert.equal(body.text.format.name, "course_intro_candidates");
   assert.equal(body.text.format.strict, true);
   assert.deepEqual(body.text.format.schema.required, ["ok"]);
   assert.equal(body.input[0].role, "system");
   assert.equal(body.input[1].role, "user");
+  assert.equal(body.metadata.operation, "COURSE_INTRO_CANDIDATES");
 
   res.setHeader("content-type", "application/json");
   res.end(JSON.stringify({
     id: "resp_test",
     model: "test-model",
-    output: [
-      {
-        type: "message",
-        content: [
-          { type: "output_text", text: JSON.stringify({ ok: true }) }
-        ]
-      }
-    ],
-    usage: {
-      input_tokens: 12,
-      output_tokens: 4,
-      total_tokens: 16
-    }
+    output: [{
+      type: "message",
+      content: [{ type: "output_text", text: JSON.stringify({ ok: true }) }]
+    }],
+    usage: { input_tokens: 12, output_tokens: 4, total_tokens: 16 }
   }));
 });
 
@@ -61,10 +54,10 @@ try {
   });
   const executor = createVideosBatchLlmExecutor(config);
   const result = await executor.generateStructured<{ ok: boolean }>({
-    operation: "INTRO_GENERATION",
-    systemPrompt: "Return structured lesson-intro candidates.",
+    operation: "COURSE_INTRO_CANDIDATES",
+    systemPrompt: "Return canonical structured course-intro candidates.",
     userPrompt: "Generate the result for this lesson.",
-    schemaName: "intro_candidates",
+    schemaName: "course_intro_candidates",
     jsonSchema: {
       type: "object",
       properties: { ok: { type: "boolean" } },
@@ -85,16 +78,16 @@ try {
   }));
   await assert.rejects(
     () => missing.generateStructured({
-      operation: "STORY_EXPANSION",
+      operation: "STORY_SCRIPT",
       systemPrompt: "x",
       userPrompt: "y",
-      schemaName: "story",
+      schemaName: "story_script",
       jsonSchema: { type: "object", properties: {}, additionalProperties: false }
     }),
     /VIDEOSBATCH_LLM_API_KEY|OPENAI_API_KEY/
   );
 
-  console.log("VideosBatch LLM executor smoke passed");
+  console.log("VideosBatch canonical LLM executor smoke passed");
 } finally {
   server.close();
   await once(server, "close");
