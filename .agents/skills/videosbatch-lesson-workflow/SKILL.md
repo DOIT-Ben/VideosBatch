@@ -18,7 +18,7 @@ The unique upstream truth is:
 
 If this skill, a VideosBatch document, test, prompt, or implementation conflicts with that canonical source, the FrameFlow canonical source wins. Update the derived VideosBatch material before running a new project or a real provider.
 
-Do not infer the current workflow from Git history, superseded plans, old stage names, or SeeReel's own short-drama workflow.
+Do not infer the current workflow from Git history, superseded plans, historical stage vocabulary, or SeeReel's own short-drama workflow.
 
 ## Boundary
 
@@ -69,7 +69,7 @@ Downstream stages may use only that selected current version.
 
 ### STORY_SCRIPT
 
-Expand only the locked intro into one 600–800-character story document. Do not create three parallel stories. Do not write storyboard, subtitles, shot table or asset suggestions here.
+Expand only the locked intro into one 600–800-character story document. Do not create parallel story branches. Do not write storyboard, subtitles, shot table or asset suggestions here.
 
 ### ASSET_PLAN
 
@@ -100,7 +100,7 @@ Generate the formal `VIDEO_SCREENPLAY` from the single story and confirmed asset
 
 `90, 100, 110, 120, 130, 140, 150`.
 
-Do not use historical `120–180` rules for new generation.
+No other duration range is valid for new generation.
 
 ### FINAL_STORYBOARD
 
@@ -174,4 +174,4 @@ Current VideosBatch implementation is under:
 - `scripts/smoke-videosbatch-*`
 - `docs/seereel-injection-map.md`
 
-There is no supported legacy `src/workflow/*` pipeline. Old stage names such as `INTRO_GENERATION`, `STORY_EXPANSION`, `STORY_SELECTION`, `ASSET_PROMPT_GENERATION`, `ASSET_GENERATION`, `SCREENPLAY_GENERATION`, `STORYBOARD_GENERATION`, `REFERENCE_BINDING`, `VIDEO_GENERATION`, `CANVAS_REVIEW` and `VIDEO_REVIEW` are not valid VideosBatch canonical stage IDs.
+Only the canonical stage vocabulary above is valid for current VideosBatch code and documentation. Superseded implementations exist only in Git history and must not be restored as compatibility layers.
