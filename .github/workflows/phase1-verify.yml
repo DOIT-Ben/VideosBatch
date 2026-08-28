@@ -1,0 +1,64 @@
+name: phase1-verify
+
+on:
+  push:
+    branches:
+      - feat/phase1-linear-workflow
+  pull_request:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install pinned dependencies
+        run: npm ci
+      - name: Verify VideosBatch workflow state when test exists
+        shell: bash
+        run: |
+          if [ -f scripts/smoke-videosbatch-workflow-state.ts ]; then
+            npx tsx scripts/smoke-videosbatch-workflow-state.ts
+          fi
+      - name: Verify VideosBatch runner when test exists
+        shell: bash
+        run: |
+          if [ -f scripts/smoke-videosbatch-runner.ts ]; then
+            npx tsx scripts/smoke-videosbatch-runner.ts
+          fi
+      - name: Verify VideosBatch API when test exists
+        shell: bash
+        run: |
+          if [ -f scripts/smoke-videosbatch-api.ts ]; then
+            npx tsx scripts/smoke-videosbatch-api.ts
+          fi
+      - name: Verify VideosBatch UI when test exists
+        shell: bash
+        run: |
+          if [ -f scripts/smoke-videosbatch-ui.ts ]; then
+            npx tsx scripts/smoke-videosbatch-ui.ts
+          fi
+      - name: Verify VideosBatch Phase 1 orchestration E2E when test exists
+        shell: bash
+        run: |
+          if [ -f scripts/smoke-videosbatch-e2e.ts ]; then
+            npx tsx scripts/smoke-videosbatch-e2e.ts
+          fi
+      - name: Build upstream SeeReel baseline
+        run: npm run build
+      - name: Verify Canvas CRUD
+        run: npm run smoke:canvas-crud
+      - name: Verify shot generation state
+        run: npm run smoke:shot-generation-state
+      - name: Verify SeeReel skill boundaries
+        run: npm run smoke:seereel-skill-boundaries
+      - name: Verify stitch pipeline
+        run: npm run smoke:libtv-style-stitch

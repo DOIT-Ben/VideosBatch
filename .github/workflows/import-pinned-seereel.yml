@@ -1,0 +1,77 @@
+name: import-pinned-seereel
+
+on:
+  push:
+    branches:
+      - feat/phase1-linear-workflow
+    paths:
+      - UPSTREAM_SEEREEL.import-request
+
+permissions:
+  contents: write
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout VideosBatch
+        uses: actions/checkout@v4
+        with:
+          ref: feat/phase1-linear-workflow
+          fetch-depth: 0
+
+      - name: Clone pinned SeeReel
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/seereel
+          git clone --filter=blob:none https://github.com/feifeibear/SeeReel.git /tmp/seereel
+          git -C /tmp/seereel checkout 5521c90f267341f87f841411a58998c7a83b0504
+          test "$(git -C /tmp/seereel rev-parse HEAD)" = "5521c90f267341f87f841411a58998c7a83b0504"
+
+      - name: Import SeeReel baseline without deleting VideosBatch overlays
+        shell: bash
+        run: |
+          set -euo pipefail
+          rsync -a \
+            --exclude='.git/' \
+            --exclude='.github/workflows/' \
+            /tmp/seereel/ ./
+
+          # Remove the obsolete prototype CI. The Phase 1 implementation will add
+          # focused verification after the pinned upstream baseline is established.
+          rm -f .github/workflows/verify.yml
+
+          cat > UPSTREAM_SEEREEL.md <<'EOF'
+          # Upstream SeeReel
+
+          VideosBatch uses SeeReel as its production runtime baseline.
+
+          - Upstream repository: https://github.com/feifeibear/SeeReel
+          - Pinned commit: `5521c90f267341f87f841411a58998c7a83b0504`
+          - Upstream license: MIT
+          - Import strategy: exact pinned checkout copied into VideosBatch, with VideosBatch-only overlay files preserved.
+          - Sync rule: future upstream syncs must be isolated in dedicated commits before VideosBatch workflow changes.
+
+          The VideosBatch Phase 1 workflow specification remains in:
+
+          - `docs/seereel-injection-map.md`
+          - `docs/superpowers/plans/2026-08-28-videosbatch-phase1-linear-workflow.md`
+          - `.agents/skills/videosbatch-lesson-workflow/SKILL.md`
+          EOF
+
+          printf '%s\n' '5521c90f267341f87f841411a58998c7a83b0504' > .seereel-upstream-commit
+
+      - name: Commit imported baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Pinned SeeReel baseline already imported."
+            exit 0
+          fi
+          git commit -m "chore: import pinned SeeReel runtime"
+          git push origin HEAD:feat/phase1-linear-workflow
