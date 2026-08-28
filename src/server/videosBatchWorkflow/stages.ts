@@ -1,5 +1,7 @@
 import type { StageDefinition, StageRegistry } from "./stageContracts";
 import type { VideosBatchStageId } from "../../shared/videosBatchWorkflow";
+import type { VideosBatchLlmExecutor } from "./llmExecutor";
+import { createVideosBatchLlmTextStageRegistry } from "./llmTextStages";
 import {
   bindStableReferencesIntoShots,
   projectAssetsIntoSeeReel,
@@ -146,8 +148,25 @@ export function createPhase1FakeStageRegistry(): StageRegistry {
   };
 }
 
-export function createVideosBatchStageRegistry(): StageRegistry {
+export interface CreateVideosBatchStageRegistryOptions {
+  /**
+   * Explicit dependency injection only. The server does not create or enable a real LLM executor
+   * unless the caller supplies one, so existing local/CI behavior remains fully fake and key-free.
+   */
+  textExecutor?: VideosBatchLlmExecutor;
+}
+
+export function createVideosBatchStageRegistry(
+  options: CreateVideosBatchStageRegistryOptions = {}
+): StageRegistry {
   const mode = (process.env.VIDEOSBATCH_EXECUTOR_MODE || "fake").trim().toLowerCase();
-  if (mode === "fake") return createPhase1FakeStageRegistry();
-  throw new Error(`Unsupported VIDEOSBATCH_EXECUTOR_MODE: ${mode}`);
+  if (mode !== "fake") throw new Error(`Unsupported VIDEOSBATCH_EXECUTOR_MODE: ${mode}`);
+
+  const registry = createPhase1FakeStageRegistry();
+  if (!options.textExecutor) return registry;
+
+  return {
+    ...registry,
+    ...createVideosBatchLlmTextStageRegistry(options.textExecutor)
+  };
 }
