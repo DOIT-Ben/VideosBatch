@@ -17,8 +17,9 @@ jobs:
         with:
           ref: feat/real-provider-text-stages
       - name: Wire runtime bootstrap and environment template
-        shell: python
+        shell: bash
         run: |
+          python - <<'PY'
           from pathlib import Path
 
           index = Path('src/server/index.ts')
@@ -36,21 +37,23 @@ jobs:
           env_text = env_file.read_text()
           marker = '# Optional. Without these values the app uses mock generation so the workflow stays usable.\n'
           block = '''# --- VideosBatch canonical structured text workflow ---
-# Safe default: fake. Existing OPENAI_API_KEY/OAI_KEY values do NOT enable paid VideosBatch calls.
-# Switch to llm only when you intentionally provide the dedicated key and an explicit model.
-VIDEOSBATCH_EXECUTOR_MODE=fake
-VIDEOSBATCH_LLM_PROVIDER=openai-responses
-VIDEOSBATCH_LLM_API_KEY=
-VIDEOSBATCH_LLM_BASE_URL=https://api.openai.com/v1
-VIDEOSBATCH_LLM_MODEL=
-VIDEOSBATCH_LLM_TIMEOUT_MS=120000
+          # Safe default: fake. Existing OPENAI_API_KEY/OAI_KEY values do NOT enable paid VideosBatch calls.
+          # Switch to llm only when you intentionally provide the dedicated key and an explicit model.
+          VIDEOSBATCH_EXECUTOR_MODE=fake
+          VIDEOSBATCH_LLM_PROVIDER=openai-responses
+          VIDEOSBATCH_LLM_API_KEY=
+          VIDEOSBATCH_LLM_BASE_URL=https://api.openai.com/v1
+          VIDEOSBATCH_LLM_MODEL=
+          VIDEOSBATCH_LLM_TIMEOUT_MS=120000
 
-'''
+          '''
+          block = '\n'.join(line[10:] if line.startswith('          ') else line for line in block.splitlines()) + '\n'
           if 'VIDEOSBATCH_EXECUTOR_MODE=' not in env_text:
               if marker not in env_text:
                   raise SystemExit('Expected .env.example insertion marker was not found')
               env_text = env_text.replace(marker, block + marker, 1)
               env_file.write_text(env_text)
+          PY
       - name: Commit wiring
         run: |
           git config user.name "github-actions[bot]"
