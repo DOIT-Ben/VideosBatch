@@ -53,7 +53,9 @@ try {
   assert.ok(candidates.items.every((item: any) => item.candidateAssetIds.length === 1));
 
   const snapshotAfterAssets = store.snapshot();
-  const nativeAssets = snapshotAfterAssets.assets.filter((asset: any) => asset.ownerSessionId === sessionId);
+  const nativeAssets = snapshotAfterAssets.assets
+    .filter((asset: any) => asset.ownerSessionId === sessionId)
+    .sort((left: any, right: any) => String(left.workflowReferenceId || "").localeCompare(String(right.workflowReferenceId || "")));
   assert.equal(nativeAssets.length, 2);
   assert.deepEqual(nativeAssets.map((asset: any) => asset.workflowReferenceId), ["P001-A001", "P001-A002"]);
   assert.ok(nativeAssets.every((asset: any) => asset.id.startsWith("asset_")));
