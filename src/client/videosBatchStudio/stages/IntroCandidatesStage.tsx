@@ -11,10 +11,10 @@ export function IntroCandidatesStage({
   busy?: boolean;
   onSelect: (candidate: any) => Promise<void> | void;
 }) {
-  const candidates = Array.isArray(artifact?.candidates) ? artifact.candidates : [];
-  const recommendations = new Map(
+  const candidates: any[] = Array.isArray(artifact?.candidates) ? artifact.candidates : [];
+  const recommendations = new Map<string, string>(
     (Array.isArray(artifact?.recommendations) ? artifact.recommendations : [])
-      .map((item: any) => [String(item?.id || ""), String(item?.reason || "")])
+      .map((item: any): [string, string] => [String(item?.id || ""), String(item?.reason || "")])
   );
   const groups = useMemo(() => {
     const ordered = ["数学史与知识由来", "历史需求与古今应用", "创意故事与现代情境"];
@@ -41,15 +41,15 @@ export function IntroCandidatesStage({
                   const recommended = recommendations.get(String(candidate.id || ""));
                   const selected = selectedIntroId === candidate.id;
                   return (
-                    <article className={`vbs-intro-card ${selected ? "selected" : ""}`} key={candidate.id}>
+                    <article className={`vbs-intro-card ${selected ? "selected" : ""}`} key={String(candidate.id)}>
                       <div className="vbs-card-topline">
-                        <span className="vbs-code">{candidate.id}</span>
+                        <span className="vbs-code">{String(candidate.id || "")}</span>
                         {recommended && <span className="vbs-recommend">推荐</span>}
                       </div>
-                      <h4>{candidate.name || candidate.id}</h4>
-                      <p>{candidate.body || ""}</p>
-                      {candidate.endingQuestion && <blockquote>{candidate.endingQuestion}</blockquote>}
-                      {candidate.truthfulnessCategory && <small>{candidate.truthfulnessCategory}</small>}
+                      <h4>{String(candidate.name || candidate.id || "未命名方案")}</h4>
+                      <p>{String(candidate.body || "")}</p>
+                      {candidate.endingQuestion && <blockquote>{String(candidate.endingQuestion)}</blockquote>}
+                      {candidate.truthfulnessCategory && <small>{String(candidate.truthfulnessCategory)}</small>}
                       {recommended && <div className="vbs-reason">{recommended}</div>}
                       <button type="button" className={selected ? "vbs-confirmed" : "vbs-primary"} disabled={busy || selected} onClick={() => onSelect(candidate)}>
                         {selected ? "✓ 已锁定" : "选择此方案"}
