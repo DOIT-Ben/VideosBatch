@@ -46,6 +46,12 @@ jobs:
           if [ -f scripts/smoke-videosbatch-ui.ts ]; then
             npx tsx scripts/smoke-videosbatch-ui.ts
           fi
+      - name: Verify VideosBatch Phase 1 orchestration E2E when test exists
+        shell: bash
+        run: |
+          if [ -f scripts/smoke-videosbatch-e2e.ts ]; then
+            npx tsx scripts/smoke-videosbatch-e2e.ts
+          fi
       - name: Build upstream SeeReel baseline
         run: npm run build
       - name: Verify Canvas CRUD
