@@ -1,5 +1,10 @@
 import type { StageDefinition, StageRegistry } from "./stageContracts";
 import type { VideosBatchStageId } from "../../shared/videosBatchWorkflow";
+import {
+  bindStableReferencesIntoShots,
+  projectAssetsIntoSeeReel,
+  projectStoryboardIntoSeeReel
+} from "./nativeProjection";
 
 function pass<T>(id: VideosBatchStageId, artifact: T): StageDefinition<T> {
   return {
@@ -12,6 +17,85 @@ function pass<T>(id: VideosBatchStageId, artifact: T): StageDefinition<T> {
     }
   };
 }
+
+const fakeAssetGeneration: StageDefinition<{ assetIds: string[] }> = {
+  id: "ASSET_GENERATION",
+  async execute() {
+    return { artifact: { assetIds: [] } };
+  },
+  validate() {
+    return { ok: true, errors: [] };
+  },
+  async project(artifact, ctx) {
+    if (!ctx.store) {
+      artifact.assetIds = ["asset_fake_P001_A001"];
+      return;
+    }
+    const plan = ctx.workflow.stages.ASSET_PROMPT_GENERATION?.artifact;
+    const assets = await projectAssetsIntoSeeReel(ctx.store, ctx.session.id, plan || { assets: [] });
+    artifact.assetIds = assets.map((asset) => asset.id);
+  }
+};
+
+const fakeStoryboardGeneration: StageDefinition<any> = {
+  id: "STORYBOARD_GENERATION",
+  async execute() {
+    return {
+      artifact: {
+        shots: [
+          {
+            id: "shot-plan-1",
+            durationSec: 10,
+            subshots: [
+              { durationSec: 3 },
+              { durationSec: 3 },
+              { durationSec: 4 }
+            ],
+            prompt: "Fake storyboard prompt"
+          }
+        ]
+      }
+    };
+  },
+  validate() {
+    return { ok: true, errors: [] };
+  },
+  async project(artifact, ctx) {
+    if (!ctx.store) return;
+    await projectStoryboardIntoSeeReel(ctx.store, ctx.session.id, artifact);
+  }
+};
+
+const fakeReferenceBinding: StageDefinition<any> = {
+  id: "REFERENCE_BINDING",
+  async execute() {
+    return {
+      artifact: {
+        shots: [
+          {
+            id: "shot-plan-1",
+            assetIds: ["P001-A001"],
+            prompt: "Fake storyboard prompt with stable reference P001-A001"
+          }
+        ]
+      }
+    };
+  },
+  validate() {
+    return { ok: true, errors: [] };
+  },
+  async project(artifact, ctx) {
+    if (!ctx.store) return;
+    const storyboard = ctx.workflow.stages.STORYBOARD_GENERATION?.artifact as any;
+    const nativeShotByPlanId = new Map(
+      (storyboard?.shots || []).map((shot: any) => [shot.id, shot.nativeShotId])
+    );
+    for (const shot of artifact.shots || []) {
+      shot.nativeShotId = nativeShotByPlanId.get(shot.id) || shot.nativeShotId;
+    }
+    await bindStableReferencesIntoShots(ctx.store, ctx.session.id, artifact);
+  }
+};
 
 export function createPhase1FakeStageRegistry(): StageRegistry {
   return {
@@ -40,9 +124,7 @@ export function createPhase1FakeStageRegistry(): StageRegistry {
         }
       ]
     }),
-    ASSET_GENERATION: pass("ASSET_GENERATION", {
-      assetIds: ["asset_fake_P001_A001"]
-    }),
+    ASSET_GENERATION: fakeAssetGeneration,
     SCREENPLAY_GENERATION: pass("SCREENPLAY_GENERATION", {
       scenes: [
         {
@@ -53,29 +135,8 @@ export function createPhase1FakeStageRegistry(): StageRegistry {
         }
       ]
     }),
-    STORYBOARD_GENERATION: pass("STORYBOARD_GENERATION", {
-      shots: [
-        {
-          id: "shot-plan-1",
-          durationSec: 10,
-          subshots: [
-            { durationSec: 3 },
-            { durationSec: 3 },
-            { durationSec: 4 }
-          ],
-          prompt: "Fake storyboard prompt"
-        }
-      ]
-    }),
-    REFERENCE_BINDING: pass("REFERENCE_BINDING", {
-      shots: [
-        {
-          id: "shot-plan-1",
-          assetIds: ["P001-A001"],
-          prompt: "Fake storyboard prompt with stable reference P001-A001"
-        }
-      ]
-    }),
+    STORYBOARD_GENERATION: fakeStoryboardGeneration,
+    REFERENCE_BINDING: fakeReferenceBinding,
     VIDEO_GENERATION: pass("VIDEO_GENERATION", {
       renderIds: ["render_fake_1"]
     }),
