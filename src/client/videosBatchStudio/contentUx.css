@@ -26,6 +26,80 @@
   margin-top: 12px;
 }
 
+.vbs-document-actions-top {
+  margin: 0 0 14px;
+}
+
+.vbs-structured-editor-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.vbs-structured-editor-grid.compact {
+  gap: 9px;
+}
+
+.vbs-structured-editor-grid label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.vbs-structured-editor-grid label.wide,
+.vbs-structured-editor-grid .wide {
+  grid-column: 1 / -1;
+}
+
+.vbs-structured-editor-grid label > span {
+  color: var(--vbs-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.vbs-structured-editor-grid input,
+.vbs-structured-editor-grid textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--vbs-border);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--vbs-text);
+  padding: 9px 10px;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.55;
+  outline: none;
+  resize: vertical;
+}
+
+.vbs-structured-editor-grid input:focus,
+.vbs-structured-editor-grid textarea:focus {
+  border-color: #d6b24d;
+  box-shadow: 0 0 0 3px rgba(229, 184, 75, 0.14);
+}
+
+.vbs-screenplay-scene.editing {
+  align-items: flex-start;
+}
+
+.vbs-locked-structure {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 11px;
+  border: 1px dashed #d8cda8;
+  border-radius: 10px;
+  background: #fffbef;
+  color: #6c603e;
+  font-size: 11px;
+}
+
+.vbs-locked-structure strong {
+  color: #775b16;
+}
+
 .vbs-asset-gallery-detailed {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -148,6 +222,134 @@
   align-items: center;
   gap: 4px;
   color: var(--vbs-success);
+}
+
+.vbs-storyboard-accordion {
+  display: grid;
+  gap: 10px;
+}
+
+.vbs-storyboard-item {
+  padding: 0;
+  overflow: hidden;
+}
+
+.vbs-storyboard-header {
+  margin: 0;
+}
+
+.vbs-storyboard-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 14px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.vbs-storyboard-trigger:hover {
+  background: #fbfaf7;
+}
+
+.vbs-storyboard-summary {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.vbs-storyboard-summary > span:first-child {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.vbs-storyboard-summary-copy {
+  max-width: 720px;
+  overflow: hidden;
+  color: var(--vbs-muted);
+  font-size: 11px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.vbs-storyboard-trigger-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+.vbs-accordion-chevron {
+  transition: transform 160ms ease;
+}
+
+.vbs-storyboard-trigger[data-state="open"] .vbs-accordion-chevron {
+  transform: rotate(180deg);
+}
+
+.vbs-storyboard-content {
+  overflow: hidden;
+  border-top: 1px solid var(--vbs-border);
+}
+
+.vbs-storyboard-content[data-state="open"] {
+  animation: vbs-accordion-open 160ms ease-out;
+}
+
+.vbs-storyboard-content[data-state="closed"] {
+  animation: vbs-accordion-close 140ms ease-in;
+}
+
+.vbs-storyboard-content > * {
+  margin-left: 14px;
+  margin-right: 14px;
+}
+
+.vbs-storyboard-editor {
+  display: grid;
+  gap: 14px;
+  padding: 14px 0;
+}
+
+.vbs-subshot-editor-list {
+  display: grid;
+  gap: 10px;
+}
+
+.vbs-subshot-editor {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--vbs-border);
+  border-radius: 11px;
+  background: #fbfaf7;
+}
+
+.vbs-subshot-editor > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.vbs-subshot-editor > header span {
+  color: var(--vbs-muted);
+  font-size: 10px;
+}
+
+@keyframes vbs-accordion-open {
+  from { height: 0; opacity: 0.7; }
+  to { height: var(--radix-accordion-content-height); opacity: 1; }
+}
+
+@keyframes vbs-accordion-close {
+  from { height: var(--radix-accordion-content-height); opacity: 1; }
+  to { height: 0; opacity: 0.7; }
 }
 
 .vbs-video-shot-grid {
@@ -353,8 +555,14 @@
 }
 
 @media (max-width: 720px) {
-  .vbs-candidate-grid {
+  .vbs-candidate-grid,
+  .vbs-structured-editor-grid {
     grid-template-columns: 1fr;
+  }
+
+  .vbs-structured-editor-grid label.wide,
+  .vbs-structured-editor-grid .wide {
+    grid-column: auto;
   }
 
   .vbs-media-dialog,
