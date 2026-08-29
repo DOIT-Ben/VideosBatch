@@ -117,6 +117,26 @@ export function updateStoryboardSegmentFields<T extends Record<string, any>>(
   return { ...artifact, segments: nextSegments };
 }
 
+export function updateStoryboardSubshotFields<T extends Record<string, any>>(
+  artifact: T,
+  segmentSequence: number,
+  subshotSequence: number,
+  patch: Record<string, unknown>
+): T {
+  const segments = Array.isArray(artifact.segments) ? artifact.segments : [];
+  const nextSegments = segments.map((segment: any) => {
+    if (Number(segment?.sequence) !== Number(segmentSequence)) return segment;
+    const subshots = Array.isArray(segment?.subshots) ? segment.subshots : [];
+    const nextSubshots = subshots.map((subshot: any) =>
+      Number(subshot?.sequence) === Number(subshotSequence)
+        ? { ...subshot, ...patch, sequence: subshot.sequence, duration: subshot.duration }
+        : subshot
+    );
+    return { ...segment, subshots: nextSubshots };
+  });
+  return { ...artifact, segments: nextSegments };
+}
+
 export function preferredShotVideoUrl(shot: Partial<Shot> | undefined) {
   if (!shot) return "";
   return shot.playbackVideoUrl || shot.videoUrl || "";
