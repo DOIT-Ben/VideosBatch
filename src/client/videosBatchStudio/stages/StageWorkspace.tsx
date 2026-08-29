@@ -23,6 +23,8 @@ export function StageWorkspace({
   onStart,
   onSelectIntro,
   onSaveStory,
+  onSaveScreenplay,
+  onSaveStoryboard,
   onSelectAsset,
   onConfirmAssets,
   onOpenCanvas
@@ -38,6 +40,8 @@ export function StageWorkspace({
   onStart: (lessonText: string) => Promise<void> | void;
   onSelectIntro: (candidate: any) => Promise<void> | void;
   onSaveStory?: (content: string) => Promise<void> | void;
+  onSaveScreenplay?: (artifact: any) => Promise<void> | void;
+  onSaveStoryboard?: (artifact: any) => Promise<void> | void;
   onSelectAsset?: (assetKey: string, assetId: string) => Promise<void> | void;
   onConfirmAssets: () => Promise<void> | void;
   onOpenCanvas: () => void;
@@ -66,9 +70,9 @@ export function StageWorkspace({
         />
       );
     case "screenplay":
-      return <ScreenplayStage artifact={stage("SCREENPLAY")} />;
+      return <ScreenplayStage artifact={stage("SCREENPLAY")} busy={busy} onSaveArtifact={onSaveScreenplay} />;
     case "storyboard":
-      return <StoryboardStage artifact={stage("FINAL_STORYBOARD")} />;
+      return <StoryboardStage artifact={stage("FINAL_STORYBOARD")} busy={busy} onSaveArtifact={onSaveStoryboard} />;
     case "execution":
       return <ExecutionStage quoteArtifact={stage("QUOTE")} executionArtifact={stage("EXECUTION")} shots={nativeShots} onOpenCanvas={onOpenCanvas} />;
     case "final":
