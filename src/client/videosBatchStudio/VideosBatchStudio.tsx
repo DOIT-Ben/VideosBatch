@@ -1,12 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import type { Asset, Session, Shot } from "../../shared/types";
-import type { VideosBatchStageId, VideosBatchWorkflowState } from "../../shared/videosBatchWorkflow";
+import type {
+  VideosBatchLessonSource,
+  VideosBatchStageId,
+  VideosBatchWorkflowState
+} from "../../shared/videosBatchWorkflow";
 import { VideosBatchHeader } from "./VideosBatchHeader";
-import { WorkflowSidebar } from "./WorkflowSidebar";
 import { WorkflowFooter } from "./WorkflowFooter";
 import { ArtifactDebugDrawer } from "./components/ArtifactDebugDrawer";
-import { StageStatus } from "./components/StageStatus";
+import { StudioStageToolbar } from "./components/StudioStageToolbar";
+import { WorkflowProgressRail } from "./components/WorkflowProgressRail";
 import { StageWorkspace } from "./stages/StageWorkspace";
 import { buildAssetCandidateGroups, buildAssetConfirmationArtifact, updateStoryArtifactContent } from "./contentModel";
 import {
@@ -96,15 +100,12 @@ export function VideosBatchStudio({
   const selectedIndex = VIDEOS_BATCH_PRODUCT_STEPS.findIndex((step) => step.id === selectedStepId);
   const isAtCurrentStep = selectedStepId === currentStepId;
   const manualGate = workflow?.currentStage === "COURSE_INTRO_SELECTION" || workflow?.currentStage === "ASSET_CONFIRMATION";
+  const completedCount = workflow
+    ? VIDEOS_BATCH_PRODUCT_STEPS.filter((step) => deriveProductStepStatus(workflow, step) === "ready").length
+    : 0;
 
-  const contextFacts = useMemo(() => {
-    if (!workflow) return [{ label: "状态", value: "尚未启动" }, { label: "模式", value: "分步确认" }];
-    return [
-      { label: "当前步骤", value: currentStep.label },
-      { label: "项目状态", value: workflow.completed ? "已完成" : selectedStatus === "confirm" ? "需要确认" : "制作中" },
-      { label: "已完成步骤", value: `${VIDEOS_BATCH_PRODUCT_STEPS.filter((step) => deriveProductStepStatus(workflow, step) === "ready").length} / ${VIDEOS_BATCH_PRODUCT_STEPS.length}` }
-    ];
-  }, [workflow, currentStep.label, selectedStatus]);
+  const statusForStep = (step: (typeof VIDEOS_BATCH_PRODUCT_STEPS)[number]) =>
+    workflow ? deriveProductStepStatus(workflow, step) : "pending" as const;
 
   async function perform(label: string, operation: () => Promise<VideosBatchWorkflowState>) {
     setBusy(label);
@@ -121,8 +122,8 @@ export function VideosBatchStudio({
     }
   }
 
-  async function startWorkflow(lessonText: string) {
-    const next = await perform("start", () => api.startVideosBatch(sessionId, { projectId: "P001", lessonText }));
+  async function startWorkflow(lessonText: string, source?: VideosBatchLessonSource) {
+    const next = await perform("start", () => api.startVideosBatch(sessionId, { projectId: "P001", lessonText, source }));
     if (next) setSelectedStepId(deriveCurrentProductStep(next));
   }
 
@@ -189,7 +190,7 @@ export function VideosBatchStudio({
   }
 
   const primaryLabel = !workflow
-    ? "开始生成课程导入"
+    ? "等待确认教案"
     : !isAtCurrentStep
       ? `回到 ${currentStep.label}`
       : workflow.completed
@@ -215,12 +216,35 @@ export function VideosBatchStudio({
   };
 
   return (
-    <section className="videosbatch-studio" aria-label="VideosBatch 流程制作">
-      <VideosBatchHeader sessionTitle={sessionTitle} stepLabel={selectedStep.label} status={selectedStatus} onOpenCanvas={onOpenCanvas} />
-      <div className="videosbatch-studio-body">
-        <WorkflowSidebar workflow={workflow} selectedStepId={selectedStepId} onSelectStep={setSelectedStepId} />
-        <main className="vbs-workspace">
-          {error && <div className="vbs-inline-error">{error}</div>}
+    <section className="videosbatch-studio videosbatch-studio-v2" aria-label="VideosBatch 流程制作">
+      <VideosBatchHeader
+        sessionTitle={sessionTitle}
+        completedCount={completedCount}
+        totalSteps={VIDEOS_BATCH_PRODUCT_STEPS.length}
+        onOpenCanvas={onOpenCanvas}
+      />
+      <WorkflowProgressRail
+        steps={VIDEOS_BATCH_PRODUCT_STEPS}
+        selectedStepId={selectedStepId}
+        currentStepId={currentStepId}
+        getStatus={statusForStep}
+        onSelectStep={setSelectedStepId}
+      />
+      <StudioStageToolbar
+        stepLabel={selectedStep.label}
+        status={selectedStatus}
+        workflowStarted={Boolean(workflow)}
+        completed={Boolean(workflow?.completed)}
+        busy={Boolean(busy)}
+        canDebug={debugArtifact !== undefined}
+        onRunAll={() => void runAll()}
+        onRestart={() => void restartSelected()}
+        onDebug={() => setDebugOpen(true)}
+      />
+
+      <main className="vbs-v2-workspace">
+        {error && <div className="vbs-inline-error">{error}</div>}
+        <div className="vbs-v2-stage-frame">
           <StageWorkspace
             sessionTitle={sessionTitle}
             session={session}
@@ -230,6 +254,7 @@ export function VideosBatchStudio({
             workflow={workflow}
             stepId={selectedStepId}
             busy={Boolean(busy)}
+            onParseLessonFile={(file) => api.parseVideosBatchLesson(sessionId, file)}
             onStart={startWorkflow}
             onSelectIntro={selectIntro}
             onSaveStory={saveStoryContent}
@@ -239,29 +264,17 @@ export function VideosBatchStudio({
             onConfirmAssets={confirmAssets}
             onOpenCanvas={onOpenCanvas}
           />
-          <WorkflowFooter
-            selectedStepId={selectedStepId}
-            busy={Boolean(busy)}
-            primaryLabel={primaryLabel}
-            primaryDisabled={primaryDisabled}
-            onPrevious={previous}
-            onPrimary={primaryAction}
-          />
-        </main>
-        <aside className="vbs-context" aria-label="当前步骤信息">
-          <div className="vbs-context-heading"><small>当前步骤</small><strong>{selectedStep.label}</strong><StageStatus status={selectedStatus} /></div>
-          <div className="vbs-context-facts">
-            {contextFacts.map((fact) => <div key={fact.label}><span>{fact.label}</span><strong>{fact.value}</strong></div>)}
-          </div>
-          {workflow && (
-            <div className="vbs-context-actions">
-              <button type="button" className="vbs-primary" disabled={Boolean(busy) || workflow.completed} onClick={() => void runAll()}>自动运行到确认点</button>
-              <button type="button" className="vbs-secondary" disabled={Boolean(busy)} onClick={() => void restartSelected()}>重新生成本步骤</button>
-              <button type="button" className="vbs-link-button" disabled={debugArtifact === undefined} onClick={() => setDebugOpen(true)}>查看原始数据</button>
-            </div>
-          )}
-        </aside>
-      </div>
+        </div>
+        <WorkflowFooter
+          selectedStepId={selectedStepId}
+          busy={Boolean(busy)}
+          primaryLabel={primaryLabel}
+          primaryDisabled={primaryDisabled}
+          onPrevious={previous}
+          onPrimary={primaryAction}
+        />
+      </main>
+
       <ArtifactDebugDrawer
         open={debugOpen}
         title={selectedStep.label}
