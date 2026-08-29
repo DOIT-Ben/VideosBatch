@@ -1,0 +1,364 @@
+.vbs-story-editor {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 430px;
+  resize: vertical;
+  border: 1px solid var(--vbs-border);
+  border-radius: 14px;
+  background: var(--vbs-surface);
+  color: var(--vbs-text);
+  padding: 24px 28px;
+  font: inherit;
+  font-size: 15px;
+  line-height: 2;
+  outline: none;
+}
+
+.vbs-story-editor:focus {
+  border-color: #d6b24d;
+  box-shadow: 0 0 0 3px rgba(229, 184, 75, 0.16);
+}
+
+.vbs-document-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.vbs-asset-gallery-detailed {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.vbs-asset-gallery-detailed .vbs-asset-card {
+  overflow: visible;
+  padding: 14px;
+}
+
+.vbs-asset-gallery-detailed .vbs-asset-card-copy {
+  padding: 0 0 12px;
+}
+
+.vbs-candidate-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.vbs-candidate-tile {
+  position: relative;
+  min-width: 0;
+  border: 1px solid var(--vbs-border);
+  border-radius: 12px;
+  background: var(--vbs-surface-subtle);
+  overflow: hidden;
+}
+
+.vbs-candidate-tile.selected {
+  border-color: #cfa438;
+  box-shadow: 0 0 0 2px rgba(229, 184, 75, 0.24);
+}
+
+.vbs-candidate-select {
+  width: 100%;
+  display: grid;
+  gap: 7px;
+  padding: 0 0 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.vbs-candidate-select > span {
+  padding: 0 9px;
+  color: var(--vbs-muted);
+  font-size: 11px;
+}
+
+.vbs-candidate-image {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  background: #eee9df;
+}
+
+.vbs-candidate-image img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.vbs-candidate-placeholder {
+  height: 100%;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 6px;
+  color: var(--vbs-muted);
+  font-size: 11px;
+}
+
+.vbs-selected-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 7px;
+  border-radius: 999px;
+  background: rgba(255, 250, 236, 0.94);
+  color: #775b16;
+  font-size: 10px;
+  font-weight: 700;
+  box-shadow: 0 2px 8px rgba(37, 35, 31, 0.12);
+}
+
+.vbs-candidate-preview {
+  position: absolute;
+  right: 7px;
+  bottom: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 7px;
+  border: 0;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #5f594e;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.vbs-asset-selection-state {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-top: 11px;
+  color: var(--vbs-muted);
+  font-size: 11px;
+}
+
+.vbs-asset-selection-state strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--vbs-success);
+}
+
+.vbs-video-shot-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.vbs-video-shot-card {
+  overflow: hidden;
+  border: 1px solid var(--vbs-border);
+  border-radius: 13px;
+  background: var(--vbs-surface);
+}
+
+.vbs-video-shot-preview {
+  aspect-ratio: 16 / 9;
+  background: #1e1e1e;
+}
+
+.vbs-video-shot-preview video {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+  background: #000;
+}
+
+.vbs-video-shot-placeholder {
+  height: 100%;
+  display: grid;
+  place-content: center;
+  color: #c9c5bb;
+  font-size: 12px;
+}
+
+.vbs-video-shot-copy {
+  display: grid;
+  gap: 8px;
+  padding: 12px 13px;
+}
+
+.vbs-video-shot-copy > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.vbs-video-shot-copy small {
+  color: var(--vbs-muted);
+}
+
+.vbs-radix-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(24, 22, 18, 0.44);
+  backdrop-filter: blur(3px);
+}
+
+.vbs-media-dialog,
+.vbs-debug-drawer {
+  position: fixed;
+  z-index: 1001;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  max-height: min(88vh, 920px);
+  border: 1px solid #ded8cc;
+  border-radius: 16px;
+  background: #fff;
+  color: #25231f;
+  box-shadow: 0 24px 80px rgba(37, 35, 31, 0.22);
+  outline: none;
+}
+
+.vbs-media-dialog {
+  width: min(920px, calc(100vw - 48px));
+  padding: 14px;
+}
+
+.vbs-media-dialog-header,
+.vbs-debug-drawer > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.vbs-media-dialog-header {
+  padding: 4px 4px 12px;
+}
+
+.vbs-media-dialog-header h2,
+.vbs-debug-drawer h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.vbs-media-dialog-stage {
+  min-height: 360px;
+  max-height: 70vh;
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  border-radius: 12px;
+  background: #f4f1ea;
+}
+
+.vbs-media-dialog-stage img {
+  max-width: 100%;
+  max-height: 70vh;
+  display: block;
+  object-fit: contain;
+}
+
+.vbs-media-empty {
+  color: #77736a;
+  font-size: 12px;
+}
+
+.vbs-media-open-link {
+  margin-top: 10px;
+}
+
+.vbs-icon-button {
+  width: 34px;
+  height: 34px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid #e8e3d8;
+  border-radius: 9px;
+  background: #fff;
+  color: #5f594e;
+  cursor: pointer;
+}
+
+.vbs-debug-drawer {
+  width: min(760px, calc(100vw - 48px));
+  padding: 18px;
+}
+
+.vbs-debug-drawer > header {
+  margin-bottom: 14px;
+}
+
+.vbs-debug-drawer > header > div {
+  display: grid;
+  gap: 3px;
+}
+
+.vbs-debug-drawer > header small {
+  color: #8a6b21;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.vbs-debug-scroll {
+  height: min(62vh, 600px);
+  overflow: hidden;
+  border: 1px solid #e8e3d8;
+  border-radius: 10px;
+  background: #faf8f3;
+}
+
+.vbs-debug-scroll-viewport {
+  width: 100%;
+  height: 100%;
+}
+
+.vbs-debug-scroll pre {
+  margin: 0;
+  padding: 14px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.vbs-scrollbar {
+  width: 9px;
+  padding: 2px;
+}
+
+.vbs-scrollbar-thumb {
+  border-radius: 999px;
+  background: #cfc9bc;
+}
+
+.vbs-debug-drawer textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #e8e3d8;
+  border-radius: 10px;
+  padding: 12px;
+  font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+@media (max-width: 1080px) {
+  .vbs-asset-gallery-detailed,
+  .vbs-video-shot-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .vbs-candidate-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .vbs-media-dialog,
+  .vbs-debug-drawer {
+    width: calc(100vw - 24px);
+  }
+}
