@@ -1,0 +1,70 @@
+name: wire-videosbatch-content-ux
+
+on:
+  push:
+    branches:
+      - feat/videosbatch-product-ui
+
+permissions:
+  contents: write
+
+jobs:
+  wire:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/videosbatch-product-ui
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install Radix Primitives
+        run: npm install radix-ui@1.6.7 --save-exact
+      - name: Patch App content UX wiring
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/client/App.tsx')
+          text = path.read_text()
+
+          css_anchor = 'import "./videosBatchStudio/videosBatchStudio.css";'
+          css_insert = css_anchor + '\nimport "./videosBatchStudio/contentUx.css";'
+          if 'contentUx.css' not in text:
+              if css_anchor not in text:
+                  raise SystemExit('VideosBatch Studio CSS import anchor not found')
+              text = text.replace(css_anchor, css_insert, 1)
+
+          old = '''          <VideosBatchStudio
+            sessionId={selectedSession.id}
+            sessionTitle={selectedSession.title}
+            workflow={selectedSession.videosBatchWorkflow}'''
+          new = '''          <VideosBatchStudio
+            sessionId={selectedSession.id}
+            sessionTitle={selectedSession.title}
+            session={selectedSession}
+            nativeAssets={state.assets.filter((asset) => asset.ownerSessionId === selectedSession.id)}
+            nativeShots={state.shots.filter((shot) => shot.sessionId === selectedSession.id)}
+            workflow={selectedSession.videosBatchWorkflow}'''
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif 'nativeAssets={state.assets.filter' not in text:
+              raise SystemExit('VideosBatchStudio App prop anchor not found')
+
+          path.write_text(text)
+          PY
+      - name: Commit dependency and App wiring
+        shell: bash
+        run: |
+          if git diff --quiet -- package.json package-lock.json src/client/App.tsx; then
+            echo "Content UX already wired"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json src/client/App.tsx
+          git commit -m "feat: wire native media into VideosBatch Studio"
+          git push origin HEAD:feat/videosbatch-product-ui
