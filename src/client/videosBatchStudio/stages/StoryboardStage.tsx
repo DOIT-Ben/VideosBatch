@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Accordion, Tabs } from "radix-ui";
 import { Check, ChevronDown, Copy, Pencil, Save, X } from "lucide-react";
 import { updateStoryboardSegmentFields, updateStoryboardSubshotFields } from "../contentModel";
+import "../storyboardPrompt.css";
 
 const SEGMENT_FIELDS = [
   ["visualPrompt", "画面 Prompt"],
