@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { LessonStage } from "../src/client/videosBatchStudio/stages/LessonStage";
+import { VideosBatchStudio } from "../src/client/videosBatchStudio/VideosBatchStudio";
 import { WorkflowProgressRail } from "../src/client/videosBatchStudio/components/WorkflowProgressRail";
 import { VIDEOS_BATCH_PRODUCT_STEPS } from "../src/client/videosBatchStudio/stageModel";
 
@@ -34,6 +35,17 @@ const railMarkup = renderToStaticMarkup(
 assert.ok(railMarkup.includes("教案"));
 assert.ok(railMarkup.includes("最终成片"));
 
+const preStartStudioMarkup = renderToStaticMarkup(
+  <VideosBatchStudio
+    sessionId="session-v2-layout"
+    sessionTitle="观察物体（1）"
+    onWorkflowChange={() => undefined}
+    onOpenCanvas={() => undefined}
+  />
+);
+assert.ok(preStartStudioMarkup.includes("从一份教案，开始制作课程视频"));
+assert.ok(!preStartStudioMarkup.includes("当前查看"), "pre-start lesson onboarding must not waste vertical space on a redundant stage toolbar");
+
 const studioSource = readFileSync(new URL("../src/client/videosBatchStudio/VideosBatchStudio.tsx", import.meta.url), "utf8");
 const lessonSource = readFileSync(new URL("../src/client/videosBatchStudio/stages/LessonStage.tsx", import.meta.url), "utf8");
 const mainSource = readFileSync(new URL("../src/client/main.tsx", import.meta.url), "utf8");
@@ -59,6 +71,21 @@ if (existsSync(lessonClientUrl)) {
 if (existsSync(focusCssUrl)) {
   const focusCssSource = readFileSync(focusCssUrl, "utf8");
   assert.ok(focusCssSource.includes(":has(.videosbatch-studio-v2)"), "workflow focus must activate from the mounted Guided Studio itself");
+  assert.match(
+    focusCssSource,
+    /\.app-shell:has\(\.videosbatch-studio-v2\)[\s\S]*?min-height:\s*100vh;[\s\S]*?height:\s*auto;[\s\S]*?overflow:\s*visible;/,
+    "guided workflow must use natural document scrolling instead of a clipped 100vh app shell"
+  );
+  assert.match(
+    focusCssSource,
+    /\.videosbatch-studio-v2\s*\{[\s\S]*?height:\s*auto;[\s\S]*?min-height:\s*100vh;[\s\S]*?overflow:\s*visible;/,
+    "Guided Studio itself must not create a nested clipped viewport"
+  );
+  assert.match(
+    focusCssSource,
+    /\.vbs-v2-workspace\s*\{[\s\S]*?overflow:\s*visible;/,
+    "workflow content must stay in the page scroll instead of hiding the footer in an inner scroll area"
+  );
   assert.match(
     focusCssSource,
     /\.app-shell:has\(\.videosbatch-studio-v2\)[\s\S]*?\.topbar\s*\{[\s\S]*?display:\s*none;/,
