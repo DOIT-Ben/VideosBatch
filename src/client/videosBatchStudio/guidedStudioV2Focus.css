@@ -1,0 +1,25 @@
+.app-shell:has(.videosbatch-studio-v2) {
+  grid-template-columns: minmax(0, 1fr);
+  background: #f4f3ef;
+}
+
+.app-shell:has(.videosbatch-studio-v2) > .sidebar {
+  display: none;
+}
+
+.app-shell:has(.videosbatch-studio-v2) > .workspace {
+  min-width: 0;
+  width: 100%;
+  padding: 0;
+  background: #f4f3ef;
+}
+
+.app-shell:has(.videosbatch-studio-v2) .topbar {
+  display: none;
+}
+
+.app-shell:has(.videosbatch-studio-v2) .workspace > .panel,
+.app-shell:has(.videosbatch-studio-v2) .workspace > .studio-panel,
+.app-shell:has(.videosbatch-studio-v2) .workspace > .canvas-shell {
+  min-width: 0;
+}
