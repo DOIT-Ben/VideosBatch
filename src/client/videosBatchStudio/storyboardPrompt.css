@@ -1,0 +1,142 @@
+.vbs-storyboard-tabs {
+  display: grid;
+  gap: 16px;
+}
+
+.vbs-tabs-list {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--vbs-border);
+  border-radius: 11px;
+  background: #f3efe6;
+}
+
+.vbs-tab-trigger {
+  min-height: 34px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--vbs-muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.vbs-tab-trigger[data-state="active"] {
+  background: #fff;
+  color: var(--vbs-text);
+  box-shadow: 0 1px 4px rgba(37, 35, 31, 0.09);
+}
+
+.vbs-tab-trigger:focus-visible {
+  outline: 2px solid rgba(207, 164, 56, 0.58);
+  outline-offset: 2px;
+}
+
+.vbs-tab-content {
+  min-width: 0;
+  outline: none;
+}
+
+.vbs-copyable-prompt-view {
+  display: grid;
+  gap: 14px;
+}
+
+.vbs-inline-warning {
+  padding: 11px 13px;
+  border: 1px solid #e6cf8d;
+  border-radius: 10px;
+  background: #fff8e2;
+  color: #765c1c;
+  font-size: 12px;
+}
+
+.vbs-prompt-master-card,
+.vbs-prompt-segment-card {
+  overflow: hidden;
+  border: 1px solid var(--vbs-border);
+  border-radius: 13px;
+  background: var(--vbs-surface);
+}
+
+.vbs-prompt-master-card > header,
+.vbs-prompt-segment-card > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--vbs-border);
+}
+
+.vbs-prompt-master-card > header > div,
+.vbs-prompt-segment-card > header > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.vbs-prompt-master-card > header small,
+.vbs-prompt-segment-card > header small {
+  color: var(--vbs-muted);
+  font-size: 10px;
+}
+
+.vbs-prompt-master-card > header strong {
+  font-size: 14px;
+}
+
+.vbs-prompt-master-card pre,
+.vbs-prompt-segment-card pre {
+  margin: 0;
+  padding: 15px 16px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: #fbfaf7;
+  color: #3b3832;
+  font: 12px/1.75 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.vbs-prompt-master-card pre {
+  max-height: 420px;
+  overflow: auto;
+}
+
+.vbs-prompt-segment-list {
+  display: grid;
+  gap: 10px;
+}
+
+.vbs-prompt-segment-card .vbs-reference-chips {
+  margin: 12px 14px 0;
+}
+
+.vbs-prompt-master-card button,
+.vbs-prompt-segment-card button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+@media (max-width: 720px) {
+  .vbs-tabs-list {
+    width: 100%;
+  }
+
+  .vbs-tab-trigger {
+    flex: 1;
+  }
+
+  .vbs-prompt-master-card > header,
+  .vbs-prompt-segment-card > header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
