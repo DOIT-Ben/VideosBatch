@@ -2,7 +2,7 @@
 
 Status: active
 Owner: SeeReel
-Last Reviewed: 2026-06-04
+Last Reviewed: 2026-08-29
 
 ## Purpose
 
@@ -13,6 +13,7 @@ Define the durable visual and interaction rules for the SeeReel workstation so t
 - Canvas background, node contrast, panels, toolbars, inspector surfaces, and responsive behavior.
 - Local development, production local runs, and the deployed site.
 - Visual rules that affect the main SeeReel session workspace.
+- VideosBatch Guided Studio visual hierarchy when the product owns the focused workflow surface.
 
 ## Non-Goals
 
@@ -25,6 +26,7 @@ Define the durable visual and interaction rules for the SeeReel workstation so t
 - As a creator, I can read node labels and status information at a glance.
 - As a mobile user, I can inspect a session without text overlapping or controls disappearing.
 - As an operator, I can visually distinguish canvas, nodes, active selections, and side panels.
+- As a VideosBatch user, I can move through all nine production steps without the product appearing to switch visual systems between stages.
 
 ## Product Rules
 
@@ -37,6 +39,18 @@ Define the durable visual and interaction rules for the SeeReel workstation so t
 - Public entry into SeeReel defaults to Chinese unless the user has explicitly chosen a language in the current language-preference version.
 - UI must preserve spatial continuity: content or controls already shown to the user must not disappear and reappear somewhere else unless the movement is caused by an explicit user action such as navigation, tab switching, filtering, expanding, collapsing, or responsive layout transition.
 
+## VideosBatch Guided Studio Rules
+
+- Guided Studio is a warm-white Editorial AI Studio, not a dark developer tool, admin dashboard, or high-saturation Canva-like creation surface.
+- `.videosbatch-studio-v2` is the canonical visual scope. Legacy `--vbs-*` semantic component tokens must resolve to the V2 token family while inside that scope rather than defining a second near-duplicate palette.
+- The product header remains one quiet product navigation layer. Project metadata must not read as a separate heavy card competing with brand and mode navigation.
+- The nine-step `WorkflowProgressRail` remains the product workflow navigator and must preserve status semantics, click targets, accessibility labels, and horizontal scrolling. Visual polish may make it read as a connected production timeline but must not simplify away running, confirm, stale, failed, or ready states.
+- Shared content surfaces use three roles: normal Surface Card, interactive Selectable Card, and primary Focus Card. Dense long-form editors should remain flatter rather than turning every section into a raised card.
+- Warm amber is an accent, not a page fill. Completed workflow state uses low-saturation green; failure uses explicit red; pending remains neutral.
+- Card hover lift is limited to 1px and all nonessential motion must respect `prefers-reduced-motion`.
+- The lesson upload visual may change, but `react-dropzone`, supported formats, parsing, text confirmation, and start-workflow behavior remain unchanged.
+- Step 09 may have stronger delivery-page emphasis, but final playback, download, StitchJob state, and Canvas switching behavior remain unchanged.
+
 ## Acceptance Criteria
 
 - [ ] Node title, status, and primary action controls are readable on a 390px-wide viewport.
@@ -47,9 +61,15 @@ Define the durable visual and interaction rules for the SeeReel workstation so t
 - [ ] A fresh visit with only the legacy `uiLanguage=en` preference still starts in Chinese.
 - [ ] Previously visible content or controls do not unexpectedly vanish and reappear in another area during normal loading, refresh, polling, or background state updates.
 - [ ] Production and local UI use the same committed styles, with no server-only manual patch.
+- [ ] VideosBatch shell and stage components resolve to one coherent V2 palette and typography hierarchy.
+- [ ] VideosBatch progress navigation still exposes all nine steps and every existing workflow state after visual polish.
+- [ ] VideosBatch workflow mode keeps natural document scrolling and does not introduce an inner clipped viewport.
+- [ ] VideosBatch lesson upload and final delivery retain their existing functional contracts after visual polish.
 
 ## Verification
 
+- [ ] `npm run smoke:specs`
+- [ ] `npx tsx scripts/smoke-videosbatch-guided-studio-v2.tsx`
 - [ ] `npm run verify:offline`
 - [ ] Open `http://localhost:5173/canvas/ses_demo_agent_plan` or the current demo session.
 - [ ] Check desktop, narrow desktop, and mobile widths.
