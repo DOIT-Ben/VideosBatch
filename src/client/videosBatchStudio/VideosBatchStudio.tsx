@@ -81,6 +81,9 @@ export function VideosBatchStudio({
         if (previousSelection && group.candidateAssetIds.includes(previousSelection)) next[group.assetKey] = previousSelection;
         else if (group.selectedAssetId) next[group.assetKey] = group.selectedAssetId;
       }
+      const previousKeys = Object.keys(previous);
+      const nextKeys = Object.keys(next);
+      if (previousKeys.length === nextKeys.length && nextKeys.every((key) => previous[key] === next[key])) return previous;
       return next;
     });
   }, [assetGroups]);
@@ -144,6 +147,13 @@ export function VideosBatchStudio({
       "STORY_SCRIPT",
       updateStoryArtifactContent(current, content)
     ));
+  }
+
+  async function saveStructuredArtifact(stageId: "SCREENPLAY" | "FINAL_STORYBOARD", artifact: any) {
+    if (!workflow) return;
+    await perform(stageId === "SCREENPLAY" ? "save-screenplay" : "save-storyboard", () =>
+      api.saveVideosBatchArtifact(sessionId, stageId, artifact)
+    );
   }
 
   async function confirmAssets() {
@@ -223,6 +233,8 @@ export function VideosBatchStudio({
             onStart={startWorkflow}
             onSelectIntro={selectIntro}
             onSaveStory={saveStoryContent}
+            onSaveScreenplay={(artifact) => saveStructuredArtifact("SCREENPLAY", artifact)}
+            onSaveStoryboard={(artifact) => saveStructuredArtifact("FINAL_STORYBOARD", artifact)}
             onSelectAsset={(assetKey, assetId) => setSelectedAssetIds((current) => ({ ...current, [assetKey]: assetId }))}
             onConfirmAssets={confirmAssets}
             onOpenCanvas={onOpenCanvas}
