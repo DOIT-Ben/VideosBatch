@@ -12,16 +12,24 @@ export function FinalVideoStage({ artifact, session, onOpenCanvas }: { artifact:
   return (
     <section className="vbs-stage-page vbs-final-stage">
       <div className="vbs-stage-kicker">09 · 最终成片</div>
-      <div className="vbs-final-hero">
-        <div className={`vbs-final-check ${ready ? "ready" : ""}`}>{ready ? "✓" : "○"}</div>
-        <h2>{ready ? "课程视频已完成" : status === "running" ? "正在拼接最终视频" : "等待最终拼接"}</h2>
-        <p>{ready ? "当前播放器直接读取 SeeReel StitchJob 的最终成片。" : native.progress || "完成视频执行后，系统会把已确认镜头按顺序拼接。"}</p>
+      <div className="vbs-final-delivery">
+        <div className="vbs-final-delivery-copy">
+          <div className={`vbs-final-check ${ready ? "ready" : ""}`}>{ready ? "✓" : "○"}</div>
+          <div className="vbs-final-hero">
+            <h2>{ready ? "课程视频已完成" : status === "running" ? "正在拼接最终视频" : "等待最终拼接"}</h2>
+            <p>{ready ? "当前播放器直接读取 SeeReel StitchJob 的最终成片，可下载交付或继续进入制作画布精修。" : native.progress || "完成视频执行后，系统会把已确认镜头按顺序拼接。"}</p>
+          </div>
+        </div>
+
+        <div className="vbs-final-delivery-media">
+          {playbackUrl ? (
+            <video className="vbs-final-player" src={playbackUrl} controls playsInline preload="metadata" />
+          ) : (
+            <div className="vbs-final-player-placeholder"><span>{artifactUrl.startsWith("fake://") ? "模拟成片尚未映射为真实媒体" : "最终视频预览"}</span><small>{native.progress || artifactUrl || "尚未生成"}</small></div>
+          )}
+        </div>
       </div>
-      {playbackUrl ? (
-        <video className="vbs-final-player" src={playbackUrl} controls playsInline preload="metadata" />
-      ) : (
-        <div className="vbs-final-player-placeholder"><span>{artifactUrl.startsWith("fake://") ? "模拟成片尚未映射为真实媒体" : "最终视频预览"}</span><small>{native.progress || artifactUrl || "尚未生成"}</small></div>
-      )}
+
       <div className="vbs-final-actions">
         {downloadUrl && <a className="vbs-primary" href={downloadUrl} download>下载 MP4</a>}
         <button type="button" className="vbs-secondary" onClick={onOpenCanvas}>进入制作画布</button>
