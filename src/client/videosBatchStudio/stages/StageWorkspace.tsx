@@ -72,7 +72,15 @@ export function StageWorkspace({
     case "screenplay":
       return <ScreenplayStage artifact={stage("SCREENPLAY")} busy={busy} onSaveArtifact={onSaveScreenplay} />;
     case "storyboard":
-      return <StoryboardStage artifact={stage("FINAL_STORYBOARD")} busy={busy} onSaveArtifact={onSaveStoryboard} />;
+      return (
+        <StoryboardStage
+          artifact={stage("FINAL_STORYBOARD")}
+          copyablePromptArtifact={stage("COPYABLE_PROMPT")}
+          copyablePromptStatus={workflow?.stages.COPYABLE_PROMPT?.status}
+          busy={busy}
+          onSaveArtifact={onSaveStoryboard}
+        />
+      );
     case "execution":
       return <ExecutionStage quoteArtifact={stage("QUOTE")} executionArtifact={stage("EXECUTION")} shots={nativeShots} onOpenCanvas={onOpenCanvas} />;
     case "final":
