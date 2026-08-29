@@ -115,6 +115,7 @@
     "@types/pg": "^8.20.0",
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",
+    "@types/word-extractor": "1.0.6",
     "rollup": "npm:@rollup/wasm-node@^4.60.4",
     "tsx": "^4.20.5",
     "typescript": "^5.9.2"
