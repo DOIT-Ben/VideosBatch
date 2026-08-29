@@ -3,6 +3,7 @@ import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState
 import { api } from "./api";
 import { VideosBatchStudio } from "./videosBatchStudio/VideosBatchStudio";
 import "./videosBatchStudio/videosBatchStudio.css";
+import "./videosBatchStudio/contentUx.css";
 import type { AdminAgentPlanStatus, AdminSecurityStatus, AdminUserAgentPlanCredentialList, AgentPlanCredentialStatus, ApiKeyCredentialStatus, Asset, AssetType, CreateSessionPayload, GalleryItem, Session, SessionPackage, Shot, StandardApiKeyRoute, StitchJob, StoreSnapshot, TokenUsageEvent, TokenUsageModelFamily } from "../shared/types";
 import { PendingGenerationsProvider } from "./flow/PendingGenerations";
 import { useUndoKeyboardShortcut, useUndoStack } from "./flow/useUndoStack";
@@ -2434,6 +2435,9 @@ export function App() {
           <VideosBatchStudio
             sessionId={selectedSession.id}
             sessionTitle={selectedSession.title}
+            session={selectedSession}
+            nativeAssets={state.assets.filter((asset) => asset.ownerSessionId === selectedSession.id)}
+            nativeShots={state.shots.filter((shot) => shot.sessionId === selectedSession.id)}
             workflow={selectedSession.videosBatchWorkflow}
             onWorkflowChange={(workflow) => {
               setState((prev) => ({
