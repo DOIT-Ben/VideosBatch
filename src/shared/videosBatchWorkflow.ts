@@ -28,9 +28,17 @@ export type VideosBatchIntroSelectionMode =
   | "system_recommended"
   | "custom";
 
+export interface VideosBatchLessonSource {
+  kind: "file" | "pasted_text";
+  fileName?: string;
+  fileType?: "doc" | "docx" | "pdf";
+  sizeBytes?: number;
+}
+
 export interface VideosBatchLessonInputArtifact {
   projectId: string;
   lessonText: string;
+  source?: VideosBatchLessonSource;
 }
 
 export interface VideosBatchStageState<T = unknown> {
@@ -57,6 +65,7 @@ export interface VideosBatchWorkflowState {
 export interface CreateVideosBatchWorkflowInput {
   projectId: string;
   lessonText: string;
+  source?: VideosBatchLessonSource;
 }
 
 export function createVideosBatchWorkflow(
@@ -82,7 +91,8 @@ export function createVideosBatchWorkflow(
     revision: 1,
     artifact: {
       projectId,
-      lessonText
+      lessonText,
+      ...(input.source ? { source: input.source } : {})
     } satisfies VideosBatchLessonInputArtifact,
     updatedAt: now
   };
