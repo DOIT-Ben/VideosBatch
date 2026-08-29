@@ -1,5 +1,10 @@
 import type { Asset, Session, Shot } from "../../../shared/types";
-import type { VideosBatchStageId, VideosBatchWorkflowState } from "../../../shared/videosBatchWorkflow";
+import type {
+  VideosBatchLessonSource,
+  VideosBatchParsedLessonDocument,
+  VideosBatchStageId,
+  VideosBatchWorkflowState
+} from "../../../shared/videosBatchWorkflow";
 import type { VideosBatchProductStepId } from "../stageModel";
 import { LessonStage } from "./LessonStage";
 import { IntroCandidatesStage } from "./IntroCandidatesStage";
@@ -20,6 +25,7 @@ export function StageWorkspace({
   workflow,
   stepId,
   busy,
+  onParseLessonFile,
   onStart,
   onSelectIntro,
   onSaveStory,
@@ -37,7 +43,8 @@ export function StageWorkspace({
   workflow?: VideosBatchWorkflowState;
   stepId: VideosBatchProductStepId;
   busy?: boolean;
-  onStart: (lessonText: string) => Promise<void> | void;
+  onParseLessonFile?: (file: File) => Promise<VideosBatchParsedLessonDocument>;
+  onStart: (lessonText: string, source?: VideosBatchLessonSource) => Promise<void> | void;
   onSelectIntro: (candidate: any) => Promise<void> | void;
   onSaveStory?: (content: string) => Promise<void> | void;
   onSaveScreenplay?: (artifact: any) => Promise<void> | void;
@@ -49,7 +56,17 @@ export function StageWorkspace({
   const stage = (id: VideosBatchStageId) => workflow?.stages[id]?.artifact as any;
   switch (stepId) {
     case "lesson":
-      return <LessonStage sessionTitle={sessionTitle} lessonText={stage("LESSON_INPUT")?.lessonText} busy={busy} started={Boolean(workflow)} onStart={onStart} />;
+      return (
+        <LessonStage
+          sessionTitle={sessionTitle}
+          lessonText={stage("LESSON_INPUT")?.lessonText}
+          source={stage("LESSON_INPUT")?.source}
+          busy={busy}
+          started={Boolean(workflow)}
+          onParseFile={onParseLessonFile}
+          onStart={onStart}
+        />
+      );
     case "intro":
       return <IntroCandidatesStage artifact={stage("COURSE_INTRO_CANDIDATES")} selectedIntroId={workflow?.selectedIntroId} busy={busy} onSelect={onSelectIntro} />;
     case "story":
