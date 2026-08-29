@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
+import type { Asset, Session, Shot } from "../../shared/types";
 import type { VideosBatchStageId, VideosBatchWorkflowState } from "../../shared/videosBatchWorkflow";
 import { VideosBatchHeader } from "./VideosBatchHeader";
 import { WorkflowSidebar } from "./WorkflowSidebar";
@@ -7,6 +8,7 @@ import { WorkflowFooter } from "./WorkflowFooter";
 import { ArtifactDebugDrawer } from "./components/ArtifactDebugDrawer";
 import { StageStatus } from "./components/StageStatus";
 import { StageWorkspace } from "./stages/StageWorkspace";
+import { buildAssetCandidateGroups, buildAssetConfirmationArtifact, updateStoryArtifactContent } from "./contentModel";
 import {
   VIDEOS_BATCH_PRODUCT_STEPS,
   deriveCurrentProductStep,
@@ -27,18 +29,25 @@ function debugStageForStep(workflow: VideosBatchWorkflowState | undefined, stepI
 export function VideosBatchStudio({
   sessionId,
   sessionTitle,
+  session,
+  nativeAssets = [],
+  nativeShots = [],
   workflow,
   onWorkflowChange,
   onOpenCanvas
 }: {
   sessionId: string;
   sessionTitle: string;
+  session?: Session;
+  nativeAssets?: Asset[];
+  nativeShots?: Shot[];
   workflow?: VideosBatchWorkflowState;
   onWorkflowChange: (workflow: VideosBatchWorkflowState) => void;
   onOpenCanvas: () => void;
 }) {
   const currentStepId = workflow ? deriveCurrentProductStep(workflow) : "lesson";
   const [selectedStepId, setSelectedStepId] = useState<VideosBatchProductStepId>(currentStepId);
+  const [selectedAssetIds, setSelectedAssetIds] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [debugOpen, setDebugOpen] = useState(false);
@@ -46,10 +55,35 @@ export function VideosBatchStudio({
   useEffect(() => {
     if (!workflow) {
       setSelectedStepId("lesson");
+      setSelectedAssetIds({});
       return;
     }
     if (workflow.stages[workflow.currentStage]?.status === "running") setSelectedStepId(deriveCurrentProductStep(workflow));
   }, [workflow?.currentStage, workflow?.completed]);
+
+  const assetGroups = useMemo(() => buildAssetCandidateGroups(
+    workflow?.stages.ASSET_PLAN?.artifact,
+    workflow?.stages.ASSET_CANDIDATES?.artifact,
+    workflow?.stages.ASSET_CONFIRMATION?.artifact,
+    nativeAssets
+  ), [
+    workflow?.stages.ASSET_PLAN?.revision,
+    workflow?.stages.ASSET_CANDIDATES?.revision,
+    workflow?.stages.ASSET_CONFIRMATION?.revision,
+    nativeAssets
+  ]);
+
+  useEffect(() => {
+    setSelectedAssetIds((previous) => {
+      const next: Record<string, string> = {};
+      for (const group of assetGroups) {
+        const previousSelection = previous[group.assetKey];
+        if (previousSelection && group.candidateAssetIds.includes(previousSelection)) next[group.assetKey] = previousSelection;
+        else if (group.selectedAssetId) next[group.assetKey] = group.selectedAssetId;
+      }
+      return next;
+    });
+  }, [assetGroups]);
 
   const selectedStep = productStepById(selectedStepId);
   const selectedStatus = workflow ? deriveProductStepStatus(workflow, selectedStep) : "pending";
@@ -101,23 +135,27 @@ export function VideosBatchStudio({
     if (next) setSelectedStepId(deriveCurrentProductStep(next));
   }
 
+  async function saveStoryContent(content: string) {
+    if (!workflow) return;
+    const current = workflow.stages.STORY_SCRIPT?.artifact as Record<string, any> | undefined;
+    if (!current) return;
+    await perform("save-story", () => api.saveVideosBatchArtifact(
+      sessionId,
+      "STORY_SCRIPT",
+      updateStoryArtifactContent(current, content)
+    ));
+  }
+
   async function confirmAssets() {
     if (!workflow) return;
-    const candidates = workflow.stages.ASSET_CANDIDATES?.artifact as any;
-    const items = Array.isArray(candidates?.items) ? candidates.items : [];
-    if (!items.length || items.some((item: any) => !Array.isArray(item?.candidateAssetIds) || !item.candidateAssetIds.length)) {
-      setError("每个资产都需要至少一张候选图后才能确认。");
+    let artifact: ReturnType<typeof buildAssetConfirmationArtifact>;
+    try {
+      artifact = buildAssetConfirmationArtifact(assetGroups, selectedAssetIds);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "每个资产都需要选择一张候选图后才能确认。");
       return;
     }
-    const next = await perform("confirm-assets", () => api.saveVideosBatchArtifact(sessionId, "ASSET_CONFIRMATION", {
-      confirmed: true,
-      items: items.map((item: any) => ({
-        assetKey: item.assetKey,
-        publicAssetId: item.publicAssetId,
-        candidateAssetIds: item.candidateAssetIds,
-        selectedAssetId: item.candidateAssetIds[0]
-      }))
-    }));
+    const next = await perform("confirm-assets", () => api.saveVideosBatchArtifact(sessionId, "ASSET_CONFIRMATION", artifact));
     if (next) setSelectedStepId(deriveCurrentProductStep(next));
   }
 
@@ -175,11 +213,17 @@ export function VideosBatchStudio({
           {error && <div className="vbs-inline-error">{error}</div>}
           <StageWorkspace
             sessionTitle={sessionTitle}
+            session={session}
+            nativeAssets={nativeAssets}
+            nativeShots={nativeShots}
+            selectedAssetIds={selectedAssetIds}
             workflow={workflow}
             stepId={selectedStepId}
             busy={Boolean(busy)}
             onStart={startWorkflow}
             onSelectIntro={selectIntro}
+            onSaveStory={saveStoryContent}
+            onSelectAsset={(assetKey, assetId) => setSelectedAssetIds((current) => ({ ...current, [assetKey]: assetId }))}
             onConfirmAssets={confirmAssets}
             onOpenCanvas={onOpenCanvas}
           />
