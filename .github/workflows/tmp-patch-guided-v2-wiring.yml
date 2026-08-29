@@ -1,0 +1,73 @@
+name: tmp-patch-guided-v2-wiring
+
+on:
+  push:
+    branches:
+      - feat/videosbatch-product-ui
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/videosbatch-product-ui
+      - name: Patch client wiring with minimal semantic anchors
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          api = Path('src/client/api.ts')
+          text = api.read_text()
+          old_import = 'import type { VideosBatchStageId, VideosBatchWorkflowState } from "../shared/videosBatchWorkflow";'
+          new_import = '''import type {
+            VideosBatchLessonSource,
+            VideosBatchParsedLessonDocument,
+            VideosBatchStageId,
+            VideosBatchWorkflowState
+          } from "../shared/videosBatchWorkflow";'''
+          if old_import not in text:
+              raise SystemExit('api import anchor not found')
+          text = text.replace(old_import, new_import, 1)
+
+          start_anchor = '  startVideosBatch: (sessionId: string, payload: { projectId: string; lessonText: string }) =>'
+          if start_anchor not in text:
+              raise SystemExit('api start signature anchor not found')
+          parse_method = '''  parseVideosBatchLesson: (sessionId: string, file: File) => {
+            const params = new URLSearchParams({ filename: file.name });
+            return request<VideosBatchParsedLessonDocument>(`/api/sessions/${sessionId}/videosbatch/lesson/parse?${params.toString()}`, {
+              method: "POST",
+              headers: { "Content-Type": file.type || "application/octet-stream" },
+              body: file
+            });
+          },
+'''
+          text = text.replace(start_anchor, parse_method + '  startVideosBatch: (sessionId: string, payload: { projectId: string; lessonText: string; source?: VideosBatchLessonSource }) =>', 1)
+          api.write_text(text)
+
+          app = Path('src/client/App.tsx')
+          text = app.read_text()
+          css_anchor = 'import "./videosBatchStudio/contentUx.css";'
+          if css_anchor not in text:
+              raise SystemExit('App CSS anchor not found')
+          text = text.replace(css_anchor, css_anchor + '\nimport "./videosBatchStudio/guidedStudioV2.css";', 1)
+
+          shell_anchor = '<main className="app-shell" data-build={clientBuildStamp}>'
+          if shell_anchor not in text:
+              raise SystemExit('App shell anchor not found')
+          shell_replacement = '<main className={`app-shell ${activeView === "studio" && Boolean(selectedSession) && videosBatchMode === "workflow" ? "vbs-flow-focus" : ""}`} data-build={clientBuildStamp}>'
+          text = text.replace(shell_anchor, shell_replacement, 1)
+          app.write_text(text)
+          PY
+      - name: Commit V2 wiring
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/client/api.ts src/client/App.tsx
+          git commit -m "feat: wire Guided Studio V2 lesson upload and focus shell"
+          git push origin HEAD:feat/videosbatch-product-ui
