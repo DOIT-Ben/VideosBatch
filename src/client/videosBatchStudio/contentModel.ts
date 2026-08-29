@@ -91,6 +91,32 @@ export function updateStoryArtifactContent<T extends Record<string, any>>(artifa
   return { ...artifact, content: String(content) };
 }
 
+export function updateScreenplaySceneFields<T extends Record<string, any>>(
+  artifact: T,
+  sceneSequence: number,
+  patch: Record<string, unknown>
+): T {
+  const scenes = Array.isArray(artifact.scenes) ? artifact.scenes : [];
+  const nextScenes = scenes.map((scene: any) =>
+    Number(scene?.sequence) === Number(sceneSequence) ? { ...scene, ...patch, sequence: scene.sequence } : scene
+  );
+  return { ...artifact, scenes: nextScenes };
+}
+
+export function updateStoryboardSegmentFields<T extends Record<string, any>>(
+  artifact: T,
+  segmentSequence: number,
+  patch: Record<string, unknown>
+): T {
+  const segments = Array.isArray(artifact.segments) ? artifact.segments : [];
+  const nextSegments = segments.map((segment: any) =>
+    Number(segment?.sequence) === Number(segmentSequence)
+      ? { ...segment, ...patch, sequence: segment.sequence, duration: segment.duration }
+      : segment
+  );
+  return { ...artifact, segments: nextSegments };
+}
+
 export function preferredShotVideoUrl(shot: Partial<Shot> | undefined) {
   if (!shot) return "";
   return shot.playbackVideoUrl || shot.videoUrl || "";
