@@ -55,6 +55,10 @@ jobs:
         run: npx tsx scripts/smoke-videosbatch-content-ux.tsx
       - name: Verify VideosBatch Copyable Prompt UI
         run: npx tsx scripts/smoke-videosbatch-copyable-prompt-ui.tsx
+      - name: Verify VideosBatch lesson document parser
+        run: npx tsx scripts/smoke-videosbatch-lesson-document-parser.ts
+      - name: Verify VideosBatch Guided Studio V2
+        run: npx tsx scripts/smoke-videosbatch-guided-studio-v2.tsx
       - name: Verify VideosBatch Phase 1 orchestration E2E when test exists
         shell: bash
         run: |
