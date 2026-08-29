@@ -1,23 +1,15 @@
 import mammoth from "mammoth";
 import { PDFParse } from "pdf-parse";
 import WordExtractor from "word-extractor";
+import type {
+  VideosBatchLessonFileType,
+  VideosBatchParsedLessonDocument
+} from "../../shared/videosBatchWorkflow";
 
 export const MAX_LESSON_FILE_BYTES = 25 * 1024 * 1024;
 
-export type LessonDocumentType = "doc" | "docx" | "pdf";
-
-export interface ParsedLessonDocument {
-  sourceKind: "file";
-  fileName: string;
-  fileType: LessonDocumentType;
-  mimeType: string;
-  sizeBytes: number;
-  text: string;
-  characterCount: number;
-  paragraphCount: number;
-  pageCount?: number;
-  warnings: string[];
-}
+export type LessonDocumentType = VideosBatchLessonFileType;
+export type ParsedLessonDocument = VideosBatchParsedLessonDocument;
 
 const DOC_SIGNATURE = Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]);
 const PDF_SIGNATURE = Buffer.from("%PDF-", "ascii");
