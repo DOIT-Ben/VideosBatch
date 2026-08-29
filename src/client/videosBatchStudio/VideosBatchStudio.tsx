@@ -238,17 +238,19 @@ export function VideosBatchStudio({
         getStatus={statusForStep}
         onSelectStep={setSelectedStepId}
       />
-      <StudioStageToolbar
-        stepLabel={selectedStep.label}
-        status={selectedStatus}
-        workflowStarted={Boolean(workflow)}
-        completed={Boolean(workflow?.completed)}
-        busy={Boolean(busy)}
-        canDebug={debugArtifact !== undefined}
-        onRunAll={() => void runAll()}
-        onRestart={() => void restartSelected()}
-        onDebug={() => setDebugOpen(true)}
-      />
+      {workflow ? (
+        <StudioStageToolbar
+          stepLabel={selectedStep.label}
+          status={selectedStatus}
+          workflowStarted
+          completed={Boolean(workflow.completed)}
+          busy={Boolean(busy)}
+          canDebug={debugArtifact !== undefined}
+          onRunAll={() => void runAll()}
+          onRestart={() => void restartSelected()}
+          onDebug={() => setDebugOpen(true)}
+        />
+      ) : null}
 
       <main className="vbs-v2-workspace">
         {error && <div className="vbs-inline-error">{error}</div>}
