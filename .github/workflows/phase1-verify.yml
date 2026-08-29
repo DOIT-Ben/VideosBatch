@@ -51,6 +51,8 @@ jobs:
           fi
       - name: Verify VideosBatch Product UI foundation
         run: npx tsx scripts/smoke-videosbatch-product-ui-foundation.tsx
+      - name: Verify VideosBatch Content UX
+        run: npx tsx scripts/smoke-videosbatch-content-ux.tsx
       - name: Verify VideosBatch Phase 1 orchestration E2E when test exists
         shell: bash
         run: |
