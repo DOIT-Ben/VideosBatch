@@ -1,0 +1,83 @@
+name: tmp-patch-guided-v2-wiring
+
+on:
+  push:
+    branches:
+      - feat/videosbatch-product-ui
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/videosbatch-product-ui
+      - name: Patch large client entry files precisely
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          api = Path('src/client/api.ts')
+          text = api.read_text()
+          old_import = 'import type { VideosBatchStageId, VideosBatchWorkflowState } from "../shared/videosBatchWorkflow";'
+          new_import = '''import type {
+            VideosBatchLessonSource,
+            VideosBatchParsedLessonDocument,
+            VideosBatchStageId,
+            VideosBatchWorkflowState
+          } from "../shared/videosBatchWorkflow";'''
+          if old_import not in text:
+              raise SystemExit('api import anchor not found')
+          text = text.replace(old_import, new_import, 1)
+
+          old_methods = '''  videosBatchWorkflow: (sessionId: string) =>
+            request<VideosBatchWorkflowState>(`/api/sessions/${sessionId}/videosbatch`),
+          startVideosBatch: (sessionId: string, payload: { projectId: string; lessonText: string }) =>
+            request<VideosBatchWorkflowState>(`/api/sessions/${sessionId}/videosbatch/start`, {
+              method: "POST",
+              body: JSON.stringify(payload)
+            }),'''
+          new_methods = '''  videosBatchWorkflow: (sessionId: string) =>
+            request<VideosBatchWorkflowState>(`/api/sessions/${sessionId}/videosbatch`),
+          parseVideosBatchLesson: (sessionId: string, file: File) => {
+            const params = new URLSearchParams({ filename: file.name });
+            return request<VideosBatchParsedLessonDocument>(`/api/sessions/${sessionId}/videosbatch/lesson/parse?${params.toString()}`, {
+              method: "POST",
+              headers: { "Content-Type": file.type || "application/octet-stream" },
+              body: file
+            });
+          },
+          startVideosBatch: (sessionId: string, payload: { projectId: string; lessonText: string; source?: VideosBatchLessonSource }) =>
+            request<VideosBatchWorkflowState>(`/api/sessions/${sessionId}/videosbatch/start`, {
+              method: "POST",
+              body: JSON.stringify(payload)
+            }),'''
+          if old_methods not in text:
+              raise SystemExit('api VideosBatch methods anchor not found')
+          api.write_text(text.replace(old_methods, new_methods, 1))
+
+          app = Path('src/client/App.tsx')
+          text = app.read_text()
+          old_css = 'import "./videosBatchStudio/contentUx.css";'
+          new_css = 'import "./videosBatchStudio/contentUx.css";\nimport "./videosBatchStudio/guidedStudioV2.css";'
+          if old_css not in text:
+              raise SystemExit('App CSS anchor not found')
+          text = text.replace(old_css, new_css, 1)
+          old_shell = '<main className="app-shell" data-build={clientBuildStamp}>'
+          new_shell = '<main className={`app-shell ${activeView === "studio" && Boolean(selectedSession) && videosBatchMode === "workflow" ? "vbs-flow-focus" : ""}`} data-build={clientBuildStamp}>'
+          if old_shell not in text:
+              raise SystemExit('App shell anchor not found')
+          app.write_text(text.replace(old_shell, new_shell, 1))
+          PY
+      - name: Commit V2 wiring
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/client/api.ts src/client/App.tsx
+          git commit -m "feat: wire Guided Studio V2 lesson upload and focus shell"
+          git push origin HEAD:feat/videosbatch-product-ui
