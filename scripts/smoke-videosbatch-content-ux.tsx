@@ -9,6 +9,7 @@ import {
   updateStoryArtifactContent,
   updateScreenplaySceneFields,
   updateStoryboardSegmentFields,
+  updateStoryboardSubshotFields,
   preferredShotVideoUrl,
   preferredFinalVideo
 } from "../src/client/videosBatchStudio/contentModel";
@@ -181,6 +182,16 @@ assert.equal(editedStoryboard.segments[0].duration, 10, "storyboard edit must pr
 assert.deepEqual(editedStoryboard.segments[0].references, storyboard.segments[0].references, "storyboard edit must preserve stable asset references");
 assert.deepEqual(editedStoryboard.segments[0].subshots, storyboard.segments[0].subshots, "main segment edit must not silently rewrite subshots");
 assert.notEqual(editedStoryboard.segments[0], storyboard.segments[0], "storyboard segment edit must be immutable");
+
+const editedSubshotStoryboard = updateStoryboardSubshotFields(storyboard, 1, 2, {
+  action: "从两个方向快速比较",
+  camera: "缓慢推近"
+});
+assert.equal(editedSubshotStoryboard.segments[0].subshots[1].action, "从两个方向快速比较");
+assert.equal(editedSubshotStoryboard.segments[0].subshots[1].camera, "缓慢推近");
+assert.equal(editedSubshotStoryboard.segments[0].subshots[1].duration, 3, "subshot edit must preserve its duration");
+assert.deepEqual(editedSubshotStoryboard.segments[0].subshots[0], storyboard.segments[0].subshots[0], "subshot edit must not rewrite sibling subshots");
+assert.deepEqual(editedSubshotStoryboard.segments[0].references, storyboard.segments[0].references, "subshot edit must preserve stable refs");
 
 assert.equal(preferredShotVideoUrl({ playbackVideoUrl: "https://cdn.example.com/shot.mp4", videoUrl: "local.mp4" } as any), "https://cdn.example.com/shot.mp4");
 assert.deepEqual(
