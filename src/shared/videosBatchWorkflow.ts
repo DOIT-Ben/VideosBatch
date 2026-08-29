@@ -28,11 +28,26 @@ export type VideosBatchIntroSelectionMode =
   | "system_recommended"
   | "custom";
 
+export type VideosBatchLessonFileType = "doc" | "docx" | "pdf";
+
 export interface VideosBatchLessonSource {
   kind: "file" | "pasted_text";
   fileName?: string;
-  fileType?: "doc" | "docx" | "pdf";
+  fileType?: VideosBatchLessonFileType;
   sizeBytes?: number;
+}
+
+export interface VideosBatchParsedLessonDocument {
+  sourceKind: "file";
+  fileName: string;
+  fileType: VideosBatchLessonFileType;
+  mimeType: string;
+  sizeBytes: number;
+  text: string;
+  characterCount: number;
+  paragraphCount: number;
+  pageCount?: number;
+  warnings: string[];
 }
 
 export interface VideosBatchLessonInputArtifact {
