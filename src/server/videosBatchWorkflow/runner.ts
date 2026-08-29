@@ -230,6 +230,8 @@ export function replaceStageArtifact(
   updatedAt = nowIso()
 ): VideosBatchWorkflowState {
   const workflow = cloneWorkflow(source);
+  const previousCurrentStage = source.currentStage;
+  const previousCompleted = source.completed;
   const current = workflow.stages[stageId] || { status: "pending" as const, revision: 0 };
 
   if (stageId === "COURSE_INTRO_SELECTION") {
@@ -275,13 +277,23 @@ export function replaceStageArtifact(
   markDownstreamStale(workflow, stageId);
 
   const stageIndex = VIDEOS_BATCH_STAGE_ORDER.indexOf(stageId);
+  const previousCurrentIndex = VIDEOS_BATCH_STAGE_ORDER.indexOf(previousCurrentStage);
   const introSelectionIndex = VIDEOS_BATCH_STAGE_ORDER.indexOf("COURSE_INTRO_SELECTION");
   if (stageIndex < introSelectionIndex) clearIntroSelection(workflow);
 
-  if (workflow.currentStage === stageId) {
-    const next = nextStage(stageId);
-    if (next) workflow.currentStage = next;
-    else workflow.completed = true;
+  const next = nextStage(stageId);
+  if (previousCurrentStage === stageId) {
+    if (next) {
+      workflow.currentStage = next;
+      workflow.completed = false;
+    } else {
+      workflow.completed = true;
+    }
+  } else if (next && (previousCompleted || (previousCurrentIndex >= 0 && stageIndex < previousCurrentIndex))) {
+    // Editing an artifact that the workflow has already passed invalidates every downstream result.
+    // Resume from the immediate downstream stage so the canonical chain is recalculated in order.
+    workflow.currentStage = next;
+    workflow.completed = false;
   }
 
   workflow.updatedAt = updatedAt;
