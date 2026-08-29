@@ -27,6 +27,7 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
 
           path = Path('src/client/App.tsx')
           text = path.read_text()
@@ -38,21 +39,29 @@ jobs:
                   raise SystemExit('VideosBatch Studio CSS import anchor not found')
               text = text.replace(css_anchor, css_insert, 1)
 
-          old = '''          <VideosBatchStudio
-            sessionId={selectedSession.id}
-            sessionTitle={selectedSession.title}
-            workflow={selectedSession.videosBatchWorkflow}'''
-          new = '''          <VideosBatchStudio
-            sessionId={selectedSession.id}
-            sessionTitle={selectedSession.title}
-            session={selectedSession}
-            nativeAssets={state.assets.filter((asset) => asset.ownerSessionId === selectedSession.id)}
-            nativeShots={state.shots.filter((shot) => shot.sessionId === selectedSession.id)}
-            workflow={selectedSession.videosBatchWorkflow}'''
-          if old in text:
-              text = text.replace(old, new, 1)
-          elif 'nativeAssets={state.assets.filter' not in text:
-              raise SystemExit('VideosBatchStudio App prop anchor not found')
+          if 'nativeAssets={state.assets.filter' not in text:
+              pattern = re.compile(
+                  r'(<VideosBatchStudio\s+sessionId=\{selectedSession\.id\}\s+sessionTitle=\{selectedSession\.title\}\s+)(workflow=\{selectedSession\.videosBatchWorkflow\})',
+                  re.S,
+              )
+              replacement = (
+                  r'\1session={selectedSession}\n'
+                  r'            nativeAssets={state.assets.filter((asset) => asset.ownerSessionId === selectedSession.id)}\n'
+                  r'            nativeShots={state.shots.filter((shot) => shot.sessionId === selectedSession.id)}\n'
+                  r'            \2'
+              )
+              text, count = pattern.subn(replacement, text, count=1)
+              if count != 1:
+                  raise SystemExit(f'VideosBatchStudio App prop anchor not found: matched {count}')
+
+          for required in [
+              'contentUx.css',
+              'session={selectedSession}',
+              'nativeAssets={state.assets.filter',
+              'nativeShots={state.shots.filter'
+          ]:
+              if required not in text:
+                  raise SystemExit(f'missing App content UX wiring: {required}')
 
           path.write_text(text)
           PY
