@@ -69,6 +69,33 @@ assert.equal(workflow.stages.QUOTE?.status, "ready");
 assert.equal(workflow.stages.EXECUTION?.status, "ready");
 assert.equal(workflow.stages.STITCH?.status, "ready");
 
+const editedStory = replaceStageArtifact(workflow, "STORY_SCRIPT", {
+  ...(workflow.stages.STORY_SCRIPT?.artifact as any),
+  content: `${(workflow.stages.STORY_SCRIPT?.artifact as any)?.content || ""}\n用户编辑`
+});
+assert.equal(editedStory.completed, false, "editing an upstream story after completion must reopen the workflow");
+assert.equal(editedStory.currentStage, "ASSET_PLAN", "editing STORY_SCRIPT must resume from the immediate downstream generation stage");
+assert.equal(editedStory.stages.ASSET_PLAN?.status, "stale");
+assert.equal(editedStory.stages.SCREENPLAY?.status, "stale");
+
+const editedScreenplay = replaceStageArtifact(workflow, "SCREENPLAY", {
+  ...(workflow.stages.SCREENPLAY?.artifact as any),
+  title: "用户编辑后的正式视频剧本"
+});
+assert.equal(editedScreenplay.completed, false, "editing screenplay after completion must reopen the workflow");
+assert.equal(editedScreenplay.currentStage, "FINAL_STORYBOARD", "editing SCREENPLAY must resume from FINAL_STORYBOARD");
+assert.equal(editedScreenplay.stages.FINAL_STORYBOARD?.status, "stale");
+assert.equal(editedScreenplay.stages.STITCH?.status, "stale");
+
+const editedStoryboard = replaceStageArtifact(workflow, "FINAL_STORYBOARD", {
+  ...(workflow.stages.FINAL_STORYBOARD?.artifact as any),
+  title: "用户编辑后的最终分镜"
+});
+assert.equal(editedStoryboard.completed, false, "editing storyboard after completion must reopen the workflow");
+assert.equal(editedStoryboard.currentStage, "COPYABLE_PROMPT", "editing FINAL_STORYBOARD must resume from prompt compilation");
+assert.equal(editedStoryboard.stages.COPYABLE_PROMPT?.status, "stale");
+assert.equal(editedStoryboard.stages.EXECUTION?.status, "stale");
+
 const restarted = restartFrom(workflow, "COURSE_INTRO_SELECTION");
 assert.equal(restarted.completed, false);
 assert.equal(restarted.currentStage, "COURSE_INTRO_SELECTION");
