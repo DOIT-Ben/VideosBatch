@@ -1,6 +1,6 @@
 import React from "react";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { LessonStage } from "../src/client/videosBatchStudio/stages/LessonStage";
 import { WorkflowProgressRail } from "../src/client/videosBatchStudio/components/WorkflowProgressRail";
@@ -36,24 +36,35 @@ assert.ok(railMarkup.includes("最终成片"));
 
 const studioSource = readFileSync(new URL("../src/client/videosBatchStudio/VideosBatchStudio.tsx", import.meta.url), "utf8");
 const lessonSource = readFileSync(new URL("../src/client/videosBatchStudio/stages/LessonStage.tsx", import.meta.url), "utf8");
-const appSource = readFileSync(new URL("../src/client/App.tsx", import.meta.url), "utf8");
-const apiSource = readFileSync(new URL("../src/client/api.ts", import.meta.url), "utf8");
-const v2CssSource = readFileSync(new URL("../src/client/videosBatchStudio/guidedStudioV2.css", import.meta.url), "utf8");
+const mainSource = readFileSync(new URL("../src/client/main.tsx", import.meta.url), "utf8");
+const lessonClientUrl = new URL("../src/client/videosBatchStudio/lessonDocumentClient.ts", import.meta.url);
+const focusCssUrl = new URL("../src/client/videosBatchStudio/guidedStudioV2Focus.css", import.meta.url);
 
 assert.ok(studioSource.includes("WorkflowProgressRail"), "Guided Studio V2 must use one horizontal progress rail");
 assert.ok(!studioSource.includes("<WorkflowSidebar"), "Guided Studio V2 must not render the internal left workflow sidebar");
 assert.ok(!studioSource.includes('className="vbs-context"'), "Guided Studio V2 must not render a permanent right context sidebar");
 assert.ok(lessonSource.includes("useDropzone"), "lesson file interaction must reuse react-dropzone rather than hand-roll drag/drop behavior");
-assert.ok(appSource.includes('import "./videosBatchStudio/guidedStudioV2.css"'), "App must load Guided Studio V2 styles in production");
-assert.ok(appSource.includes("vbs-flow-focus"), "App shell must enter focused VideosBatch mode during guided workflow production");
-assert.ok(apiSource.includes("parseVideosBatchLesson"), "client API must expose lesson document parsing");
-assert.ok(apiSource.includes("VideosBatchParsedLessonDocument"), "lesson parsing must use the shared parsed-document contract");
-assert.ok(apiSource.includes("source?: VideosBatchLessonSource"), "workflow start must preserve lesson source metadata");
-assert.match(
-  v2CssSource,
-  /\.app-shell\.vbs-flow-focus\s+\.topbar\s*\{[\s\S]*?display:\s*none;/,
-  "workflow focus mode must remove the duplicate SeeReel topbar so Guided Studio owns the page"
-);
-assert.ok(v2CssSource.includes(".app-shell.vbs-flow-focus > .sidebar"), "workflow focus mode must remove the outer SeeReel session sidebar");
+assert.ok(mainSource.includes('import "./videosBatchStudio/guidedStudioV2.css"'), "browser entry must load Guided Studio V2 visual styles");
+assert.ok(mainSource.includes('import "./videosBatchStudio/guidedStudioV2Focus.css"'), "browser entry must load workflow focus styles");
+assert.ok(existsSync(lessonClientUrl), "lesson parsing must live in a focused client adapter instead of patching the giant api.ts");
+assert.ok(existsSync(focusCssUrl), "workflow focus mode must live in a scoped CSS adapter instead of patching the giant App.tsx");
+
+if (existsSync(lessonClientUrl)) {
+  const lessonClientSource = readFileSync(lessonClientUrl, "utf8");
+  assert.ok(lessonClientSource.includes("/videosbatch/lesson/parse"), "lesson client must call the server document parser route");
+  assert.ok(lessonClientSource.includes("VideosBatchParsedLessonDocument"), "lesson parser must use the shared parsed-document contract");
+  assert.ok(studioSource.includes("parseLessonDocumentFile"), "Guided Studio must use the focused lesson parser adapter");
+}
+
+if (existsSync(focusCssUrl)) {
+  const focusCssSource = readFileSync(focusCssUrl, "utf8");
+  assert.ok(focusCssSource.includes(":has(.videosbatch-studio-v2)"), "workflow focus must activate from the mounted Guided Studio itself");
+  assert.match(
+    focusCssSource,
+    /\.app-shell:has\(\.videosbatch-studio-v2\)[\s\S]*?\.topbar\s*\{[\s\S]*?display:\s*none;/,
+    "workflow focus mode must remove the duplicate SeeReel topbar"
+  );
+  assert.ok(focusCssSource.includes("> .sidebar"), "workflow focus mode must remove the outer SeeReel session sidebar");
+}
 
 console.log("VideosBatch Guided Studio V2 contract smoke: PASS");
