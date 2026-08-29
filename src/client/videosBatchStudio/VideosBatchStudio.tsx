@@ -13,6 +13,7 @@ import { StudioStageToolbar } from "./components/StudioStageToolbar";
 import { WorkflowProgressRail } from "./components/WorkflowProgressRail";
 import { StageWorkspace } from "./stages/StageWorkspace";
 import { buildAssetCandidateGroups, buildAssetConfirmationArtifact, updateStoryArtifactContent } from "./contentModel";
+import { parseLessonDocumentFile } from "./lessonDocumentClient";
 import {
   VIDEOS_BATCH_PRODUCT_STEPS,
   deriveCurrentProductStep,
@@ -20,6 +21,13 @@ import {
   productStepById,
   type VideosBatchProductStepId
 } from "./stageModel";
+
+type StartVideosBatchWithSource = (
+  sessionId: string,
+  payload: { projectId: string; lessonText: string; source?: VideosBatchLessonSource }
+) => Promise<VideosBatchWorkflowState>;
+
+const startVideosBatchWithSource = api.startVideosBatch as StartVideosBatchWithSource;
 
 function debugStageForStep(workflow: VideosBatchWorkflowState | undefined, stepId: VideosBatchProductStepId): VideosBatchStageId {
   const stages = [...productStepById(stepId).stages];
@@ -123,7 +131,7 @@ export function VideosBatchStudio({
   }
 
   async function startWorkflow(lessonText: string, source?: VideosBatchLessonSource) {
-    const next = await perform("start", () => api.startVideosBatch(sessionId, { projectId: "P001", lessonText, source }));
+    const next = await perform("start", () => startVideosBatchWithSource(sessionId, { projectId: "P001", lessonText, source }));
     if (next) setSelectedStepId(deriveCurrentProductStep(next));
   }
 
@@ -254,7 +262,7 @@ export function VideosBatchStudio({
             workflow={workflow}
             stepId={selectedStepId}
             busy={Boolean(busy)}
-            onParseLessonFile={(file) => api.parseVideosBatchLesson(sessionId, file)}
+            onParseLessonFile={(file) => parseLessonDocumentFile(sessionId, file)}
             onStart={startWorkflow}
             onSelectIntro={selectIntro}
             onSaveStory={saveStoryContent}
