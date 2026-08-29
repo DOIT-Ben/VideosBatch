@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AlertCircle, CheckCircle2, FileText, LoaderCircle, RotateCcw, UploadCloud } from "lucide-react";
 import { Tabs } from "radix-ui";
 import { useDropzone } from "react-dropzone";
@@ -22,6 +22,11 @@ type ParseState =
   | { kind: "ready"; document: VideosBatchParsedLessonDocument; draftText: string }
   | { kind: "error"; message: string };
 
+export type VideosBatchLessonDraft = {
+  document: VideosBatchParsedLessonDocument;
+  draftText: string;
+};
+
 function formatBytes(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -32,6 +37,9 @@ export function LessonStage({
   sessionTitle,
   lessonText,
   source,
+  parsedDraft,
+  onParsedDraftChange,
+  onSaveParsedDraft,
   busy,
   started,
   onParseFile,
@@ -40,27 +48,51 @@ export function LessonStage({
   sessionTitle: string;
   lessonText?: string;
   source?: VideosBatchLessonSource;
+  parsedDraft?: VideosBatchLessonDraft;
+  onParsedDraftChange?: (draft: VideosBatchLessonDraft | undefined) => void;
+  onSaveParsedDraft?: (draft: VideosBatchLessonDraft) => void;
   busy?: boolean;
   started: boolean;
   onParseFile?: (file: File) => Promise<VideosBatchParsedLessonDocument>;
   onStart: (lessonText: string, source?: VideosBatchLessonSource) => Promise<void> | void;
 }) {
   const [pasteDraft, setPasteDraft] = useState(lessonText || "");
-  const [parseState, setParseState] = useState<ParseState>({ kind: "idle" });
+  const [draftSaveState, setDraftSaveState] = useState<"saved" | "dirty">(parsedDraft ? "saved" : "dirty");
+  const draftIdentityRef = useRef("");
+  const [parseState, setParseState] = useState<ParseState>(() => parsedDraft
+    ? { kind: "ready", document: parsedDraft.document, draftText: parsedDraft.draftText }
+    : { kind: "idle" });
 
   useEffect(() => {
     setPasteDraft(lessonText || "");
   }, [lessonText]);
+
+  useEffect(() => {
+    const nextIdentity = parsedDraft
+      ? `${parsedDraft.document.fileName}:${parsedDraft.document.sizeBytes}`
+      : "";
+    setParseState(parsedDraft
+      ? { kind: "ready", document: parsedDraft.document, draftText: parsedDraft.draftText }
+      : { kind: "idle" });
+    if (nextIdentity !== draftIdentityRef.current) {
+      setDraftSaveState(parsedDraft ? "saved" : "dirty");
+      draftIdentityRef.current = nextIdentity;
+    }
+  }, [parsedDraft]);
 
   const parseFile = async (file: File) => {
     if (!onParseFile) {
       setParseState({ kind: "error", message: "教案解析服务尚未连接。" });
       return;
     }
+    onParsedDraftChange?.(undefined);
     setParseState({ kind: "parsing", fileName: file.name });
     try {
       const document = await onParseFile(file);
-      setParseState({ kind: "ready", document, draftText: document.text });
+      const nextDraft = { document, draftText: document.text };
+      setParseState({ kind: "ready", ...nextDraft });
+      setDraftSaveState("dirty");
+      onParsedDraftChange?.(nextDraft);
     } catch (error) {
       setParseState({ kind: "error", message: error instanceof Error ? error.message : "教案解析失败，请重新上传。" });
     }
@@ -85,6 +117,32 @@ export function LessonStage({
       setParseState({ kind: "error", message });
     }
   });
+
+  const [parseSplit, setParseSplit] = useState(42);
+  const parseWorkbenchRef = useRef<HTMLDivElement | null>(null);
+
+  const updateParseSplit = (clientX: number) => {
+    const rect = parseWorkbenchRef.current?.getBoundingClientRect();
+    if (!rect || rect.width <= 0) return;
+    const next = ((clientX - rect.left) / rect.width) * 100;
+    setParseSplit(Math.min(68, Math.max(30, next)));
+  };
+
+  const handleParseDividerKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      setParseSplit((value) => Math.max(30, value - 3));
+    } else if (event.key === "ArrowRight") {
+      event.preventDefault();
+      setParseSplit((value) => Math.min(68, value + 3));
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      setParseSplit(30);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      setParseSplit(68);
+    }
+  };
 
   if (started) {
     return (
@@ -113,19 +171,27 @@ export function LessonStage({
 
   const parsed = parseState.kind === "ready" ? parseState : undefined;
 
+  const saveParsedDraft = () => {
+    if (!parsed) return;
+    const draft = { document: parsed.document, draftText: parsed.draftText };
+    onParsedDraftChange?.(draft);
+    onSaveParsedDraft?.(draft);
+    setDraftSaveState("saved");
+  };
+
   return (
     <section className="vbs-stage-page vbs-lesson-stage vbs-v2-lesson-onboarding">
-      <div className="vbs-v2-lesson-hero">
-        <span className="vbs-stage-kicker">01 · 教案</span>
-        <h1>从一份教案，开始制作课程视频</h1>
-        <p>上传完整课程教案。系统先解析并让你确认内容，再生成三类九套课程导入方案。</p>
-      </div>
-
       <Tabs.Root className="vbs-v2-lesson-tabs" defaultValue="upload">
-        <Tabs.List className="vbs-v2-tab-list" aria-label="教案输入方式">
-          <Tabs.Trigger className="vbs-v2-tab-trigger" value="upload"><UploadCloud size={15} /> 上传文件</Tabs.Trigger>
-          <Tabs.Trigger className="vbs-v2-tab-trigger" value="paste"><FileText size={15} /> 粘贴文本</Tabs.Trigger>
-        </Tabs.List>
+        <div className="vbs-v2-lesson-panel-heading">
+          <div>
+            <span className="vbs-stage-kicker">01 · 教案</span>
+            <p>上传完整课程教案。系统先解析并让你确认内容，再生成三类九套课程导入方案。</p>
+          </div>
+          <Tabs.List className="vbs-v2-tab-list" aria-label="教案输入方式">
+            <Tabs.Trigger className="vbs-v2-tab-trigger" value="upload"><UploadCloud size={15} /> 上传文件</Tabs.Trigger>
+            <Tabs.Trigger className="vbs-v2-tab-trigger" value="paste"><FileText size={15} /> 粘贴文本</Tabs.Trigger>
+          </Tabs.List>
+        </div>
 
         <Tabs.Content className="vbs-v2-tab-panel" value="upload">
           {!parsed ? (
@@ -161,53 +227,130 @@ export function LessonStage({
             </>
           ) : (
             <div className="vbs-v2-parse-result">
-              <header className="vbs-v2-file-summary">
-                <div className="vbs-v2-file-icon"><FileText size={24} /></div>
-                <div className="vbs-v2-file-copy">
-                  <strong>{parsed.document.fileName}</strong>
-                  <span>{parsed.document.fileType.toUpperCase()} · {formatBytes(parsed.document.sizeBytes)}</span>
-                </div>
-                <span className="vbs-v2-parse-success"><CheckCircle2 size={14} /> 解析完成</span>
-              </header>
+              <div
+                ref={parseWorkbenchRef}
+                className="vbs-v2-parse-workbench"
+                style={{ gridTemplateColumns: `${parseSplit}% 14px minmax(0, 1fr)` }}
+              >
+                <aside className="vbs-v2-parse-source" aria-label="教案解析信息">
+                  <header className="vbs-v2-file-summary">
+                    <div className="vbs-v2-file-icon"><FileText size={24} /></div>
+                    <div className="vbs-v2-file-copy">
+                      <strong>{parsed.document.fileName}</strong>
+                      <span>{parsed.document.fileType.toUpperCase()} · {formatBytes(parsed.document.sizeBytes)}</span>
+                    </div>
+                    <span className="vbs-v2-parse-success"><CheckCircle2 size={14} /> 解析完成</span>
+                  </header>
 
-              <div className="vbs-v2-parse-metrics">
-                <span><strong>{parsed.document.characterCount.toLocaleString()}</strong><small>字符</small></span>
-                <span><strong>{parsed.document.paragraphCount.toLocaleString()}</strong><small>段落</small></span>
-                {parsed.document.pageCount ? <span><strong>{parsed.document.pageCount}</strong><small>页</small></span> : null}
-              </div>
+                  <div className="vbs-v2-parse-metrics">
+                    <span><strong>{parsed.document.characterCount.toLocaleString()}</strong><small>字符</small></span>
+                    <span><strong>{parsed.document.paragraphCount.toLocaleString()}</strong><small>段落</small></span>
+                    {parsed.document.pageCount ? <span><strong>{parsed.document.pageCount}</strong><small>页</small></span> : null}
+                  </div>
 
-              {parsed.document.warnings.length > 0 && (
-                <div className="vbs-v2-parse-warning"><AlertCircle size={15} /><span>{parsed.document.warnings.join("；")}</span></div>
-              )}
+                  {parsed.document.warnings.length > 0 && (
+                    <div className="vbs-v2-parse-warning"><AlertCircle size={15} /><span>{parsed.document.warnings.join("；")}</span></div>
+                  )}
 
-              <label className="vbs-v2-parse-editor">
-                <span>确认教案内容 <small>可在开始前直接修正解析结果</small></span>
-                <textarea
-                  rows={16}
-                  value={parsed.draftText}
-                  onChange={(event) => setParseState({ ...parsed, draftText: event.target.value })}
-                  aria-label="解析后的教案内容"
-                />
-              </label>
+                  <div className="vbs-v2-source-preview">
+                    <div className="vbs-v2-source-preview-heading">
+                      <strong>提取预览</strong>
+                      <small>原始解析文本</small>
+                    </div>
+                    <pre>{parsed.document.text || "暂无提取文本"}</pre>
+                  </div>
+                </aside>
 
-              <div className="vbs-v2-parse-actions">
-                <button type="button" className="vbs-secondary" disabled={busy} onClick={() => setParseState({ kind: "idle" })}>
-                  <RotateCcw size={15} /> 重新上传
-                </button>
                 <button
                   type="button"
-                  className="vbs-primary vbs-v2-start-button"
-                  disabled={busy || !parsed.draftText.trim()}
-                  onClick={() => onStart(parsed.draftText.trim(), {
-                    kind: "file",
-                    fileName: parsed.document.fileName,
-                    fileType: parsed.document.fileType,
-                    sizeBytes: parsed.document.sizeBytes
-                  })}
+                  className="vbs-v2-parse-divider"
+                  role="separator"
+                  aria-orientation="vertical"
+                  aria-label="调整原文预览和编辑区域宽度"
+                  aria-valuemin={30}
+                  aria-valuemax={68}
+                  aria-valuenow={Math.round(parseSplit)}
+                  onPointerDown={(event) => {
+                    event.currentTarget.setPointerCapture(event.pointerId);
+                    updateParseSplit(event.clientX);
+                  }}
+                  onPointerMove={(event) => {
+                    if (event.currentTarget.hasPointerCapture(event.pointerId)) updateParseSplit(event.clientX);
+                  }}
+                  onPointerUp={(event) => {
+                    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+                  }}
+                  onKeyDown={handleParseDividerKeyDown}
                 >
-                  {busy ? <LoaderCircle size={16} className="spin" /> : <CheckCircle2 size={16} />}
-                  {busy ? "正在启动…" : "确认教案并开始制作"}
+                  <span aria-hidden="true" />
                 </button>
+
+                <section className="vbs-v2-parse-editor-pane" aria-label="确认并编辑教案">
+                  <div className="vbs-v2-parse-editor-heading">
+                    <div>
+                      <strong>确认教案内容</strong>
+                      <small
+                        className={`vbs-v2-draft-status ${draftSaveState}`}
+                        role="status"
+                        aria-live="polite"
+                      >
+                        <span aria-hidden="true" />
+                        {draftSaveState === "saved" ? "草稿已保存到本机" : "已修改，点击保存草稿"}
+                      </small>
+                    </div>
+                    <span>{parsed.draftText.trim().length.toLocaleString()} 字</span>
+                  </div>
+                  <textarea
+                    rows={16}
+                    value={parsed.draftText}
+                    onChange={(event) => {
+                      const nextDraft = { document: parsed.document, draftText: event.target.value };
+                      setParseState({ kind: "ready", ...nextDraft });
+                      setDraftSaveState("dirty");
+                      onParsedDraftChange?.(nextDraft);
+                    }}
+                    onKeyDown={(event) => {
+                      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+                        event.preventDefault();
+                        saveParsedDraft();
+                      }
+                    }}
+                    aria-label="解析后的教案内容"
+                  />
+
+                  <div className="vbs-v2-parse-actions">
+                    <button type="button" className="vbs-secondary" disabled={busy} onClick={() => {
+                      setParseState({ kind: "idle" });
+                      setDraftSaveState("dirty");
+                      onParsedDraftChange?.(undefined);
+                    }}>
+                      <RotateCcw size={15} /> 重新上传
+                    </button>
+                    <button
+                      type="button"
+                      className="vbs-secondary vbs-v2-save-draft-button"
+                      disabled={busy || draftSaveState === "saved"}
+                      onClick={saveParsedDraft}
+                      aria-label={draftSaveState === "saved" ? "草稿已保存" : "保存教案草稿"}
+                    >
+                      <CheckCircle2 size={15} /> {draftSaveState === "saved" ? "草稿已保存" : "保存草稿"}
+                    </button>
+                    <button
+                      type="button"
+                      className="vbs-primary vbs-v2-start-button"
+                      disabled={busy || !parsed.draftText.trim()}
+                      onClick={() => onStart(parsed.draftText.trim(), {
+                        kind: "file",
+                        fileName: parsed.document.fileName,
+                        fileType: parsed.document.fileType,
+                        sizeBytes: parsed.document.sizeBytes
+                      })}
+                    >
+                      {busy ? <LoaderCircle size={16} className="spin" /> : <CheckCircle2 size={16} />}
+                      {busy ? "正在启动…" : "确认教案并开始制作"}
+                    </button>
+                  </div>
+                </section>
               </div>
             </div>
           )}

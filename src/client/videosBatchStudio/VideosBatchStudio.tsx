@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import type { Asset, Session, Shot } from "../../shared/types";
 import type {
@@ -12,6 +12,7 @@ import { ArtifactDebugDrawer } from "./components/ArtifactDebugDrawer";
 import { StudioStageToolbar } from "./components/StudioStageToolbar";
 import { WorkflowProgressRail } from "./components/WorkflowProgressRail";
 import { StageWorkspace } from "./stages/StageWorkspace";
+import type { VideosBatchLessonDraft } from "./stages/LessonStage";
 import { buildAssetCandidateGroups, buildAssetConfirmationArtifact, updateStoryArtifactContent } from "./contentModel";
 import { parseLessonDocumentFile } from "./lessonDocumentClient";
 import {
@@ -38,6 +39,34 @@ function debugStageForStep(workflow: VideosBatchWorkflowState | undefined, stepI
   return stages[0];
 }
 
+function lessonDraftStorageKey(sessionId: string) {
+  return `videosbatch:lesson-draft:${sessionId}`;
+}
+
+function readLessonDraft(sessionId: string): VideosBatchLessonDraft | undefined {
+  if (typeof window === "undefined" || !sessionId) return undefined;
+  try {
+    const raw = window.sessionStorage.getItem(lessonDraftStorageKey(sessionId));
+    if (!raw) return undefined;
+    const parsed = JSON.parse(raw) as VideosBatchLessonDraft;
+    if (!parsed?.document?.text || typeof parsed.draftText !== "string") return undefined;
+    return parsed;
+  } catch {
+    return undefined;
+  }
+}
+
+function writeLessonDraft(sessionId: string, draft: VideosBatchLessonDraft | undefined) {
+  if (typeof window === "undefined" || !sessionId) return;
+  try {
+    const key = lessonDraftStorageKey(sessionId);
+    if (draft) window.sessionStorage.setItem(key, JSON.stringify(draft));
+    else window.sessionStorage.removeItem(key);
+  } catch {
+    // Private browsing or a blocked storage policy should not prevent editing the lesson.
+  }
+}
+
 export function VideosBatchStudio({
   sessionId,
   sessionTitle,
@@ -60,6 +89,7 @@ export function VideosBatchStudio({
   const currentStepId = workflow ? deriveCurrentProductStep(workflow) : "lesson";
   const [selectedStepId, setSelectedStepId] = useState<VideosBatchProductStepId>(currentStepId);
   const [selectedAssetIds, setSelectedAssetIds] = useState<Record<string, string>>({});
+  const [parsedLessonDraft, setParsedLessonDraft] = useState<VideosBatchLessonDraft | undefined>(() => readLessonDraft(sessionId));
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [debugOpen, setDebugOpen] = useState(false);
@@ -72,6 +102,15 @@ export function VideosBatchStudio({
     }
     if (workflow.stages[workflow.currentStage]?.status === "running") setSelectedStepId(deriveCurrentProductStep(workflow));
   }, [workflow?.currentStage, workflow?.completed]);
+
+  useEffect(() => {
+    setParsedLessonDraft(readLessonDraft(sessionId));
+  }, [sessionId]);
+
+  const handleParsedLessonDraftChange = useCallback((draft: VideosBatchLessonDraft | undefined) => {
+    setParsedLessonDraft(draft);
+    writeLessonDraft(sessionId, draft);
+  }, [sessionId]);
 
   const assetGroups = useMemo(() => buildAssetCandidateGroups(
     workflow?.stages.ASSET_PLAN?.artifact,
@@ -132,7 +171,11 @@ export function VideosBatchStudio({
 
   async function startWorkflow(lessonText: string, source?: VideosBatchLessonSource) {
     const next = await perform("start", () => startVideosBatchWithSource(sessionId, { projectId: "P001", lessonText, source }));
-    if (next) setSelectedStepId(deriveCurrentProductStep(next));
+    if (next) {
+      writeLessonDraft(sessionId, undefined);
+      setParsedLessonDraft(undefined);
+      setSelectedStepId(deriveCurrentProductStep(next));
+    }
   }
 
   async function selectIntro(candidate: any) {
@@ -229,6 +272,8 @@ export function VideosBatchStudio({
         sessionTitle={sessionTitle}
         completedCount={completedCount}
         totalSteps={VIDEOS_BATCH_PRODUCT_STEPS.length}
+        headline={!workflow ? "从一份教案，开始制作课程视频" : undefined}
+        activeMode="workflow"
         onOpenCanvas={onOpenCanvas}
       />
       <WorkflowProgressRail
@@ -265,6 +310,9 @@ export function VideosBatchStudio({
             stepId={selectedStepId}
             busy={Boolean(busy)}
             onParseLessonFile={(file) => parseLessonDocumentFile(sessionId, file)}
+            parsedLessonDraft={parsedLessonDraft}
+            onParsedLessonDraftChange={handleParsedLessonDraftChange}
+            onSaveParsedLessonDraft={handleParsedLessonDraftChange}
             onStart={startWorkflow}
             onSelectIntro={selectIntro}
             onSaveStory={saveStoryContent}

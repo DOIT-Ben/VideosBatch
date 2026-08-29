@@ -23,6 +23,31 @@ assert.ok(lessonMarkup.includes("DOCX"), "lesson upload must advertise DOCX supp
 assert.ok(lessonMarkup.includes("PDF"), "lesson upload must advertise PDF support");
 assert.ok(lessonMarkup.includes("拖入教案") || lessonMarkup.includes("选择文件"), "lesson upload must render a clear dropzone affordance");
 
+const retainedDraftMarkup = renderToStaticMarkup(
+  <LessonStage
+    sessionTitle="观察物体（1）"
+    busy={false}
+    started={false}
+    parsedDraft={{
+      document: {
+        sourceKind: "file",
+        fileName: "观察物体.docx",
+        fileType: "docx",
+        mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        sizeBytes: 1024,
+        text: "原始教案内容",
+        characterCount: 6,
+        paragraphCount: 1,
+        warnings: []
+      },
+      draftText: "返回教案步骤后仍可继续编辑的内容"
+    }}
+    onStart={() => undefined}
+  />
+);
+assert.ok(retainedDraftMarkup.includes("观察物体.docx"), "parsed file metadata must render from a retained parent draft");
+assert.ok(retainedDraftMarkup.includes("返回教案步骤后仍可继续编辑的内容"), "parsed lesson draft must survive a stage remount");
+
 const railMarkup = renderToStaticMarkup(
   <WorkflowProgressRail
     steps={VIDEOS_BATCH_PRODUCT_STEPS}
@@ -60,6 +85,12 @@ assert.ok(studioSource.includes("WorkflowProgressRail"), "Guided Studio V2 must 
 assert.ok(!studioSource.includes("<WorkflowSidebar"), "Guided Studio V2 must not render the internal left workflow sidebar");
 assert.ok(!studioSource.includes('className="vbs-context"'), "Guided Studio V2 must not render a permanent right context sidebar");
 assert.ok(lessonSource.includes("useDropzone"), "lesson file interaction must reuse react-dropzone rather than hand-roll drag/drop behavior");
+assert.ok(studioSource.includes("parsedLessonDraft"), "the studio must own unconfirmed parsed lesson state across stage changes");
+assert.ok(lessonSource.includes("onParsedDraftChange"), "the lesson stage must report parsed draft edits to the persistent parent state");
+assert.ok(lessonSource.includes("保存草稿"), "parsed lesson edits must expose an explicit save draft action");
+assert.ok(lessonSource.includes('role="status"'), "draft persistence state must be announced as a live status");
+assert.ok(lessonSource.includes("event.ctrlKey || event.metaKey"), "parsed lesson editor must support the platform save shortcut");
+assert.ok(studioSource.includes("sessionStorage"), "unconfirmed lesson drafts must persist in the browser session scope");
 assert.ok(mainSource.includes('import "./videosBatchStudio/guidedStudioV2.css"'), "browser entry must load Guided Studio V2 visual styles");
 assert.ok(mainSource.includes('import "./videosBatchStudio/guidedStudioV2Focus.css"'), "browser entry must load workflow focus styles");
 assert.ok(existsSync(lessonClientUrl), "lesson parsing must live in a focused client adapter instead of patching the giant api.ts");
@@ -69,6 +100,7 @@ assert.ok(headerSource.includes("AI 课程视频工作室"), "product header mus
 assert.ok(railSource.includes("vbs-v2-progress-node"), "progress rail must expose a timeline node instead of only pill-style step content");
 assert.ok(v2CssSource.includes("--vbs-v2-radius-card"), "Guided Studio V2 must define one canonical card radius token");
 assert.ok(v2CssSource.includes("--vbs-v2-shadow-raised"), "Guided Studio V2 must define one canonical raised-surface shadow token");
+assert.match(v2CssSource, /\.vbs-v2-parse-editor textarea,[\s\S]*?min-height:\s*560px;[\s\S]*?font-weight:\s*400;/, "parsed lesson text must be tall and use normal reading weight");
 assert.ok(v2CssSource.includes("--vbs-bg: var(--vbs-v2-canvas)"), "legacy stage surfaces must inherit the canonical V2 palette inside Guided Studio");
 assert.ok(finalStageSource.includes("vbs-final-delivery"), "final step must expose a dedicated delivery surface while preserving native playback behavior");
 

@@ -2,6 +2,8 @@ import { Archive, BarChart3, CircleHelp, Copy, Download, FileUp, Github, Images,
 import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { api } from "./api";
 import { VideosBatchStudio } from "./videosBatchStudio/VideosBatchStudio";
+import { VideosBatchHeader } from "./videosBatchStudio/VideosBatchHeader";
+import { VIDEOS_BATCH_PRODUCT_STEPS, deriveProductStepStatus } from "./videosBatchStudio/stageModel";
 import "./videosBatchStudio/videosBatchStudio.css";
 import "./videosBatchStudio/contentUx.css";
 import type { AdminAgentPlanStatus, AdminSecurityStatus, AdminUserAgentPlanCredentialList, AgentPlanCredentialStatus, ApiKeyCredentialStatus, Asset, AssetType, CreateSessionPayload, GalleryItem, Session, SessionPackage, Shot, StandardApiKeyRoute, StitchJob, StoreSnapshot, TokenUsageEvent, TokenUsageModelFamily } from "../shared/types";
@@ -1869,7 +1871,7 @@ export function App() {
 
   return (
     <PendingGenerationsProvider>
-    <main className="app-shell" data-build={clientBuildStamp}>
+    <main className={`app-shell ${selectedSession && videosBatchMode === "canvas" ? "videosbatch-canvas-mode" : ""}`} data-build={clientBuildStamp}>
       {serverDown && (
         <div className="server-down-banner" role="alert">
           <strong>{t.app.serverDownTitle}</strong>
@@ -2452,13 +2454,15 @@ export function App() {
         ) : (
           <>
             {selectedSession && (
-              <div className="vbs-canvas-mode-bar">
-                <strong>VideosBatch · 制作画布</strong>
-                <div>
-                  <button type="button" onClick={() => setVideosBatchMode("workflow")}>流程制作</button>
-                  <button type="button" className="active" aria-pressed="true">制作画布</button>
-                </div>
-              </div>
+              <VideosBatchHeader
+                sessionTitle={selectedSession.title}
+                completedCount={selectedSession.videosBatchWorkflow
+                  ? VIDEOS_BATCH_PRODUCT_STEPS.filter((step) => deriveProductStepStatus(selectedSession.videosBatchWorkflow!, step) === "ready").length
+                  : 0}
+                totalSteps={VIDEOS_BATCH_PRODUCT_STEPS.length}
+                activeMode="canvas"
+                onOpenWorkflow={() => setVideosBatchMode("workflow")}
+              />
             )}
           <Suspense fallback={<div className="flow-loading" role="status">{lang === "en" ? "Loading canvas..." : "正在加载画布..."}</div>}>
             <FlowView

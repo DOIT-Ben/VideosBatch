@@ -71,8 +71,10 @@ assert.ok(drawerSource.includes("JSON.parse"), "advanced drawer must preserve ra
 
 const appSource = readFileSync(new URL("../src/client/App.tsx", import.meta.url), "utf8");
 assert.ok(appSource.includes('import { VideosBatchStudio } from "./videosBatchStudio/VideosBatchStudio"'), "App must import the Guided Studio product boundary");
+assert.ok(appSource.includes('import { VideosBatchHeader } from "./videosBatchStudio/VideosBatchHeader"'), "canvas mode must reuse the VideosBatch product header");
 assert.ok(appSource.includes("<VideosBatchStudio"), "App must render Guided Studio in workflow mode");
 assert.ok(appSource.includes("videosBatchMode === \"workflow\""), "App must own an explicit workflow/canvas mode branch");
+assert.ok(appSource.includes("videosbatch-canvas-mode"), "canvas mode must use the shared VideosBatch shell instead of the legacy app shell");
 assert.ok(appSource.includes("<FlowView"), "App must preserve the native SeeReel Canvas");
 assert.ok(!appSource.includes("<WorkflowRail"), "App must not render the old horizontal WorkflowRail");
 

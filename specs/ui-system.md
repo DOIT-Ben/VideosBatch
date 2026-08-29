@@ -49,6 +49,7 @@ Define the durable visual and interaction rules for the SeeReel workstation so t
 - Warm amber is an accent, not a page fill. Completed workflow state uses low-saturation green; failure uses explicit red; pending remains neutral.
 - Card hover lift is limited to 1px and all nonessential motion must respect `prefers-reduced-motion`.
 - The lesson upload visual may change, but `react-dropzone`, supported formats, parsing, text confirmation, and start-workflow behavior remain unchanged.
+- Before workflow start, edits to parsed lesson text expose an explicit save action and persist as a session-scoped local draft so stage/mode remounts do not discard unconfirmed work; the server workflow remains the source of truth after confirmation.
 - Step 09 may have stronger delivery-page emphasis, but final playback, download, StitchJob state, and Canvas switching behavior remain unchanged.
 
 ## Acceptance Criteria

@@ -223,11 +223,6 @@
 .vbs-debug-drawer pre, .vbs-debug-drawer textarea { width: 100%; box-sizing: border-box; min-height: 60vh; margin: 0; padding: 14px; border: 1px solid #403e39; border-radius: 10px; background: #171714; color: #e8e5dd; font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; }
 .vbs-debug-actions { display: flex; gap: 8px; margin-top: 10px; }
 
-.vbs-canvas-mode-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 14px; border-bottom: 1px solid rgba(255,255,255,.09); background: #17191d; color: #eee; }
-.vbs-canvas-mode-bar > div { display: flex; gap: 6px; }
-.vbs-canvas-mode-bar button { border: 1px solid rgba(255,255,255,.12); border-radius: 8px; background: transparent; color: #bbb; padding: 7px 10px; cursor: pointer; }
-.vbs-canvas-mode-bar button.active { background: #292c31; color: #fff; }
-
 @media (max-width: 1279px) {
   .videosbatch-studio-body { grid-template-columns: 220px minmax(0,1fr); }
   .vbs-context { display: none; }

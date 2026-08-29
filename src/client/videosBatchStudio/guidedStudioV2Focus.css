@@ -42,6 +42,56 @@ body:has(.videosbatch-studio-v2) {
   min-width: 0;
 }
 
+/* Canvas mode keeps the same VideosBatch navigation shell for node editing. */
+.app-shell.videosbatch-canvas-mode {
+  --vbs-v2-canvas: #f6f4ef;
+  --vbs-v2-surface: #ffffff;
+  --vbs-v2-surface-muted: #f8f6f1;
+  --vbs-v2-text: #191c20;
+  --vbs-v2-text-soft: #74716a;
+  --vbs-v2-border: #e8e4da;
+  --vbs-v2-border-strong: #d9d3c7;
+  --vbs-v2-accent: #d8a640;
+  --vbs-v2-accent-soft: #fbf4df;
+  --vbs-v2-transition: 170ms ease;
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 100vh;
+  height: auto;
+  overflow: visible;
+  background: #f6f4ef;
+}
+
+.app-shell.videosbatch-canvas-mode > .sidebar,
+.app-shell.videosbatch-canvas-mode .topbar {
+  display: none;
+}
+
+.app-shell.videosbatch-canvas-mode > .workspace {
+  min-width: 0;
+  width: 100%;
+  min-height: 100vh;
+  height: auto;
+  padding: 0;
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
+  background: #f6f4ef;
+}
+
+.app-shell.videosbatch-canvas-mode .vbs-v2-header {
+  flex: 0 0 auto;
+}
+
+.app-shell.videosbatch-canvas-mode .flow-view {
+  width: auto;
+  height: calc(100vh - 112px);
+  min-height: 620px;
+  flex: 1 0 auto;
+  margin: 0 28px 28px;
+  border-color: rgba(156, 171, 188, 0.16);
+  border-radius: 14px;
+}
+
 .videosbatch-studio-v2 {
   height: auto;
   min-height: 100vh;
@@ -71,14 +121,6 @@ body:has(.videosbatch-studio-v2) {
 
 .videosbatch-studio-v2 .vbs-v2-lesson-onboarding {
   margin-top: 6px !important;
-}
-
-.videosbatch-studio-v2 .vbs-v2-lesson-hero {
-  margin-bottom: 20px;
-}
-
-.videosbatch-studio-v2 .vbs-v2-lesson-hero h1 {
-  font-size: clamp(29px, 2.6vw, 38px);
 }
 
 .videosbatch-studio-v2 .vbs-v2-lesson-tabs {
@@ -122,16 +164,366 @@ body:has(.videosbatch-studio-v2) {
     padding-top: 24px;
   }
 
-  .videosbatch-studio-v2 .vbs-v2-lesson-hero {
-    margin-bottom: 16px;
-  }
-
-  .videosbatch-studio-v2 .vbs-v2-lesson-hero h1 {
-    margin-top: 6px;
-    font-size: clamp(27px, 2.4vw, 35px);
-  }
-
   .videosbatch-studio-v2 .vbs-v2-dropzone {
     min-height: 190px;
+  }
+}
+
+@media (max-width: 640px) {
+  .app-shell.videosbatch-canvas-mode .flow-view {
+    height: calc(100vh - 132px);
+    min-height: 520px;
+    margin: 0 12px 12px;
+  }
+}
+
+/* ============================================================================
+   VideosBatch canvas light theme
+   The workflow studio is the visual source of truth for this product. Keep the
+   legacy canvas selectors intact for SeeReel routes, then override them only
+   inside the VideosBatch canvas shell.
+   ============================================================================ */
+
+.app-shell.videosbatch-canvas-mode {
+  --vbs-canvas-bg: #f4f6f8;
+  --vbs-canvas-surface: #ffffff;
+  --vbs-canvas-surface-muted: #f8fafb;
+  --vbs-canvas-text: #20262d;
+  --vbs-canvas-text-soft: #69737e;
+  --vbs-canvas-line: #dfe4e8;
+  --vbs-canvas-line-strong: #c9d1d8;
+  --vbs-canvas-accent: #c18b2f;
+  --vbs-canvas-accent-soft: #fff7e5;
+  background: var(--vbs-canvas-bg);
+  color: var(--vbs-canvas-text);
+}
+
+.app-shell.videosbatch-canvas-mode > .workspace {
+  background: var(--vbs-canvas-bg);
+}
+
+.app-shell.videosbatch-canvas-mode .flow-view {
+  border: 1px solid var(--vbs-canvas-line);
+  background: var(--vbs-canvas-surface);
+  box-shadow: 0 12px 30px rgba(30, 41, 59, 0.08);
+}
+
+.app-shell.videosbatch-canvas-mode .flow-toolbar {
+  border-bottom: 1px solid var(--vbs-canvas-line);
+  background: var(--vbs-canvas-surface);
+}
+
+.app-shell.videosbatch-canvas-mode .flow-toolbar-section strong {
+  color: var(--vbs-canvas-text);
+}
+
+.app-shell.videosbatch-canvas-mode .flow-toolbar-actions button:not(.primary),
+.app-shell.videosbatch-canvas-mode .flow-toolbar-actions .flow-toolbar-undo {
+  border-color: var(--vbs-canvas-line-strong);
+  background: var(--vbs-canvas-surface);
+  color: var(--vbs-canvas-text);
+}
+
+.app-shell.videosbatch-canvas-mode .flow-toolbar-actions button:not(.primary):hover:not(:disabled),
+.app-shell.videosbatch-canvas-mode .flow-toolbar-actions .flow-toolbar-undo:hover:not(:disabled) {
+  border-color: #d5a84e;
+  background: var(--vbs-canvas-accent-soft);
+  color: #78591c;
+}
+
+.app-shell.videosbatch-canvas-mode .flow-toolbar-actions button.primary,
+.app-shell.videosbatch-canvas-mode .inspector-actions button.primary,
+.app-shell.videosbatch-canvas-mode .inspector-actions button:not(.danger):first-child {
+  border-color: #c18b2f;
+  background: #d8a640;
+  color: #2b2417;
+}
+
+.app-shell.videosbatch-canvas-mode .flow-toolbar-actions button.primary:hover:not(:disabled),
+.app-shell.videosbatch-canvas-mode .inspector-actions button.primary:hover:not(:disabled),
+.app-shell.videosbatch-canvas-mode .inspector-actions button:not(.danger):first-child:hover:not(:disabled) {
+  background: #c99232;
+}
+
+.app-shell.videosbatch-canvas-mode .flow-toolbar-actions .workflow-run-button {
+  border-color: #b7dccb;
+  background: #edf8f2;
+  color: #1c6849;
+}
+
+.app-shell.videosbatch-canvas-mode .flow-workflow-status {
+  color: var(--vbs-canvas-text-soft);
+}
+
+.app-shell.videosbatch-canvas-mode .flow-canvas-row {
+  border-color: var(--vbs-canvas-line);
+  background: var(--vbs-canvas-bg);
+}
+
+.app-shell.videosbatch-canvas-mode .flow-canvas {
+  background:
+    repeating-linear-gradient(90deg, rgba(148, 163, 184, 0.16) 0 1px, transparent 1px 40px),
+    repeating-linear-gradient(0deg, rgba(148, 163, 184, 0.13) 0 1px, transparent 1px 40px),
+    linear-gradient(180deg, #fafbfc 0%, #f1f4f6 100%);
+}
+
+.app-shell.videosbatch-canvas-mode .react-flow__background-pattern line,
+.app-shell.videosbatch-canvas-mode .react-flow__background-pattern path {
+  stroke: #d6dde3 !important;
+}
+
+.app-shell.videosbatch-canvas-mode .react-flow__edge-path {
+  stroke: #7aa7a2;
+  stroke-width: 1.8;
+}
+
+.app-shell.videosbatch-canvas-mode .react-flow__edge.selected .react-flow__edge-path,
+.app-shell.videosbatch-canvas-mode .react-flow__connection-path {
+  stroke: var(--vbs-canvas-accent);
+  stroke-width: 2.3;
+}
+
+.app-shell.videosbatch-canvas-mode .react-flow__controls {
+  border-color: var(--vbs-canvas-line-strong) !important;
+  background: rgba(255, 255, 255, 0.96) !important;
+  box-shadow: 0 5px 14px rgba(30, 41, 59, 0.12) !important;
+}
+
+.app-shell.videosbatch-canvas-mode .react-flow__controls-button {
+  border-bottom-color: var(--vbs-canvas-line) !important;
+  color: #59636d !important;
+}
+
+.app-shell.videosbatch-canvas-mode .react-flow__controls-button:hover {
+  background: var(--vbs-canvas-accent-soft) !important;
+  color: #78591c !important;
+}
+
+.app-shell.videosbatch-canvas-mode .react-flow__handle {
+  border-color: #ffffff !important;
+  background: #76c8be !important;
+  box-shadow: 0 0 0 2px rgba(118, 200, 190, 0.22) !important;
+}
+
+.app-shell.videosbatch-canvas-mode .flow-node {
+  border-color: #cfd7de;
+  background: var(--vbs-canvas-surface);
+  color: var(--vbs-canvas-text);
+  box-shadow: 0 10px 24px rgba(30, 41, 59, 0.14), 0 0 0 1px rgba(255, 255, 255, 0.8);
+}
+
+.app-shell.videosbatch-canvas-mode .flow-node.selected {
+  border-color: #d2a24b;
+  box-shadow: 0 0 0 2px rgba(193, 139, 47, 0.25), 0 14px 30px rgba(30, 41, 59, 0.18);
+}
+
+.app-shell.videosbatch-canvas-mode .flow-node-head,
+.app-shell.videosbatch-canvas-mode .flow-node-foot {
+  border-color: var(--vbs-canvas-line);
+  background: rgba(248, 250, 251, 0.96);
+  box-shadow: none;
+}
+
+.app-shell.videosbatch-canvas-mode .flow-node-title {
+  color: #27313a;
+  text-shadow: none;
+}
+
+.app-shell.videosbatch-canvas-mode .flow-tag {
+  color: #48535d;
+  background: #f1f4f6;
+  border-color: #d3dbe1;
+}
+
+.app-shell.videosbatch-canvas-mode .tag-character { color: #86621e; background: #fff5d9; border-color: #ead49a; }
+.app-shell.videosbatch-canvas-mode .tag-scene { color: #35668f; background: #eef6ff; border-color: #bdd7f1; }
+.app-shell.videosbatch-canvas-mode .tag-prop { color: #934b68; background: #fff0f5; border-color: #efbfd0; }
+.app-shell.videosbatch-canvas-mode .tag-style,
+.app-shell.videosbatch-canvas-mode .tag-storyboard { color: #64548f; background: #f5f1ff; border-color: #d7c8f4; }
+.app-shell.videosbatch-canvas-mode .tag-shot { color: #28766f; background: #eaf8f5; border-color: #b5dfd7; }
+.app-shell.videosbatch-canvas-mode .tag-stitch { color: #56763e; background: #f0f8e9; border-color: #c9dfb7; }
+.app-shell.videosbatch-canvas-mode .tag-refvideo,
+.app-shell.videosbatch-canvas-mode .tag-videoproc { color: #99465b; background: #fff0f2; border-color: #efc0c8; }
+
+.app-shell.videosbatch-canvas-mode .flow-node-thumb,
+.app-shell.videosbatch-canvas-mode .flow-node-thumb.fit-contain {
+  border-top-color: var(--vbs-canvas-line);
+  border-bottom-color: var(--vbs-canvas-line);
+  background:
+    linear-gradient(135deg, rgba(148, 163, 184, 0.07) 0 25%, transparent 25% 50%, rgba(148, 163, 184, 0.05) 50% 75%, transparent 75%),
+    #eef2f4;
+  background-size: 18px 18px, auto;
+}
+
+.app-shell.videosbatch-canvas-mode .flow-node-foot {
+  color: var(--vbs-canvas-text-soft);
+}
+
+.app-shell.videosbatch-canvas-mode .flow-node-model,
+.app-shell.videosbatch-canvas-mode .flow-node-download,
+.app-shell.videosbatch-canvas-mode .flow-review-button {
+  border-color: var(--vbs-canvas-line-strong);
+  background-color: #ffffff;
+  color: #59636d;
+}
+
+.app-shell.videosbatch-canvas-mode .flow-node-model:hover,
+.app-shell.videosbatch-canvas-mode .flow-node-model:focus,
+.app-shell.videosbatch-canvas-mode .flow-node-download:hover,
+.app-shell.videosbatch-canvas-mode .flow-review-button:hover {
+  border-color: #d2a24b;
+  background-color: var(--vbs-canvas-accent-soft);
+  color: #78591c;
+}
+
+.app-shell.videosbatch-canvas-mode .flow-node-pending-overlay {
+  background: rgba(255, 255, 255, 0.86);
+  color: #4d5963;
+}
+
+.app-shell.videosbatch-canvas-mode .flow-empty,
+.app-shell.videosbatch-canvas-mode .flow-empty-generating,
+.app-shell.videosbatch-canvas-mode .flow-status,
+.app-shell.videosbatch-canvas-mode .flow-review-badge,
+.app-shell.videosbatch-canvas-mode .flow-node-info {
+  color: var(--vbs-canvas-text-soft);
+}
+
+.app-shell.videosbatch-canvas-mode .inspector {
+  width: 400px;
+  border-left-color: var(--vbs-canvas-line);
+  background: var(--vbs-canvas-surface);
+  box-shadow: -12px 0 28px rgba(30, 41, 59, 0.08);
+  color: var(--vbs-canvas-text);
+}
+
+.app-shell.videosbatch-canvas-mode .inspector header {
+  border-bottom-color: var(--vbs-canvas-line);
+  background: rgba(255, 255, 255, 0.97);
+}
+
+.app-shell.videosbatch-canvas-mode .inspector-tag {
+  border-color: #ead49a;
+  background: var(--vbs-canvas-accent-soft);
+  color: #78591c;
+}
+
+.app-shell.videosbatch-canvas-mode .inspector-close {
+  color: #76818b;
+}
+
+.app-shell.videosbatch-canvas-mode .inspector-close:hover {
+  color: #27313a;
+  background: #f1f4f6;
+}
+
+.app-shell.videosbatch-canvas-mode .inspector label {
+  color: #64717c;
+}
+
+.app-shell.videosbatch-canvas-mode .inspector input,
+.app-shell.videosbatch-canvas-mode .inspector textarea,
+.app-shell.videosbatch-canvas-mode .inspector select {
+  border-color: var(--vbs-canvas-line-strong);
+  background: #ffffff;
+  color: #27313a;
+}
+
+.app-shell.videosbatch-canvas-mode .inspector input:focus,
+.app-shell.videosbatch-canvas-mode .inspector textarea:focus,
+.app-shell.videosbatch-canvas-mode .inspector select:focus {
+  border-color: #d2a24b;
+  box-shadow: 0 0 0 3px rgba(193, 139, 47, 0.14);
+}
+
+.app-shell.videosbatch-canvas-mode .inspector-section {
+  border-top-color: var(--vbs-canvas-line);
+}
+
+.app-shell.videosbatch-canvas-mode .inspector-section strong,
+.app-shell.videosbatch-canvas-mode .inspector-review-summary-head strong,
+.app-shell.videosbatch-canvas-mode .inspector-ref-meta strong {
+  color: #27313a;
+}
+
+.app-shell.videosbatch-canvas-mode .inspector-hint,
+.app-shell.videosbatch-canvas-mode .inspector-empty,
+.app-shell.videosbatch-canvas-mode .inspector-ref-meta small,
+.app-shell.videosbatch-canvas-mode .inspector-review-summary small {
+  color: var(--vbs-canvas-text-soft);
+}
+
+.app-shell.videosbatch-canvas-mode .inspector-empty {
+  border-color: var(--vbs-canvas-line-strong);
+  background: var(--vbs-canvas-surface-muted);
+}
+
+.app-shell.videosbatch-canvas-mode .inspector-fold,
+.app-shell.videosbatch-canvas-mode .inspector-review-card,
+.app-shell.videosbatch-canvas-mode .inspector-review-summary,
+.app-shell.videosbatch-canvas-mode .inspector-history-item,
+.app-shell.videosbatch-canvas-mode .inspector-ref-item,
+.app-shell.videosbatch-canvas-mode .inspector-generating-preview {
+  border-color: var(--vbs-canvas-line);
+  background: var(--vbs-canvas-surface-muted);
+  color: var(--vbs-canvas-text);
+}
+
+.app-shell.videosbatch-canvas-mode .inspector-fold summary {
+  color: #59636d;
+}
+
+.app-shell.videosbatch-canvas-mode .inspector-ref-item.active {
+  border-color: #d2a24b;
+  background: var(--vbs-canvas-accent-soft);
+}
+
+.app-shell.videosbatch-canvas-mode .inspector-actions {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.98) 24%);
+}
+
+.app-shell.videosbatch-canvas-mode .inspector-actions button:not(.primary) {
+  border-color: var(--vbs-canvas-line-strong);
+  background: #ffffff;
+  color: #59636d;
+}
+
+.app-shell.videosbatch-canvas-mode .create-node-menu {
+  border-color: var(--vbs-canvas-line-strong);
+  background: #ffffff;
+  box-shadow: 0 14px 32px rgba(30, 41, 59, 0.16);
+}
+
+.app-shell.videosbatch-canvas-mode .create-node-menu header {
+  border-bottom-color: var(--vbs-canvas-line);
+  background: #ffffff;
+  color: #59636d;
+}
+
+.app-shell.videosbatch-canvas-mode .create-node-menu-item {
+  color: #27313a;
+}
+
+.app-shell.videosbatch-canvas-mode .create-node-menu-item:hover {
+  background: var(--vbs-canvas-accent-soft);
+}
+
+.app-shell.videosbatch-canvas-mode .create-node-menu-item .cnm-icon {
+  background: #f1f4f6;
+  color: #59636d;
+}
+
+.app-shell.videosbatch-canvas-mode .create-node-menu-item .cnm-label strong {
+  color: #27313a;
+}
+
+.app-shell.videosbatch-canvas-mode .create-node-menu-item .cnm-label small,
+.app-shell.videosbatch-canvas-mode .create-node-menu-item .cnm-key {
+  color: var(--vbs-canvas-text-soft);
+}
+
+@media (max-width: 899px) {
+  .app-shell.videosbatch-canvas-mode .inspector {
+    width: min(100%, 400px);
   }
 }

@@ -7,6 +7,7 @@ import type {
 } from "../../../shared/videosBatchWorkflow";
 import type { VideosBatchProductStepId } from "../stageModel";
 import { LessonStage } from "./LessonStage";
+import type { VideosBatchLessonDraft } from "./LessonStage";
 import { IntroCandidatesStage } from "./IntroCandidatesStage";
 import { StoryStage } from "./StoryStage";
 import { AssetPlanStage } from "./AssetPlanStage";
@@ -26,6 +27,9 @@ export function StageWorkspace({
   stepId,
   busy,
   onParseLessonFile,
+  parsedLessonDraft,
+  onParsedLessonDraftChange,
+  onSaveParsedLessonDraft,
   onStart,
   onSelectIntro,
   onSaveStory,
@@ -44,6 +48,9 @@ export function StageWorkspace({
   stepId: VideosBatchProductStepId;
   busy?: boolean;
   onParseLessonFile?: (file: File) => Promise<VideosBatchParsedLessonDocument>;
+  parsedLessonDraft?: VideosBatchLessonDraft;
+  onParsedLessonDraftChange?: (draft: VideosBatchLessonDraft | undefined) => void;
+  onSaveParsedLessonDraft?: (draft: VideosBatchLessonDraft) => void;
   onStart: (lessonText: string, source?: VideosBatchLessonSource) => Promise<void> | void;
   onSelectIntro: (candidate: any) => Promise<void> | void;
   onSaveStory?: (content: string) => Promise<void> | void;
@@ -61,6 +68,9 @@ export function StageWorkspace({
           sessionTitle={sessionTitle}
           lessonText={stage("LESSON_INPUT")?.lessonText}
           source={stage("LESSON_INPUT")?.source}
+          parsedDraft={parsedLessonDraft}
+          onParsedDraftChange={onParsedLessonDraftChange}
+          onSaveParsedDraft={onSaveParsedLessonDraft}
           busy={busy}
           started={Boolean(workflow)}
           onParseFile={onParseLessonFile}
