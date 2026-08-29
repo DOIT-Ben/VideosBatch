@@ -53,18 +53,16 @@ const markup = renderToStaticMarkup(
 for (const text of ["VideosBatch", "流程制作", "制作画布", "教案", "课程导入", "故事文稿", "资产计划", "资产图片", "视频剧本", "视频分镜", "视频生成", "最终成片"]) {
   assert.ok(markup.includes(text), `guided studio must render ${text}`);
 }
-assert.ok(markup.includes("videosbatch-studio"), "guided studio must own a scoped product shell");
-assert.ok(markup.includes("vbs-sidebar"), "guided studio must render a vertical workflow sidebar");
-assert.ok(markup.includes("vbs-workspace"), "guided studio must render a semantic main workspace");
-assert.ok(markup.includes("vbs-context"), "guided studio must render a context rail");
+assert.ok(markup.includes("videosbatch-studio-v2"), "guided studio must render the V2 product shell");
+assert.ok(markup.includes("vbs-v2-progress"), "guided studio must render the single top progress rail");
+assert.ok(markup.includes("vbs-v2-workspace"), "guided studio must render one wide semantic workspace");
+assert.ok(!markup.includes("vbs-sidebar"), "Guided Studio V2 must not render the internal left workflow sidebar");
+assert.ok(!markup.includes('class="vbs-context"'), "Guided Studio V2 must not render a permanent right context rail");
 assert.ok(markup.includes("选择课程导入方案"), "intro step must render semantic content instead of raw JSON");
 assert.ok(!markup.includes("videosbatch-stage-rail"), "old horizontal engineering rail must not be the primary product UI");
 assert.ok(!markup.includes("revision 1"), "revision/debug metadata must not dominate the primary workspace");
 assert.ok(!markup.includes("高级 · 原始数据"), "raw JSON must stay hidden until the advanced drawer is explicitly opened");
 
-// Radix Dialog renders through a browser Portal, so server-side static markup intentionally does
-// not contain the opened drawer. Verify the implementation contract from source instead: the
-// advanced surface must stay available, use Radix Dialog, and retain JSON editing/parsing.
 const drawerSource = readFileSync(new URL("../src/client/videosBatchStudio/components/ArtifactDebugDrawer.tsx", import.meta.url), "utf8");
 assert.ok(drawerSource.includes('from "radix-ui"'), "advanced drawer must use Radix primitives");
 assert.ok(drawerSource.includes("Dialog.Root"), "advanced drawer must preserve an accessible dialog surface");
