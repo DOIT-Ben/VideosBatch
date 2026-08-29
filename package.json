@@ -97,11 +97,15 @@
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "lucide-react": "^0.468.0",
+    "mammoth": "1.12.1",
+    "pdf-parse": "2.4.5",
     "pg": "^8.21.0",
     "radix-ui": "1.6.7",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
-    "vite": "^7.1.7"
+    "react-dropzone": "20.1.1",
+    "vite": "^7.1.7",
+    "word-extractor": "1.0.4"
   },
   "devDependencies": {
     "@rollup/wasm-node": "^4.60.4",
