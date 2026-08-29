@@ -1,4 +1,4 @@
-import { Clapperboard, Sparkles } from "lucide-react";
+import { Sparkles } from "lucide-react";
 
 export function VideosBatchHeader({
   sessionTitle,
@@ -14,16 +14,16 @@ export function VideosBatchHeader({
   return (
     <header className="vbs-v2-header">
       <div className="vbs-v2-brand-lockup">
-        <span className="vbs-v2-brand-mark" aria-hidden="true"><Sparkles size={20} /></span>
-        <div>
-          <div className="vbs-v2-brand-title"><strong>VideosBatch</strong><span>课程视频工作台</span></div>
-          <p>从教案到课程导入视频，一步步完成内容与媒体制作</p>
+        <span className="vbs-v2-brand-mark" aria-hidden="true"><Sparkles size={19} /></span>
+        <div className="vbs-v2-brand-title">
+          <strong>VideosBatch</strong>
+          <span>AI 课程视频工作室</span>
         </div>
       </div>
 
-      <div className="vbs-v2-project-meta">
-        <Clapperboard size={16} aria-hidden="true" />
-        <div><span>当前项目</span><strong>{sessionTitle || "未命名课程视频"}</strong></div>
+      <div className="vbs-v2-project-meta" aria-label={`当前项目 ${sessionTitle || "未命名课程视频"}，已完成 ${completedCount} / ${totalSteps}`}>
+        <strong>{sessionTitle || "未命名课程视频"}</strong>
+        <span aria-hidden="true">·</span>
         <small>{completedCount} / {totalSteps}</small>
       </div>
 
