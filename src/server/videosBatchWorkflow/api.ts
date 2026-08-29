@@ -1,6 +1,12 @@
-import type { Application, Request, Response } from "express";
-import { createVideosBatchWorkflow, VIDEOS_BATCH_STAGE_ORDER, type VideosBatchStageId } from "../../shared/videosBatchWorkflow";
+import express, { type Application, type Request, type Response } from "express";
+import {
+  createVideosBatchWorkflow,
+  VIDEOS_BATCH_STAGE_ORDER,
+  type VideosBatchLessonSource,
+  type VideosBatchStageId
+} from "../../shared/videosBatchWorkflow";
 import type { CinemaStore } from "../store";
+import { MAX_LESSON_FILE_BYTES, parseLessonDocument } from "./lessonDocumentParser";
 import type { StageExecutionContext, StageRegistry } from "./stageContracts";
 import { replaceStageArtifact, restartFrom, runAll, runNext } from "./runner";
 
@@ -9,8 +15,34 @@ function routeParam(req: Request, key: string) {
   return Array.isArray(value) ? value[0] || "" : value || "";
 }
 
+function queryString(req: Request, key: string) {
+  const value = req.query[key];
+  return Array.isArray(value) ? String(value[0] || "") : typeof value === "string" ? value : "";
+}
+
 function isStageId(value: string): value is VideosBatchStageId {
   return (VIDEOS_BATCH_STAGE_ORDER as readonly string[]).includes(value);
+}
+
+function sanitizeLessonSource(value: unknown): VideosBatchLessonSource | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const source = value as Record<string, unknown>;
+  if (source.kind !== "file" && source.kind !== "pasted_text") return undefined;
+  if (source.kind === "pasted_text") return { kind: "pasted_text" };
+
+  const fileType = source.fileType === "doc" || source.fileType === "docx" || source.fileType === "pdf"
+    ? source.fileType
+    : undefined;
+  const fileName = typeof source.fileName === "string" ? source.fileName.trim() : "";
+  const sizeBytes = typeof source.sizeBytes === "number" && Number.isFinite(source.sizeBytes) && source.sizeBytes > 0
+    ? Math.floor(source.sizeBytes)
+    : undefined;
+  return {
+    kind: "file",
+    ...(fileName ? { fileName } : {}),
+    ...(fileType ? { fileType } : {}),
+    ...(sizeBytes ? { sizeBytes } : {})
+  };
 }
 
 function workflowContext(store: CinemaStore, sessionId: string): StageExecutionContext | undefined {
@@ -61,13 +93,36 @@ export function registerVideosBatchWorkflowApi(
   store: CinemaStore,
   registry: StageRegistry
 ) {
+  app.post(
+    "/api/sessions/:sessionId/videosbatch/lesson/parse",
+    express.raw({ type: () => true, limit: MAX_LESSON_FILE_BYTES }),
+    async (req, res) => {
+      const session = requireSession(store, req, res);
+      if (!session) return;
+      const fileName = queryString(req, "filename").trim();
+      if (!fileName) return res.status(400).json({ error: "filename is required" });
+      if (!Buffer.isBuffer(req.body)) return res.status(400).json({ error: "lesson document body must be raw file bytes" });
+      try {
+        const parsed = await parseLessonDocument({
+          fileName,
+          mimeType: req.header("content-type") || "application/octet-stream",
+          buffer: req.body
+        });
+        res.json(parsed);
+      } catch (error) {
+        res.status(400).json({ error: error instanceof Error ? error.message : "Lesson document parsing failed" });
+      }
+    }
+  );
+
   app.post("/api/sessions/:sessionId/videosbatch/start", async (req, res) => {
     const session = requireSession(store, req, res);
     if (!session) return;
     const projectId = typeof req.body?.projectId === "string" ? req.body.projectId : "";
     const lessonText = typeof req.body?.lessonText === "string" ? req.body.lessonText : "";
+    const source = sanitizeLessonSource(req.body?.source);
     try {
-      const workflow = createVideosBatchWorkflow({ projectId, lessonText });
+      const workflow = createVideosBatchWorkflow({ projectId, lessonText, source });
       await persistWorkflow(store, session.id, workflow);
       res.json(workflow);
     } catch (error) {
