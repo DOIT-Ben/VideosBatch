@@ -7,7 +7,7 @@ body:has(.videosbatch-studio-v2),
 }
 
 body:has(.videosbatch-studio-v2) {
-  background: #f5f3ee;
+  background: #f6f4ef;
 }
 
 .app-shell:has(.videosbatch-studio-v2) {
@@ -15,7 +15,7 @@ body:has(.videosbatch-studio-v2) {
   min-height: 100vh;
   height: auto;
   overflow: visible;
-  background: #f5f3ee;
+  background: #f6f4ef;
 }
 
 .app-shell:has(.videosbatch-studio-v2) > .sidebar {
@@ -29,7 +29,7 @@ body:has(.videosbatch-studio-v2) {
   height: auto;
   padding: 0;
   overflow: visible;
-  background: #f5f3ee;
+  background: #f6f4ef;
 }
 
 .app-shell:has(.videosbatch-studio-v2) .topbar {
@@ -51,30 +51,11 @@ body:has(.videosbatch-studio-v2) {
 
 .videosbatch-studio-v2 .vbs-v2-header {
   min-height: 68px;
-  padding: 10px 28px;
-}
-
-.videosbatch-studio-v2 .vbs-v2-brand-lockup {
-  gap: 11px;
-}
-
-.videosbatch-studio-v2 .vbs-v2-brand-mark {
-  width: 38px;
-  height: 38px;
-  border-radius: 12px;
-}
-
-.videosbatch-studio-v2 .vbs-v2-brand-lockup p {
-  margin-top: 2px;
+  padding: 9px 28px;
 }
 
 .videosbatch-studio-v2 .vbs-v2-progress-wrap {
-  padding: 7px 28px;
-}
-
-.videosbatch-studio-v2 .vbs-v2-progress-step {
-  height: 36px;
-  border-radius: 10px;
+  padding: 10px 28px 9px;
 }
 
 .videosbatch-studio-v2 .vbs-v2-stage-toolbar {
@@ -85,7 +66,7 @@ body:has(.videosbatch-studio-v2) {
 .videosbatch-studio-v2 .vbs-v2-workspace {
   min-height: auto;
   overflow: visible;
-  padding: 28px 32px 56px;
+  padding: 30px 32px 56px;
 }
 
 .videosbatch-studio-v2 .vbs-v2-lesson-onboarding {
@@ -97,11 +78,11 @@ body:has(.videosbatch-studio-v2) {
 }
 
 .videosbatch-studio-v2 .vbs-v2-lesson-hero h1 {
-  font-size: clamp(28px, 2.6vw, 38px);
+  font-size: clamp(29px, 2.6vw, 38px);
 }
 
 .videosbatch-studio-v2 .vbs-v2-lesson-tabs {
-  border-radius: 18px;
+  border-radius: var(--vbs-v2-radius-focus);
 }
 
 .videosbatch-studio-v2 .vbs-v2-tab-panel {
@@ -110,8 +91,7 @@ body:has(.videosbatch-studio-v2) {
 
 .videosbatch-studio-v2 .vbs-v2-dropzone {
   min-height: 220px;
-  padding: 26px;
-  border-radius: 16px;
+  padding: 27px;
 }
 
 .videosbatch-studio-v2 .vbs-footer {
@@ -122,19 +102,15 @@ body:has(.videosbatch-studio-v2) {
 @media (max-height: 950px) and (min-width: 900px) {
   .videosbatch-studio-v2 .vbs-v2-header {
     min-height: 62px;
-    padding-block: 8px;
-  }
-
-  .videosbatch-studio-v2 .vbs-v2-brand-lockup p {
-    display: none;
+    padding-block: 7px;
   }
 
   .videosbatch-studio-v2 .vbs-v2-progress-wrap {
-    padding-block: 5px;
+    padding-block: 8px;
   }
 
   .videosbatch-studio-v2 .vbs-v2-progress-step {
-    height: 34px;
+    min-height: 48px;
   }
 
   .videosbatch-studio-v2 .vbs-v2-stage-toolbar {
@@ -143,7 +119,7 @@ body:has(.videosbatch-studio-v2) {
   }
 
   .videosbatch-studio-v2 .vbs-v2-workspace {
-    padding-top: 22px;
+    padding-top: 24px;
   }
 
   .videosbatch-studio-v2 .vbs-v2-lesson-hero {
