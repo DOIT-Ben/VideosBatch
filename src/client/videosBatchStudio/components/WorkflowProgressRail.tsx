@@ -2,12 +2,12 @@ import { AlertCircle, Check, Circle, LoaderCircle, RefreshCw, XCircle } from "lu
 import type { VideosBatchProductStatus, VideosBatchProductStep, VideosBatchProductStepId } from "../stageModel";
 
 function StatusIcon({ status }: { status: VideosBatchProductStatus }) {
-  if (status === "ready") return <Check size={13} strokeWidth={2.4} />;
-  if (status === "running") return <LoaderCircle size={13} className="spin" />;
-  if (status === "confirm") return <AlertCircle size={13} />;
-  if (status === "stale") return <RefreshCw size={13} />;
-  if (status === "failed") return <XCircle size={13} />;
-  return <Circle size={11} />;
+  if (status === "ready") return <Check size={12} strokeWidth={2.5} />;
+  if (status === "running") return <LoaderCircle size={12} className="spin" />;
+  if (status === "confirm") return <AlertCircle size={12} />;
+  if (status === "stale") return <RefreshCw size={12} />;
+  if (status === "failed") return <XCircle size={12} />;
+  return <Circle size={9} />;
 }
 
 export function WorkflowProgressRail({
@@ -40,9 +40,11 @@ export function WorkflowProgressRail({
               aria-label={`${String(index + 1).padStart(2, "0")} ${step.label}，${status}`}
               onClick={() => onSelectStep(step.id)}
             >
-              <span className="vbs-v2-progress-index">{String(index + 1).padStart(2, "0")}</span>
-              <span className="vbs-v2-progress-label">{step.label}</span>
-              <span className="vbs-v2-progress-state" aria-hidden="true"><StatusIcon status={status} /></span>
+              <span className="vbs-v2-progress-node" aria-hidden="true"><StatusIcon status={status} /></span>
+              <span className="vbs-v2-progress-copy">
+                <span className="vbs-v2-progress-index">{String(index + 1).padStart(2, "0")}</span>
+                <span className="vbs-v2-progress-label">{step.label}</span>
+              </span>
             </button>
           );
         })}
