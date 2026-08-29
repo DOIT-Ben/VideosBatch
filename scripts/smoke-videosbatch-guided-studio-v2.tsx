@@ -49,6 +49,10 @@ assert.ok(!preStartStudioMarkup.includes("当前查看"), "pre-start lesson onbo
 const studioSource = readFileSync(new URL("../src/client/videosBatchStudio/VideosBatchStudio.tsx", import.meta.url), "utf8");
 const lessonSource = readFileSync(new URL("../src/client/videosBatchStudio/stages/LessonStage.tsx", import.meta.url), "utf8");
 const mainSource = readFileSync(new URL("../src/client/main.tsx", import.meta.url), "utf8");
+const headerSource = readFileSync(new URL("../src/client/videosBatchStudio/VideosBatchHeader.tsx", import.meta.url), "utf8");
+const railSource = readFileSync(new URL("../src/client/videosBatchStudio/components/WorkflowProgressRail.tsx", import.meta.url), "utf8");
+const v2CssSource = readFileSync(new URL("../src/client/videosBatchStudio/guidedStudioV2.css", import.meta.url), "utf8");
+const finalStageSource = readFileSync(new URL("../src/client/videosBatchStudio/stages/FinalVideoStage.tsx", import.meta.url), "utf8");
 const lessonClientUrl = new URL("../src/client/videosBatchStudio/lessonDocumentClient.ts", import.meta.url);
 const focusCssUrl = new URL("../src/client/videosBatchStudio/guidedStudioV2Focus.css", import.meta.url);
 
@@ -60,6 +64,13 @@ assert.ok(mainSource.includes('import "./videosBatchStudio/guidedStudioV2.css"')
 assert.ok(mainSource.includes('import "./videosBatchStudio/guidedStudioV2Focus.css"'), "browser entry must load workflow focus styles");
 assert.ok(existsSync(lessonClientUrl), "lesson parsing must live in a focused client adapter instead of patching the giant api.ts");
 assert.ok(existsSync(focusCssUrl), "workflow focus mode must live in a scoped CSS adapter instead of patching the giant App.tsx");
+
+assert.ok(headerSource.includes("AI 课程视频工作室"), "product header must use the consolidated Editorial AI Studio identity");
+assert.ok(railSource.includes("vbs-v2-progress-node"), "progress rail must expose a timeline node instead of only pill-style step content");
+assert.ok(v2CssSource.includes("--vbs-v2-radius-card"), "Guided Studio V2 must define one canonical card radius token");
+assert.ok(v2CssSource.includes("--vbs-v2-shadow-raised"), "Guided Studio V2 must define one canonical raised-surface shadow token");
+assert.ok(v2CssSource.includes("--vbs-bg: var(--vbs-v2-canvas)"), "legacy stage surfaces must inherit the canonical V2 palette inside Guided Studio");
+assert.ok(finalStageSource.includes("vbs-final-delivery"), "final step must expose a dedicated delivery surface while preserving native playback behavior");
 
 if (existsSync(lessonClientUrl)) {
   const lessonClientSource = readFileSync(lessonClientUrl, "utf8");
