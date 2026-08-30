@@ -89,6 +89,7 @@ export function StageWorkspace({
           planArtifact={stage("ASSET_PLAN")}
           candidatesArtifact={stage("ASSET_CANDIDATES")}
           confirmationArtifact={stage("ASSET_CONFIRMATION")}
+          confirmationStageStatus={workflow?.stages.ASSET_CONFIRMATION?.status}
           nativeAssets={nativeAssets}
           selectedAssetIds={selectedAssetIds}
           onSelectAsset={onSelectAsset}

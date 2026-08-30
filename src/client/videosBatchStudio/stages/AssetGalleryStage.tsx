@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import type { Asset } from "../../../shared/types";
+import type { VideosBatchStageStatus } from "../../../shared/videosBatchWorkflow";
 import { buildAssetCandidateGroups, isAssetConfirmationComplete } from "../contentModel";
 import { MediaPreviewDialog } from "../components/MediaPreviewDialog";
 import { Check, ImageIcon, Maximize2 } from "lucide-react";
@@ -8,6 +9,7 @@ export function AssetGalleryStage({
   planArtifact,
   candidatesArtifact,
   confirmationArtifact,
+  confirmationStageStatus,
   nativeAssets = [],
   selectedAssetIds = {},
   onSelectAsset = () => undefined,
@@ -17,6 +19,7 @@ export function AssetGalleryStage({
   planArtifact: any;
   candidatesArtifact: any;
   confirmationArtifact: any;
+  confirmationStageStatus?: VideosBatchStageStatus;
   nativeAssets?: Asset[];
   selectedAssetIds?: Record<string, string>;
   onSelectAsset?: (assetKey: string, assetId: string) => Promise<void> | void;
@@ -32,6 +35,13 @@ export function AssetGalleryStage({
     const selected = selectedAssetIds[group.assetKey] || group.selectedAssetId;
     return Boolean(selected && group.candidateAssetIds.includes(selected));
   });
+  // The workflow gate only advances through an explicit confirmation save, so
+  // the bar must be visible whenever the ASSET_CONFIRMATION stage is not
+  // itself ready (stale after upstream regeneration) or the artifact is
+  // incomplete — even if a stale artifact still carries confirmed: true.
+  const needsConfirmation =
+    confirmationStageStatus !== "ready" ||
+    !isAssetConfirmationComplete(planArtifact, candidatesArtifact, confirmationArtifact);
 
   return (
     <section className="vbs-stage-page">
@@ -103,7 +113,7 @@ export function AssetGalleryStage({
               );
             })}
           </div>
-          {!isAssetConfirmationComplete(planArtifact, candidatesArtifact, confirmationArtifact) && (
+          {!needsConfirmation && (
             <div className="vbs-stage-confirm-bar">
               <div><strong>确认最终资产</strong><span>确认后，后续剧本和分镜只引用这里选定的图片；仍可从本步骤重新生成。</span></div>
               <button type="button" className="vbs-primary" disabled={busy || !readyToConfirm} onClick={onConfirmAll}>确认全部资产 →</button>

@@ -121,12 +121,13 @@ const nativeAssets: Asset[] = [{
   updatedAt: "2026-08-30T08:00:00.000Z"
 }];
 
-function renderGallery(confirmationArtifact: any) {
+function renderGallery(confirmationArtifact: any, confirmationStageStatus?: "pending" | "running" | "ready" | "failed" | "stale") {
   return renderToStaticMarkup(
     <AssetGalleryStage
       planArtifact={plan}
       candidatesArtifact={candidatesAfterRegeneration}
       confirmationArtifact={confirmationArtifact}
+      confirmationStageStatus={confirmationStageStatus}
       nativeAssets={nativeAssets}
       selectedAssetIds={{}}
       onSelectAsset={() => undefined}
@@ -142,7 +143,16 @@ assert.ok(
   "the confirmation bar must stay visible while the gate is not satisfied, even with confirmed: true"
 );
 
-const completeMarkup = renderGallery(completeArtifact);
+// Fake providers can regenerate deterministic candidate ids, so a stale
+// ASSET_CONFIRMATION stage may carry an artifact that passes every completeness
+// check — the stage still waits for an explicit confirmation save.
+const staleStageMarkup = renderGallery(completeArtifact, "stale");
+assert.ok(
+  staleStageMarkup.includes("确认全部资产"),
+  "the confirmation bar must stay visible while the ASSET_CONFIRMATION stage itself is stale, even with a complete artifact"
+);
+
+const completeMarkup = renderGallery(completeArtifact, "ready");
 assert.ok(
   !completeMarkup.includes("确认全部资产"),
   "the confirmation bar must hide once the confirmation is complete"
