@@ -11,10 +11,10 @@ import {
 } from "../src/server/videosBatchWorkflow/runtimeProvider";
 
 const fakeConfig = resolveVideosBatchRuntimeConfig({
-  OPENAI_API_KEY: "shared-key-that-must-not-auto-enable",
-  BP_SEEDREAM_API_KEY: "image-key-that-must-not-auto-enable",
-  BP_SEEDANCE_API_KEY: "video-key-that-must-not-auto-enable",
-  VIDEOSBATCH_LLM_API_KEY: "dedicated-key-that-must-not-auto-enable",
+  OPENAI_API_KEY: "shared-test-key-that-must-not-auto-enable",
+  BP_SEEDREAM_API_KEY: "image-test-key-that-must-not-auto-enable",
+  BP_SEEDANCE_API_KEY: "video-test-key-that-must-not-auto-enable",
+  VIDEOSBATCH_LLM_API_KEY: "dedicated-test-key-that-must-not-auto-enable",
   VIDEOSBATCH_LLM_MODEL: "test-model"
 });
 assert.equal(fakeConfig.executorMode, "fake", "missing executor mode must stay fake even when keys exist");
@@ -25,12 +25,12 @@ assert.equal(fakeReadiness.mediaMode, "fake");
 assert.equal(fakeReadiness.text.enabled, false);
 assert.equal(fakeReadiness.text.ready, true);
 assert.equal(fakeReadiness.media.enabled, false);
-assert.equal(JSON.stringify(fakeReadiness).includes("dedicated-key-that-must-not-auto-enable"), false, "readiness must never expose API key material");
-assert.equal(JSON.stringify(fakeReadiness).includes("image-key-that-must-not-auto-enable"), false, "readiness must never expose media keys");
+assert.equal(JSON.stringify(fakeReadiness).includes("dedicated-test-key-that-must-not-auto-enable"), false, "readiness must never expose API key material");
+assert.equal(JSON.stringify(fakeReadiness).includes("image-test-key-that-must-not-auto-enable"), false, "readiness must never expose media keys");
 
 assert.throws(() => resolveVideosBatchRuntimeConfig({ VIDEOSBATCH_EXECUTOR_MODE: "surprise" }), /VIDEOSBATCH_EXECUTOR_MODE.*fake.*llm/i);
 assert.throws(() => resolveVideosBatchRuntimeConfig({ VIDEOSBATCH_MEDIA_MODE: "surprise" }), /VIDEOSBATCH_MEDIA_MODE.*fake.*native/i);
-assert.throws(() => resolveVideosBatchRuntimeConfig({ VIDEOSBATCH_EXECUTOR_MODE: "llm", VIDEOSBATCH_LLM_MODEL: "test-model", OPENAI_API_KEY: "shared-key-must-not-be-used" }), /VIDEOSBATCH_LLM_API_KEY/);
+assert.throws(() => resolveVideosBatchRuntimeConfig({ VIDEOSBATCH_EXECUTOR_MODE: "llm", VIDEOSBATCH_LLM_MODEL: "test-model", OPENAI_API_KEY: "shared-test-key-must-not-be-used" }), /VIDEOSBATCH_LLM_API_KEY/);
 assert.throws(() => resolveVideosBatchRuntimeConfig({ VIDEOSBATCH_EXECUTOR_MODE: "llm", VIDEOSBATCH_LLM_API_KEY: "test-key" }), /VIDEOSBATCH_LLM_MODEL/);
 
 const nativeMediaConfig = resolveVideosBatchRuntimeConfig({ VIDEOSBATCH_MEDIA_MODE: "native" });
