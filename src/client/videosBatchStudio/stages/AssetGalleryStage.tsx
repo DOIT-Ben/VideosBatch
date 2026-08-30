@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { Asset } from "../../../shared/types";
-import { buildAssetCandidateGroups } from "../contentModel";
+import { buildAssetCandidateGroups, isAssetConfirmationComplete } from "../contentModel";
 import { MediaPreviewDialog } from "../components/MediaPreviewDialog";
 import { Check, ImageIcon, Maximize2 } from "lucide-react";
 
@@ -103,7 +103,7 @@ export function AssetGalleryStage({
               );
             })}
           </div>
-          {!confirmationArtifact?.confirmed && (
+          {!isAssetConfirmationComplete(planArtifact, candidatesArtifact, confirmationArtifact) && (
             <div className="vbs-stage-confirm-bar">
               <div><strong>确认最终资产</strong><span>确认后，后续剧本和分镜只引用这里选定的图片；仍可从本步骤重新生成。</span></div>
               <button type="button" className="vbs-primary" disabled={busy || !readyToConfirm} onClick={onConfirmAll}>确认全部资产 →</button>

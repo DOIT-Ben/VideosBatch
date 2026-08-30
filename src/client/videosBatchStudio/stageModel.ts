@@ -3,6 +3,7 @@ import type {
   VideosBatchStageStatus,
   VideosBatchWorkflowState
 } from "../../shared/videosBatchWorkflow";
+import { isAssetConfirmationComplete } from "./contentModel";
 
 export type VideosBatchProductStepId =
   | "lesson"
@@ -60,20 +61,13 @@ function introNeedsConfirmation(workflow: VideosBatchWorkflowState) {
     !(workflow.introLocked && workflow.selectedIntroId && workflow.selectionMode);
 }
 
-function assetsNeedConfirmation(workflow: VideosBatchWorkflowState) {
+export function assetsNeedConfirmation(workflow: VideosBatchWorkflowState) {
   if (workflow.currentStage !== "ASSET_CONFIRMATION") return false;
-  const artifact = workflow.stages.ASSET_CONFIRMATION?.artifact as any;
-  if (artifact?.confirmed !== true) return true;
-  const planItems = Array.isArray((workflow.stages.ASSET_PLAN?.artifact as any)?.items)
-    ? (workflow.stages.ASSET_PLAN?.artifact as any).items
-    : [];
-  const confirmedItems = Array.isArray(artifact?.items) ? artifact.items : [];
-  if (!planItems.length || confirmedItems.length !== planItems.length) return true;
-  const byKey = new Map(confirmedItems.map((item: any) => [String(item?.assetKey || ""), item]));
-  return !planItems.every((item: any) => {
-    const confirmed = byKey.get(String(item?.assetKey || "")) as any;
-    return Boolean(confirmed?.publicAssetId && confirmed?.selectedAssetId);
-  });
+  return !isAssetConfirmationComplete(
+    workflow.stages.ASSET_PLAN?.artifact,
+    workflow.stages.ASSET_CANDIDATES?.artifact,
+    workflow.stages.ASSET_CONFIRMATION?.artifact
+  );
 }
 
 export function deriveProductStepStatus(

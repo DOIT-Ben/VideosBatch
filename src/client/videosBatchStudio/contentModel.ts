@@ -87,6 +87,39 @@ export function buildAssetConfirmationArtifact(
   return { confirmed: true, items };
 }
 
+/**
+ * Single source of truth for "the ASSET_CONFIRMATION gate is satisfied".
+ * Mirrors the server rule in src/server/videosBatchWorkflow/runner.ts
+ * (assetConfirmationReady) and additionally requires every confirmed
+ * selection to still resolve inside the current candidate ids, so a stale
+ * confirmation artifact from before an upstream regeneration no longer
+ * counts as complete.
+ */
+export function isAssetConfirmationComplete(
+  planArtifact: any,
+  candidatesArtifact: any,
+  confirmationArtifact: any
+): boolean {
+  if (confirmationArtifact?.confirmed !== true) return false;
+  const planItems = Array.isArray(planArtifact?.items) ? planArtifact.items : [];
+  const candidateItems = Array.isArray(candidatesArtifact?.items) ? candidatesArtifact.items : [];
+  const confirmedItems = Array.isArray(confirmationArtifact?.items) ? confirmationArtifact.items : [];
+  if (!planItems.length || confirmedItems.length !== planItems.length) return false;
+
+  const candidateByKey = new Map(candidateItems.map((item: any) => [String(item?.assetKey || ""), item] as const));
+  const confirmedByKey = new Map(confirmedItems.map((item: any) => [String(item?.assetKey || ""), item] as const));
+  return planItems.every((item: any) => {
+    const assetKey = String(item?.assetKey || "");
+    const confirmed = confirmedByKey.get(assetKey) as any;
+    if (!confirmed?.publicAssetId || !confirmed?.selectedAssetId) return false;
+    const candidateItem = candidateByKey.get(assetKey) as any;
+    const candidateAssetIds = Array.isArray(candidateItem?.candidateAssetIds)
+      ? candidateItem.candidateAssetIds.map((id: unknown) => String(id || ""))
+      : [];
+    return candidateAssetIds.includes(String(confirmed.selectedAssetId));
+  });
+}
+
 export function updateStoryArtifactContent<T extends Record<string, any>>(artifact: T, content: string): T {
   return { ...artifact, content: String(content) };
 }
