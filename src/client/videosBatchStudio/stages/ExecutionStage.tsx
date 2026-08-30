@@ -27,6 +27,11 @@ export function ExecutionStage({
   const readyCount = orderedShots.filter((shot) => shot.status === "ready" && preferredShotVideoUrl(shot)).length;
   const totalCount = orderedShots.length || nativeShotIds.length || renderIds.length;
   const ready = totalCount > 0 && readyCount === totalCount;
+  // Execution stage artifact may be READY while the native shot media has not
+  // been generated (fake mode, or plan confirmed but generation not started).
+  // Say what is actually pending instead of claiming an active generation.
+  const anyGenerating = orderedShots.some((shot) => shot.status === "generating" || shot.seedancePhase === "queued");
+  const progressLabel = ready ? "视频镜头已生成" : anyGenerating ? "正在生成视频" : "等待视频生成";
 
   return (
     <section className="vbs-stage-page">
@@ -38,7 +43,7 @@ export function ExecutionStage({
       {quoteArtifact && <div className="vbs-note-card"><strong>执行快照</strong><p>目标时长 {quoteArtifact.targetDurationSeconds || "—"} 秒 · 资产顺序已锁定 {Array.isArray(quoteArtifact.assetOrder) ? quoteArtifact.assetOrder.length : 0} 项</p></div>}
       {!executionArtifact && !orderedShots.length ? <div className="vbs-empty-card">视频执行尚未开始。</div> : (
         <div className="vbs-execution-summary">
-          <div className="vbs-progress-card"><span className={`vbs-progress-dot ${ready ? "ready" : "running"}`} /><div><strong>{ready ? "视频镜头已生成" : "正在生成视频"}</strong><small>{readyCount} / {totalCount} 个镜头完成</small></div></div>
+          <div className="vbs-progress-card"><span className={`vbs-progress-dot ${ready ? "ready" : anyGenerating ? "running" : ""}`} /><div><strong>{progressLabel}</strong><small>{readyCount} / {totalCount} 个镜头完成</small></div></div>
           {orderedShots.length ? (
             <div className="vbs-video-shot-grid">
               {orderedShots.map((shot) => {

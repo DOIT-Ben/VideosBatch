@@ -8,16 +8,20 @@ export function FinalVideoStage({ artifact, session, onOpenCanvas }: { artifact:
   const downloadUrl = native.downloadUrl || playbackUrl;
   const status = native.status !== "idle" ? native.status : String(artifact?.status || "idle").toLowerCase();
   const ready = status === "ready" && Boolean(playbackUrl);
+  // Workflow completed against simulated media (fake provider): the stitch stage
+  // is ready but no playable mp4 exists, so avoid claiming/awaiting a real stitch.
+  const simulatedReady = !ready && status === "ready" && artifactUrl.startsWith("fake://");
+  const settled = ready || simulatedReady;
 
   return (
     <section className="vbs-stage-page vbs-final-stage">
       <div className="vbs-stage-kicker">09 · 最终成片</div>
       <div className="vbs-final-delivery">
         <div className="vbs-final-delivery-copy">
-          <div className={`vbs-final-check ${ready ? "ready" : ""}`}>{ready ? "✓" : "○"}</div>
+          <div className={`vbs-final-check ${settled ? "ready" : ""}`}>{settled ? "✓" : "○"}</div>
           <div className="vbs-final-hero">
-            <h2>{ready ? "课程视频已完成" : status === "running" ? "正在拼接最终视频" : "等待最终拼接"}</h2>
-            <p>{ready ? "当前播放器直接读取 SeeReel StitchJob 的最终成片，可下载交付或继续进入制作画布精修。" : native.progress || "完成视频执行后，系统会把已确认镜头按顺序拼接。"}</p>
+            <h2>{ready ? "课程视频已完成" : simulatedReady ? "模拟成片已就绪" : status === "running" ? "正在拼接最终视频" : "等待最终拼接"}</h2>
+            <p>{ready ? "当前播放器直接读取 SeeReel StitchJob 的最终成片，可下载交付或继续进入制作画布精修。" : simulatedReady ? "流程已全部完成。当前为 fake 模拟媒体，配置真实 provider 后重新生成分镜视频即可得到可播放成片。" : native.progress || "完成视频执行后，系统会把已确认镜头按顺序拼接。"}</p>
           </div>
         </div>
 

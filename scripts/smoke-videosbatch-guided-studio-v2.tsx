@@ -104,6 +104,32 @@ assert.match(v2CssSource, /\.vbs-v2-parse-editor textarea,[\s\S]*?min-height:\s*
 assert.ok(v2CssSource.includes("--vbs-bg: var(--vbs-v2-canvas)"), "legacy stage surfaces must inherit the canonical V2 palette inside Guided Studio");
 assert.ok(finalStageSource.includes("vbs-final-delivery"), "final step must expose a dedicated delivery surface while preserving native playback behavior");
 
+// Status-language contract: toolbar badge and stage body must not contradict
+// each other, and a completed workflow must not keep a run control visible.
+const toolbarSource = readFileSync(new URL("../src/client/videosBatchStudio/components/StudioStageToolbar.tsx", import.meta.url), "utf8");
+const executionStageSource = readFileSync(new URL("../src/client/videosBatchStudio/stages/ExecutionStage.tsx", import.meta.url), "utf8");
+assert.match(
+  toolbarSource,
+  /\{!completed && \([\s\S]*?vbs-v2-auto-run/,
+  "a completed workflow must hide the auto-run control instead of showing it disabled"
+);
+assert.ok(
+  toolbarSource.includes("更多当前步骤操作"),
+  "the step-actions menu must stay available after completion"
+);
+assert.ok(
+  executionStageSource.includes("等待视频生成") && executionStageSource.includes("正在生成视频"),
+  "execution body must distinguish 'waiting for generation' from an active generation run"
+);
+assert.ok(
+  executionStageSource.includes("anyGenerating"),
+  "execution progress label must be derived from actual shot activity"
+);
+assert.ok(
+  finalStageSource.includes("模拟成片已就绪"),
+  "final step must describe simulated media as ready instead of waiting for a stitch"
+);
+
 if (existsSync(lessonClientUrl)) {
   const lessonClientSource = readFileSync(lessonClientUrl, "utf8");
   assert.ok(lessonClientSource.includes("/videosbatch/lesson/parse"), "lesson client must call the server document parser route");

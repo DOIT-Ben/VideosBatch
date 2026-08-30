@@ -124,6 +124,17 @@ export async function runNext(
   const stageId = workflow.currentStage;
 
   if (stageId === "LESSON_INPUT") {
+    // restartFrom can leave LESSON_INPUT pending; the lesson artifact itself is
+    // still the confirmed input, so advance out of pending instead of stalling.
+    const lessonStage = workflow.stages.LESSON_INPUT;
+    if (!lessonStage || lessonStage.status !== "ready") {
+      workflow.stages.LESSON_INPUT = {
+        status: "ready",
+        revision: lessonStage?.revision || 0,
+        artifact: lessonStage?.artifact,
+        updatedAt: nowIso()
+      };
+    }
     workflow.currentStage = "COURSE_INTRO_CANDIDATES";
     workflow.updatedAt = nowIso();
     return workflow;

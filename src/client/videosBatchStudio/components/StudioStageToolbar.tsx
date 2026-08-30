@@ -33,10 +33,12 @@ export function StudioStageToolbar({
       </div>
       {workflowStarted && (
         <div className="vbs-v2-stage-toolbar-actions">
-          <button type="button" className="vbs-secondary vbs-v2-auto-run" disabled={busy || completed} onClick={onRunAll}>
-            <Play size={14} />
-            自动运行到确认点
-          </button>
+          {!completed && (
+            <button type="button" className="vbs-secondary vbs-v2-auto-run" disabled={busy || completed} onClick={onRunAll}>
+              <Play size={14} />
+              自动运行到确认点
+            </button>
+          )}
           <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>
               <button type="button" className="vbs-v2-more-button" aria-label="更多当前步骤操作">
