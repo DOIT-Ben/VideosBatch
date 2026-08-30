@@ -32,7 +32,8 @@ if (files.length === 0) {
 
 for (const file of files) {
   const path = join(specsDir, file);
-  const text = readFileSync(path, "utf8");
+  // CRLF checkouts (core.autocrlf=true) must not fail heading matching.
+  const text = readFileSync(path, "utf8").replace(/\r\n/g, "\n");
   const statusMatch = text.match(/^Status:\s*([a-z-]+)\s*$/m);
 
   if (!statusMatch) {
