@@ -185,13 +185,13 @@ body:has(.videosbatch-studio-v2) {
    ============================================================================ */
 
 .app-shell.videosbatch-canvas-mode {
-  --vbs-canvas-bg: #f4f6f8;
+  --vbs-canvas-bg: #f6f4ef;
   --vbs-canvas-surface: #ffffff;
-  --vbs-canvas-surface-muted: #f8fafb;
-  --vbs-canvas-text: #20262d;
-  --vbs-canvas-text-soft: #69737e;
-  --vbs-canvas-line: #dfe4e8;
-  --vbs-canvas-line-strong: #c9d1d8;
+  --vbs-canvas-surface-muted: #f8f6f1;
+  --vbs-canvas-text: #191c20;
+  --vbs-canvas-text-soft: #74716a;
+  --vbs-canvas-line: #e8e4da;
+  --vbs-canvas-line-strong: #d9d3c7;
   --vbs-canvas-accent: #c18b2f;
   --vbs-canvas-accent-soft: #fff7e5;
   background: var(--vbs-canvas-bg);
@@ -205,7 +205,7 @@ body:has(.videosbatch-studio-v2) {
 .app-shell.videosbatch-canvas-mode .flow-view {
   border: 1px solid var(--vbs-canvas-line);
   background: var(--vbs-canvas-surface);
-  box-shadow: 0 12px 30px rgba(30, 41, 59, 0.08);
+  box-shadow: 0 12px 30px rgba(25, 28, 32, 0.08);
 }
 
 .app-shell.videosbatch-canvas-mode .flow-toolbar {
@@ -262,18 +262,18 @@ body:has(.videosbatch-studio-v2) {
 
 .app-shell.videosbatch-canvas-mode .flow-canvas {
   background:
-    repeating-linear-gradient(90deg, rgba(148, 163, 184, 0.16) 0 1px, transparent 1px 40px),
-    repeating-linear-gradient(0deg, rgba(148, 163, 184, 0.13) 0 1px, transparent 1px 40px),
-    linear-gradient(180deg, #fafbfc 0%, #f1f4f6 100%);
+    repeating-linear-gradient(90deg, rgba(25, 28, 32, 0.045) 0 1px, transparent 1px 40px),
+    repeating-linear-gradient(0deg, rgba(25, 28, 32, 0.035) 0 1px, transparent 1px 40px),
+    linear-gradient(180deg, #faf8f3 0%, #f3f0e8 100%);
 }
 
 .app-shell.videosbatch-canvas-mode .react-flow__background-pattern line,
 .app-shell.videosbatch-canvas-mode .react-flow__background-pattern path {
-  stroke: #d6dde3 !important;
+  stroke: #e2dcd0 !important;
 }
 
 .app-shell.videosbatch-canvas-mode .react-flow__edge-path {
-  stroke: #7aa7a2;
+  stroke: rgba(134, 99, 21, 0.38);
   stroke-width: 1.8;
 }
 
@@ -286,7 +286,7 @@ body:has(.videosbatch-studio-v2) {
 .app-shell.videosbatch-canvas-mode .react-flow__controls {
   border-color: var(--vbs-canvas-line-strong) !important;
   background: rgba(255, 255, 255, 0.96) !important;
-  box-shadow: 0 5px 14px rgba(30, 41, 59, 0.12) !important;
+  box-shadow: 0 5px 14px rgba(25, 28, 32, 0.12) !important;
 }
 
 .app-shell.videosbatch-canvas-mode .react-flow__controls-button {
@@ -301,20 +301,20 @@ body:has(.videosbatch-studio-v2) {
 
 .app-shell.videosbatch-canvas-mode .react-flow__handle {
   border-color: #ffffff !important;
-  background: #76c8be !important;
-  box-shadow: 0 0 0 2px rgba(118, 200, 190, 0.22) !important;
+  background: #d8a640 !important;
+  box-shadow: 0 0 0 2px rgba(216, 166, 64, 0.24) !important;
 }
 
 .app-shell.videosbatch-canvas-mode .flow-node {
-  border-color: #cfd7de;
+  border-color: var(--vbs-canvas-line-strong);
   background: var(--vbs-canvas-surface);
   color: var(--vbs-canvas-text);
-  box-shadow: 0 10px 24px rgba(30, 41, 59, 0.14), 0 0 0 1px rgba(255, 255, 255, 0.8);
+  box-shadow: 0 10px 24px rgba(25, 28, 32, 0.14), 0 0 0 1px rgba(255, 255, 255, 0.8);
 }
 
 .app-shell.videosbatch-canvas-mode .flow-node.selected {
   border-color: #d2a24b;
-  box-shadow: 0 0 0 2px rgba(193, 139, 47, 0.25), 0 14px 30px rgba(30, 41, 59, 0.18);
+  box-shadow: 0 0 0 2px rgba(193, 139, 47, 0.25), 0 14px 30px rgba(25, 28, 32, 0.18);
 }
 
 .app-shell.videosbatch-canvas-mode .flow-node-head,
@@ -350,8 +350,8 @@ body:has(.videosbatch-studio-v2) {
   border-top-color: var(--vbs-canvas-line);
   border-bottom-color: var(--vbs-canvas-line);
   background:
-    linear-gradient(135deg, rgba(148, 163, 184, 0.07) 0 25%, transparent 25% 50%, rgba(148, 163, 184, 0.05) 50% 75%, transparent 75%),
-    #eef2f4;
+    linear-gradient(135deg, rgba(25, 28, 32, 0.05) 0 25%, transparent 25% 50%, rgba(25, 28, 32, 0.035) 50% 75%, transparent 75%),
+    #f1ede4;
   background-size: 18px 18px, auto;
 }
 
@@ -393,7 +393,7 @@ body:has(.videosbatch-studio-v2) {
   width: 400px;
   border-left-color: var(--vbs-canvas-line);
   background: var(--vbs-canvas-surface);
-  box-shadow: -12px 0 28px rgba(30, 41, 59, 0.08);
+  box-shadow: -12px 0 28px rgba(25, 28, 32, 0.08);
   color: var(--vbs-canvas-text);
 }
 
@@ -491,7 +491,7 @@ body:has(.videosbatch-studio-v2) {
 .app-shell.videosbatch-canvas-mode .create-node-menu {
   border-color: var(--vbs-canvas-line-strong);
   background: #ffffff;
-  box-shadow: 0 14px 32px rgba(30, 41, 59, 0.16);
+  box-shadow: 0 14px 32px rgba(25, 28, 32, 0.16);
 }
 
 .app-shell.videosbatch-canvas-mode .create-node-menu header {
@@ -520,6 +520,38 @@ body:has(.videosbatch-studio-v2) {
 .app-shell.videosbatch-canvas-mode .create-node-menu-item .cnm-label small,
 .app-shell.videosbatch-canvas-mode .create-node-menu-item .cnm-key {
   color: var(--vbs-canvas-text-soft);
+}
+
+.app-shell.videosbatch-canvas-mode .flow-node-duration-badge {
+  border-color: #ead49a;
+  background: var(--vbs-canvas-accent-soft);
+  color: #78591c;
+}
+
+/* Node type identity strips: warm variants of the per-type colors. */
+.app-shell.videosbatch-canvas-mode .flow-node::before {
+  opacity: 0.9;
+}
+
+.app-shell.videosbatch-canvas-mode .asset-node::before {
+  background: #d8a640;
+}
+
+.app-shell.videosbatch-canvas-mode .storyboard-node::before {
+  background: #b3a1dd;
+}
+
+.app-shell.videosbatch-canvas-mode .shot-node::before {
+  background: #c99232;
+}
+
+.app-shell.videosbatch-canvas-mode .stitch-node::before {
+  background: #a9bf7f;
+}
+
+.app-shell.videosbatch-canvas-mode .refvideo-node::before,
+.app-shell.videosbatch-canvas-mode .videoproc-node::before {
+  background: #d99aa6;
 }
 
 @media (max-width: 899px) {

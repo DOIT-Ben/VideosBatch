@@ -54,6 +54,7 @@ Define the durable visual and interaction rules for the SeeReel workstation so t
 - Status language must stay consistent inside one step surface: the stage toolbar status badge must not contradict the stage body (for example "已完成" alongside "正在生成视频 0/12"); when the workflow stage is ready but downstream media is not generated yet, the body must say what is actually pending.
 - When the workflow is completed, the stage toolbar must not keep showing a disabled run control; workflow-complete state is communicated through the rail, header count, and footer instead.
 - All nine steps must be able to reach `ready` so the header count can reach 9 / 9; no product step may be structurally unable to leave `pending`.
+- Canvas mode shares the workflow studio's warm-white Editorial color temperature: the `--vbs-canvas-*` token family resolves to the same warm canvas, border, and text values as `--vbs-v2-*`, node type identity strips and handles use the warm accent family, and per-type tag chips keep their distinct semantic hues for classification.
 
 ## Acceptance Criteria
 
@@ -71,6 +72,7 @@ Define the durable visual and interaction rules for the SeeReel workstation so t
 - [ ] VideosBatch lesson upload and final delivery retain their existing functional contracts after visual polish.
 - [ ] A completed fake-mode workflow shows 9 / 9 in the header, no disabled auto-run control in the stage toolbar, and no "已完成" badge contradicting a "生成中/等待" stage body.
 - [ ] The asset confirmation step never reaches a state where the confirmation bar is hidden while the workflow gate still waits for confirmation.
+- [ ] Canvas mode nodes, edges, handles, inspector, and toolbar read as the same warm-white Editorial system as the workflow steps, with no cold-blue surfaces or teal chrome left over.
 
 ## Verification
 
