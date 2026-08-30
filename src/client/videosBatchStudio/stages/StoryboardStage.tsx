@@ -69,7 +69,7 @@ export function StoryboardStage({
     <section className="vbs-stage-page">
       <div className="vbs-stage-kicker">07 · 视频分镜</div>
       <div className="vbs-document-header">
-        <div><h2>{artifact?.title || "最终 10 秒分镜"}</h2><p>正式分镜是事实源；执行 Prompt 是从正式分镜派生的可复制执行副本。</p></div>
+        <div><h2>{artifact?.title || "最终分镜"}</h2><p>正式分镜是事实源；执行 Prompt 是从正式分镜派生的可复制执行副本。</p></div>
         <div className="vbs-document-facts">
           <span><strong>{artifact?.targetDuration || "—"}s</strong><small>总时长</small></span>
           <span><strong>{segments.length}</strong><small>主分镜</small></span>

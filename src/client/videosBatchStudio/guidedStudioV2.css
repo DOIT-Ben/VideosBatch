@@ -569,6 +569,12 @@
   box-shadow: 0 0 0 2px rgba(216, 166, 64, 0.14), var(--vbs-v2-shadow-selected);
 }
 
+/* Intro candidate cards align their select button to the card bottom so a row
+   of cards with different body lengths still reads as one grid. */
+.videosbatch-studio-v2 .vbs-intro-card > button {
+  margin-top: auto;
+}
+
 .videosbatch-studio-v2 .vbs-note-card {
   background: var(--vbs-v2-surface-muted);
 }

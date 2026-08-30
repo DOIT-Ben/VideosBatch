@@ -185,7 +185,7 @@ const fakeFinalStoryboard: StageDefinition<any> = {
     return {
       artifact: {
         schemaVersion: "1",
-        title: "最终10秒分镜",
+        title: "最终分镜",
         kind: "VIDEO_STORYBOARD",
         goal: "完整呈现课程导入故事并停在待解决的数学问题",
         overallScript: "从问题出现、冲突升级到留下课堂悬问，连续覆盖正式剧本。",

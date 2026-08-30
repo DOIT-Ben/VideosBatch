@@ -46,7 +46,7 @@ export function ExecutionStage({
           <div className="vbs-progress-card"><span className={`vbs-progress-dot ${ready ? "ready" : anyGenerating ? "running" : ""}`} /><div><strong>{progressLabel}</strong><small>{readyCount} / {totalCount} 个镜头完成</small></div></div>
           {orderedShots.length ? (
             <div className="vbs-video-shot-grid">
-              {orderedShots.map((shot) => {
+              {orderedShots.map((shot, position) => {
                 const url = preferredShotVideoUrl(shot);
                 return (
                   <article className={`vbs-video-shot-card ${shot.status}`} key={shot.id}>
@@ -54,7 +54,7 @@ export function ExecutionStage({
                       {url ? <video src={url} controls playsInline preload="metadata" /> : <div className="vbs-video-shot-placeholder"><span>{shot.seedancePhase === "queued" ? "排队中" : shot.status === "generating" ? "生成中" : "等待视频"}</span></div>}
                     </div>
                     <div className="vbs-video-shot-copy">
-                      <div><span className="vbs-code">{String(shot.index + 1).padStart(2, "0")}</span><strong>{shot.title || `镜头 ${shot.index + 1}`}</strong></div>
+                      <div><span className="vbs-code">{String(position + 1).padStart(2, "0")}</span><strong>{shot.title || `镜头 ${position + 1}`}</strong></div>
                       <small>{shotStatusLabel(shot)}</small>
                       {shot.error && <p className="vbs-inline-error">{shot.error}</p>}
                     </div>

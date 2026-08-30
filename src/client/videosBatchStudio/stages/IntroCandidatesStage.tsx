@@ -44,7 +44,7 @@ export function IntroCandidatesStage({
                     <article className={`vbs-intro-card ${selected ? "selected" : ""}`} key={String(candidate.id)}>
                       <div className="vbs-card-topline">
                         <span className="vbs-code">{String(candidate.id || "")}</span>
-                        {recommended && <span className="vbs-recommend">推荐</span>}
+                        {recommended && <span className="vbs-recommend">组内推荐</span>}
                       </div>
                       <h4>{String(candidate.name || candidate.id || "未命名方案")}</h4>
                       <p>{String(candidate.body || "")}</p>

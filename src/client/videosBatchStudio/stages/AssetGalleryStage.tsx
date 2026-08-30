@@ -78,7 +78,7 @@ export function AssetGalleryStage({
                               ) : (
                                 <div className="vbs-candidate-placeholder"><ImageIcon size={22} /><span>等待图片</span></div>
                               )}
-                              {selected && <span className="vbs-selected-badge"><Check size={13} /> 已选择</span>}
+                              {selected && candidate.previewUrl && <span className="vbs-selected-badge"><Check size={13} /> 已选择</span>}
                             </div>
                             <span>候选 {index + 1}</span>
                           </button>
