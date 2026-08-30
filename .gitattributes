@@ -1,0 +1,4 @@
+# The repo's smoke tests assert on \n-based source formatting (regex across
+# lines, heading matching). Normalizing all text files to LF keeps Windows
+# checkouts (core.autocrlf=true) from breaking those contracts.
+* text=auto eol=lf
