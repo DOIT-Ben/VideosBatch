@@ -2,7 +2,7 @@
 
 Status: active
 Owner: SeeReel
-Last Reviewed: 2026-06-07
+Last Reviewed: 2026-08-30
 
 ## Purpose
 
@@ -136,6 +136,13 @@ Define how SeeReel creates, edits, reviews, retries, and stitches generated medi
 - Deleting a session must also best-effort delete unshared intermediate artifacts referenced by that session: local `/media/...` previews, shot renders, stitch outputs, narration outputs, and TOS objects recorded as `tosObjectKey`. Cleanup must run after store deletion against the remaining snapshot and must preserve any local file or TOS object still referenced by another session, global asset, or Gallery item.
 - Batch deleting sessions must use the same cleanup rule as single deletion, but collect candidates for all selected sessions before deleting any of them so local files or TOS objects shared only among the deleted range are cleaned, while objects still referenced by surviving sessions or Gallery items are preserved.
 
+## VideosBatch Workflow Manual Gates
+
+- The 13-stage VideosBatch workflow has two manual gates: `COURSE_INTRO_SELECTION` and `ASSET_CONFIRMATION`. `runNext`/`runAll` must not execute past a manual gate; a gate is completed only through an explicit artifact save (`PUT /api/sessions/:sessionId/videosbatch/stages/:stageId/artifact`).
+- `ASSET_CONFIRMATION` is ready only when its artifact has `confirmed === true`, every `ASSET_PLAN` item has a matching confirmed entry with `publicAssetId` and `selectedAssetId`, and each `selectedAssetId` still resolves inside the current `ASSET_CANDIDATES` candidate ids for that asset key.
+- The asset confirmation UI must show the confirmation bar whenever the server gate is not satisfied — including when a stale confirmation artifact still carries `confirmed: true` from before an upstream regeneration. Hiding the only confirm control while the gate waits for confirmation is a forbidden dead end.
+- Marking upstream stages stale must not leave a manual-gate stage in a state where its stage body claims completion while the workflow still blocks on that stage.
+
 ## Agent Skill System
 
 - `.agents/skills/` is the single source of truth for project skills. Runtime-specific directories such as `.cursor/skills/`, `.claude/skills/`, `~/.codex/skills/`, `~/.claude/skills/`, `~/.cursor/skills/`, and `~/.agents/skills/` are install or mirror surfaces.
@@ -251,10 +258,13 @@ Define how SeeReel creates, edits, reviews, retries, and stitches generated medi
 - [ ] `npm run smoke:session-range-selection` proves Shift-click selects a continuous range of ordered sessions for deletion.
 - [ ] Deleting a session removes unshared local and TOS intermediate artifacts owned or referenced only by that session, while preserving media still referenced by another session, global asset, or Gallery item.
 - [ ] `npm run smoke:session-bulk-delete-cleanup` proves batch deletion collects media/TOS cleanup candidates across all selected sessions.
+- [ ] `npm run smoke:videosbatch-asset-confirmation-gate` proves the asset confirmation bar stays visible when a stale confirmation artifact exists and hides only after a complete confirmation.
+- [ ] After regenerating an upstream VideosBatch stage, the workflow can still be driven to completion without calling the artifact API manually.
 
 ## Verification
 
 - [ ] `npm run verify:offline`
+- [ ] Run `npm run smoke:videosbatch-asset-confirmation-gate` when VideosBatch manual-gate readiness, stale semantics, or the asset confirmation UI changes.
 - [ ] Run `npm run smoke:no-auto-vlm-review` and `npm run smoke:vlm-review-toggle` when review behavior changes.
 - [ ] Run `npm run smoke:seereel-handoff` when cookie ownership or CLI handoff behavior changes.
 - [ ] Run `npm run smoke:seereel-cli-cloud-only` when CLI cloud-only workflow behavior changes.

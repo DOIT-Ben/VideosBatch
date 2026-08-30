@@ -2,7 +2,7 @@
 
 Status: active
 Owner: SeeReel
-Last Reviewed: 2026-08-29
+Last Reviewed: 2026-08-30
 
 ## Purpose
 
@@ -51,6 +51,9 @@ Define the durable visual and interaction rules for the SeeReel workstation so t
 - The lesson upload visual may change, but `react-dropzone`, supported formats, parsing, text confirmation, and start-workflow behavior remain unchanged.
 - Before workflow start, edits to parsed lesson text expose an explicit save action and persist as a session-scoped local draft so stage/mode remounts do not discard unconfirmed work; the server workflow remains the source of truth after confirmation.
 - Step 09 may have stronger delivery-page emphasis, but final playback, download, StitchJob state, and Canvas switching behavior remain unchanged.
+- Status language must stay consistent inside one step surface: the stage toolbar status badge must not contradict the stage body (for example "已完成" alongside "正在生成视频 0/12"); when the workflow stage is ready but downstream media is not generated yet, the body must say what is actually pending.
+- When the workflow is completed, the stage toolbar must not keep showing a disabled run control; workflow-complete state is communicated through the rail, header count, and footer instead.
+- All nine steps must be able to reach `ready` so the header count can reach 9 / 9; no product step may be structurally unable to leave `pending`.
 
 ## Acceptance Criteria
 
@@ -66,6 +69,8 @@ Define the durable visual and interaction rules for the SeeReel workstation so t
 - [ ] VideosBatch progress navigation still exposes all nine steps and every existing workflow state after visual polish.
 - [ ] VideosBatch workflow mode keeps natural document scrolling and does not introduce an inner clipped viewport.
 - [ ] VideosBatch lesson upload and final delivery retain their existing functional contracts after visual polish.
+- [ ] A completed fake-mode workflow shows 9 / 9 in the header, no disabled auto-run control in the stage toolbar, and no "已完成" badge contradicting a "生成中/等待" stage body.
+- [ ] The asset confirmation step never reaches a state where the confirmation bar is hidden while the workflow gate still waits for confirmation.
 
 ## Verification
 
