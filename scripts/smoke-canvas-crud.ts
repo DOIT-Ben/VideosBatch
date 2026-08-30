@@ -98,6 +98,8 @@ async function withServer<T>(fn: () => Promise<T>): Promise<T> {
     cwd: process.cwd(),
     env: { ...process.env, PORT: new URL(baseUrl).port || "5173" },
     detached: process.platform !== "win32",
+    // Windows resolves npm via npm.cmd; shell:true keeps spawn portable across platforms.
+    shell: process.platform === "win32",
     stdio: ["ignore", "pipe", "pipe"]
   });
   child.stdout?.on("data", (chunk) => process.stdout.write(`[server] ${chunk}`));
@@ -115,7 +117,8 @@ function terminateServer(child: ChildProcess) {
   if (!child.pid) return;
   try {
     if (process.platform === "win32") {
-      child.kill("SIGTERM");
+      // SIGTERM only reaches the shell wrapper; taskkill /T kills the npm -> tsx -> node tree.
+      spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"], { stdio: "ignore" });
     } else {
       process.kill(-child.pid, "SIGTERM");
     }

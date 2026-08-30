@@ -84,7 +84,7 @@ async function waitForApp() {
 function terminate(processHandle?: ChildProcess) {
   if (!processHandle?.pid) return;
   try {
-    if (process.platform === "win32") processHandle.kill("SIGTERM");
+    if (process.platform === "win32") spawn("taskkill", ["/PID", String(processHandle.pid), "/T", "/F"], { stdio: "ignore" });
     else process.kill(-processHandle.pid, "SIGTERM");
   } catch {
     processHandle.kill("SIGTERM");
@@ -105,6 +105,8 @@ try {
       VIDEOSBATCH_LLM_TIMEOUT_MS: "5000"
     },
     detached: process.platform !== "win32",
+    // Windows resolves npm via npm.cmd; shell:true keeps spawn portable across platforms.
+    shell: process.platform === "win32",
     stdio: ["ignore", "pipe", "pipe"]
   });
   child.stdout?.on("data", (chunk) => process.stdout.write(`[server] ${chunk}`));

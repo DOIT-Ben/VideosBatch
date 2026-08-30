@@ -69,7 +69,7 @@ async function waitForServer(timeoutMs = 30_000) {
 function terminateServer(child: ChildProcess) {
   if (!child.pid) return;
   try {
-    if (process.platform === "win32") child.kill("SIGTERM");
+    if (process.platform === "win32") spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"], { stdio: "ignore" });
     else process.kill(-child.pid, "SIGTERM");
   } catch {
     child.kill("SIGTERM");
@@ -85,6 +85,8 @@ async function withServer<T>(fn: () => Promise<T>): Promise<T> {
     cwd: process.cwd(),
     env: { ...process.env, PORT, SEEREEL_SKIP_SKILL_INSTALL: "1" },
     detached: process.platform !== "win32",
+    // Windows resolves npm via npm.cmd; shell:true keeps spawn portable across platforms.
+    shell: process.platform === "win32",
     stdio: ["ignore", "pipe", "pipe"]
   });
   child.stdout?.on("data", (chunk) => process.stdout.write(`[server] ${chunk}`));
