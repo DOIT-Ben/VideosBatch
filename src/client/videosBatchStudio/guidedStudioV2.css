@@ -1536,3 +1536,134 @@
     animation-iteration-count: 1 !important;
   }
 }
+
+/* ==========================================================================
+   Editorial polish pass (interaction & detail refinement)
+   Scope: workflow studio only. No workflow semantics are changed here.
+   ========================================================================== */
+
+/* Buttons: consistent hover/press feedback inside the 100-150ms range.
+   Reduced-motion users already get near-zero durations from the guard above. */
+.videosbatch-studio-v2 .vbs-primary,
+.videosbatch-studio-v2 .vbs-secondary,
+.videosbatch-studio-v2 .vbs-confirmed,
+.videosbatch-studio-v2 .vbs-link-button {
+  transition: background var(--vbs-v2-transition), border-color var(--vbs-v2-transition), filter 120ms ease, transform 90ms ease;
+}
+
+.videosbatch-studio-v2 .vbs-primary:hover:not(:disabled),
+.videosbatch-studio-v2 .vbs-secondary:hover:not(:disabled) {
+  filter: brightness(0.97);
+}
+
+.videosbatch-studio-v2 .vbs-primary:active:not(:disabled),
+.videosbatch-studio-v2 .vbs-secondary:active:not(:disabled) {
+  transform: translateY(0.5px);
+  filter: brightness(0.95);
+}
+
+/* Thin, quiet scrollbars: Windows/Chrome defaults read as heavy black bars
+   against the warm canvas. */
+.videosbatch-studio-v2 * {
+  scrollbar-width: thin;
+  scrollbar-color: var(--vbs-v2-border-strong) transparent;
+}
+
+.videosbatch-studio-v2 *::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+.videosbatch-studio-v2 *::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.videosbatch-studio-v2 *::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background: var(--vbs-v2-border-strong);
+  background-clip: padding-box;
+}
+
+.videosbatch-studio-v2 *::-webkit-scrollbar-thumb:hover {
+  background: var(--vbs-v2-text-soft);
+  background-clip: padding-box;
+}
+
+/* Long-form lesson reading: cap measure for comfortable line lengths while
+   keeping the document card centered in the stage column. */
+.videosbatch-studio-v2 .vbs-v2-lesson-document {
+  max-width: 900px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.videosbatch-studio-v2 .vbs-v2-lesson-document > div {
+  max-width: 74ch;
+  margin: 0 auto;
+}
+
+/* Media placeholders: a dark void fights the warm canvas. Empty video surfaces
+   become quiet paper tiles with a soft play glyph instead. */
+.videosbatch-studio-v2 .vbs-final-player-placeholder {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 12px;
+  border: 1px dashed var(--vbs-v2-border-strong);
+  background:
+    radial-gradient(circle at 50% 42%, var(--vbs-v2-accent-soft) 0%, transparent 62%),
+    var(--vbs-v2-surface-muted);
+  color: var(--vbs-v2-text);
+  text-align: center;
+  padding: 24px;
+}
+
+.videosbatch-studio-v2 .vbs-final-player-placeholder::before {
+  content: "▶";
+  box-sizing: border-box;
+  width: 58px;
+  height: 58px;
+  display: grid;
+  place-content: center;
+  padding-left: 5px; /* optically center the triangle in the circle */
+  border: 2px solid var(--vbs-v2-border-strong);
+  border-radius: 50%;
+  background: var(--vbs-v2-surface);
+  box-shadow: var(--vbs-v2-shadow-raised);
+  color: var(--vbs-v2-accent-deep);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.videosbatch-studio-v2 .vbs-final-player-placeholder > span {
+  font-weight: 600;
+}
+
+.videosbatch-studio-v2 .vbs-final-player-placeholder > small {
+  color: var(--vbs-v2-text-soft);
+}
+
+.videosbatch-studio-v2 .vbs-video-shot-placeholder {
+  height: 100%;
+  display: grid;
+  place-content: center;
+  border: 1px dashed var(--vbs-v2-border-strong);
+  border-radius: inherit;
+  background: var(--vbs-v2-surface-muted);
+  color: var(--vbs-v2-text-soft);
+}
+
+/* Candidate preview affordance: revealed on hover for pointer users, always
+   visible for touch and keyboard users. */
+@media (hover: hover) {
+  .videosbatch-studio-v2 .vbs-candidate-tile .vbs-candidate-preview {
+    opacity: 0;
+    transition: opacity 130ms ease;
+  }
+
+  .videosbatch-studio-v2 .vbs-candidate-tile:hover .vbs-candidate-preview,
+  .videosbatch-studio-v2 .vbs-candidate-tile:focus-within .vbs-candidate-preview {
+    opacity: 1;
+  }
+}

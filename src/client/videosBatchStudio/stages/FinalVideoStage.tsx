@@ -29,7 +29,7 @@ export function FinalVideoStage({ artifact, session, onOpenCanvas }: { artifact:
           {playbackUrl ? (
             <video className="vbs-final-player" src={playbackUrl} controls playsInline preload="metadata" />
           ) : (
-            <div className="vbs-final-player-placeholder"><span>{artifactUrl.startsWith("fake://") ? "模拟成片尚未映射为真实媒体" : "最终视频预览"}</span><small>{native.progress || artifactUrl || "尚未生成"}</small></div>
+            <div className="vbs-final-player-placeholder"><span>{artifactUrl.startsWith("fake://") ? "模拟成片尚未映射为真实媒体" : "最终视频预览"}</span><small>{native.progress || (!artifactUrl.startsWith("fake://") ? artifactUrl : "") || "尚未生成"}</small></div>
           )}
         </div>
       </div>
