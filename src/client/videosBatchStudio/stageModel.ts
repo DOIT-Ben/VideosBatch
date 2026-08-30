@@ -77,6 +77,13 @@ export function deriveProductStepStatus(
   const statuses = stageStatuses(workflow, step);
   if (statuses.includes("failed")) return "failed";
   if (statuses.includes("running")) return "running";
+  // A lesson step with a non-empty lesson artifact is done, even if an old
+  // store still marks LESSON_INPUT pending after a restart-from (the artifact
+  // is the confirmed teaching source of truth).
+  if (step.id === "lesson" && !statuses.includes("stale")) {
+    const artifact = workflow.stages.LESSON_INPUT?.artifact as any;
+    if (artifact && typeof artifact.lessonText === "string" && artifact.lessonText.trim()) return "ready";
+  }
   if (statuses.includes("stale")) return "stale";
   if (step.id === "intro" && introNeedsConfirmation(workflow)) return "confirm";
   if (step.id === "assets" && assetsNeedConfirmation(workflow)) return "confirm";
