@@ -15,6 +15,8 @@ export type VideosBatchRuntimeEnv = Record<string, string | undefined>;
 export interface VideosBatchRuntimeConfig {
   executorMode: VideosBatchExecutorMode;
   mediaMode: VideosBatchMediaMode;
+  videoProvider: "seedance" | "newapi-h3";
+  imageProvider: "seedream" | "lyaiapp";
   llm?: VideosBatchLlmConfig;
 }
 
@@ -60,7 +62,29 @@ export function resolveVideosBatchRuntimeConfig(
     throw new Error(`VIDEOSBATCH_MEDIA_MODE must be one of: fake, native (received: ${mediaMode})`);
   }
 
-  if (executorMode === "fake") return { executorMode, mediaMode };
+  const videoProvider = (trimmed(env, "VIDEOSBATCH_VIDEO_PROVIDER").toLowerCase() || "seedance") as VideosBatchRuntimeConfig["videoProvider"];
+  if (videoProvider !== "seedance" && videoProvider !== "newapi-h3") {
+    throw new Error(`VIDEOSBATCH_VIDEO_PROVIDER must be one of: seedance, newapi-h3 (received: ${videoProvider})`);
+  }
+  if (mediaMode === "native" && videoProvider === "newapi-h3") {
+    if (!trimmed(env, "VIDEOSBATCH_H3_API_KEY")) {
+      throw new Error("VIDEOSBATCH_VIDEO_PROVIDER=newapi-h3 requires VIDEOSBATCH_H3_API_KEY.");
+    }
+    const baseUrl = trimmed(env, "VIDEOSBATCH_H3_BASE_URL") || "http://122.228.216.60:3000/v1";
+    if (baseUrl.startsWith("http://") && trimmed(env, "VIDEOSBATCH_H3_ALLOW_HTTP") !== "1") {
+      throw new Error("NewAPI H3 HTTP endpoint requires VIDEOSBATCH_H3_ALLOW_HTTP=1.");
+    }
+  }
+
+  const imageProvider = (trimmed(env, "VIDEOSBATCH_IMAGE_PROVIDER").toLowerCase() || "seedream") as VideosBatchRuntimeConfig["imageProvider"];
+  if (imageProvider !== "seedream" && imageProvider !== "lyaiapp") {
+    throw new Error(`VIDEOSBATCH_IMAGE_PROVIDER must be one of: seedream, lyaiapp (received: ${imageProvider})`);
+  }
+  if (mediaMode === "native" && imageProvider === "lyaiapp" && !trimmed(env, "VIDEOSBATCH_IMAGE_API_KEY")) {
+    throw new Error("VIDEOSBATCH_IMAGE_PROVIDER=lyaiapp requires VIDEOSBATCH_IMAGE_API_KEY.");
+  }
+
+  if (executorMode === "fake") return { executorMode, mediaMode, videoProvider, imageProvider };
 
   const apiKey = trimmed(env, "VIDEOSBATCH_LLM_API_KEY");
   if (!apiKey) {
@@ -80,10 +104,18 @@ export function resolveVideosBatchRuntimeConfig(
     VIDEOSBATCH_LLM_API_KEY: apiKey,
     VIDEOSBATCH_LLM_BASE_URL: trimmed(env, "VIDEOSBATCH_LLM_BASE_URL") || "https://api.openai.com/v1",
     VIDEOSBATCH_LLM_MODEL: model,
-    VIDEOSBATCH_LLM_TIMEOUT_MS: trimmed(env, "VIDEOSBATCH_LLM_TIMEOUT_MS") || "120000"
+    VIDEOSBATCH_LLM_TIMEOUT_MS: trimmed(env, "VIDEOSBATCH_LLM_TIMEOUT_MS") || "120000",
+    VIDEOSBATCH_LLM_MAX_RETRIES: trimmed(env, "VIDEOSBATCH_LLM_MAX_RETRIES"),
+    VIDEOSBATCH_LLM_RETRY_DELAYS_MS: trimmed(env, "VIDEOSBATCH_LLM_RETRY_DELAYS_MS"),
+    VIDEOSBATCH_LLM_OUTPUT_MODE: trimmed(env, "VIDEOSBATCH_LLM_OUTPUT_MODE"),
+    VIDEOSBATCH_LLM_FALLBACK_MODELS: trimmed(env, "VIDEOSBATCH_LLM_FALLBACK_MODELS"),
+    VIDEOSBATCH_LLM_FALLBACK_API_KEY: trimmed(env, "VIDEOSBATCH_LLM_FALLBACK_API_KEY"),
+    VIDEOSBATCH_LLM_FALLBACK_BASE_URL: trimmed(env, "VIDEOSBATCH_LLM_FALLBACK_BASE_URL"),
+    VIDEOSBATCH_LLM_FALLBACK_OUTPUT_MODE: trimmed(env, "VIDEOSBATCH_LLM_FALLBACK_OUTPUT_MODE"),
+    VIDEOSBATCH_LLM_FALLBACK_REASONING: trimmed(env, "VIDEOSBATCH_LLM_FALLBACK_REASONING")
   });
 
-  return { executorMode, mediaMode, llm };
+  return { executorMode, mediaMode, videoProvider, imageProvider, llm };
 }
 
 export function getVideosBatchProviderReadiness(

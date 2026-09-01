@@ -193,6 +193,39 @@ assert.equal(editedSubshotStoryboard.segments[0].subshots[1].duration, 3, "subsh
 assert.deepEqual(editedSubshotStoryboard.segments[0].subshots[0], storyboard.segments[0].subshots[0], "subshot edit must not rewrite sibling subshots");
 assert.deepEqual(editedSubshotStoryboard.segments[0].references, storyboard.segments[0].references, "subshot edit must preserve stable refs");
 
+const canonicalStoryboard = {
+  schemaVersion: "2",
+  title: "最终十秒分镜",
+  kind: "VIDEO_STORYBOARD",
+  goal: "留下数学悬问",
+  overallScript: "完整导入",
+  visualContinuity: "角色一致",
+  targetDuration: 20,
+  aspectRatio: "16:9",
+  deliveryMode: "SEGMENTED_MP4",
+  format: "FINAL_10_SECOND",
+  storyType: "STORY",
+  segments: [{
+    sequence: 1,
+    screenplaySceneSequence: 1,
+    chapter: "第1章",
+    scene: "课堂观察区出现新的观察问题",
+    characters: "【人物：小宇】",
+    keyProps: "【道具：观察尺】",
+    duration: 10,
+    visualEffects: [
+      { sequence: 1, timeRange: "0-3秒", duration: 3, visual: "【人物：小宇】中景观察", action: "发现异常", camera: "固定", sound: "环境声", voice: "为什么会这样？" },
+      { sequence: 2, timeRange: "3-6秒", duration: 3, visual: "【道具：观察尺】近景", action: "比较记录", camera: "推近", sound: "轻响", voice: "无" },
+      { sequence: 3, timeRange: "6-10秒", duration: 4, visual: "【场景：课堂观察区】回到中景", action: "提出悬问", camera: "稳定", sound: "提示音", voice: "接下来怎么办？" }
+    ],
+    references: [{ label: "【人物：小宇】" }, { label: "【道具：观察尺】" }],
+    evidence: []
+  }]
+};
+const editedCanonicalStoryboard = updateStoryboardSubshotFields(canonicalStoryboard, 1, 2, { action: "从两个方向比较" });
+assert.equal(editedCanonicalStoryboard.segments[0].visualEffects[1].action, "从两个方向比较", "canonical subshot edit must write visualEffects");
+assert.equal(editedCanonicalStoryboard.segments[0].subshots, undefined, "canonical edit must not introduce legacy subshots");
+
 assert.equal(preferredShotVideoUrl({ playbackVideoUrl: "https://cdn.example.com/shot.mp4", videoUrl: "local.mp4" } as any), "https://cdn.example.com/shot.mp4");
 assert.deepEqual(
   preferredFinalVideo({
@@ -226,6 +259,13 @@ const storyboardMarkup = renderToStaticMarkup(
   <StoryboardStage artifact={storyboard} onSaveArtifact={() => undefined} />
 );
 assert.ok(storyboardMarkup.includes("编辑分镜"), "storyboard page must expose structured editing");
+
+const canonicalStoryboardMarkup = renderToStaticMarkup(
+  <StoryboardStage artifact={canonicalStoryboard} onSaveArtifact={() => undefined} />
+);
+assert.ok(canonicalStoryboardMarkup.includes("课堂观察区出现新的观察问题"), "canonical storyboard must render the scene field");
+assert.ok(canonicalStoryboardMarkup.includes("为什么会这样？"), "canonical storyboard must render visualEffects voice");
+assert.ok(!canonicalStoryboardMarkup.includes("暂无画面 Prompt"), "canonical storyboard must not fall back to the legacy empty prompt label");
 
 const shotMarkup = renderToStaticMarkup(
   <ExecutionStage

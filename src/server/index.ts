@@ -12,6 +12,7 @@ import type {
   NarrationSubtitleMode,
   NarrationSubtitlePosition,
   AssetImageSize,
+  AssetImageModel,
   StandardApiKeyRoute
 } from "../shared/types";
 import {
@@ -787,7 +788,7 @@ function consumeGenerationOr429(res: Response, sessionId: string | undefined, op
   return false;
 }
 
-function assetImageModelFromActual(actualModelId: string | undefined, fallback: "gpt-image-2" | "seedream-4" | "seedream-4-5" | "seedream-5-lite") {
+function assetImageModelFromActual(actualModelId: string | undefined, fallback: AssetImageModel) {
   return normalizeAssetImageModel(actualModelId) || fallback;
 }
 

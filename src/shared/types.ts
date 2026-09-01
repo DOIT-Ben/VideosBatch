@@ -1,6 +1,6 @@
 export type AssetType = "image" | "character" | "scene" | "prop" | "style" | "voice" | "music" | "other";
 export type AssetMediaKind = "image" | "video" | "audio" | "none";
-export type AssetImageModel = "gpt-image-2" | "seedream-4" | "seedream-4-5" | "seedream-5-lite";
+export type AssetImageModel = "gpt-image-2" | "gpt-image-2-1k" | "seedream-4" | "seedream-4-5" | "seedream-5-lite";
 export type AssetImageSize = "2K" | "4K";
 export type StandardApiKeyRoute = "byteplus" | "volcengine-cn";
 /** Seedream-only subset of AssetImageModel that the sub-storyboard endpoint supports (no gpt-image-2). */
@@ -191,6 +191,15 @@ export interface Asset {
   thumbnailUrl?: string;
   /** Original uploaded/generated image URL to use for generation inputs and downloads. */
   sourceImageUrl?: string;
+  /** Structured VideosBatch media error retained for item-level retry/resume. */
+  videosBatchError?: {
+    code: string;
+    message: string;
+    retryable: boolean;
+    attempt: number;
+    provider?: string | null;
+    model?: string | null;
+  };
   referenceImageUrl?: string;
   /** Voice node metadata: reusable voice identity for narration/dialogue consistency. */
   voicePrompt?: string;
@@ -423,6 +432,19 @@ export interface Shot {
   generationStartedAt?: string | null;
   /** ISO time when the current selected shot video finished generating. */
   videoGeneratedAt?: string;
+  /** Duration measured from the cached native video, when available. */
+  videoDurationSec?: number;
+  /** True only after the native media duration was actually probed. */
+  videoDurationVerified?: boolean;
+  /** Structured VideosBatch media error retained for item-level retry/resume. */
+  videosBatchError?: {
+    code: string;
+    message: string;
+    retryable: boolean;
+    attempt: number;
+    provider?: string | null;
+    model?: string | null;
+  };
   /**
    * Sub-phase of `status === "generating"` derived from the latest Seedance poll. The shot stays
    * in `generating` while the task is queued OR running; this field tells the UI which one. See
@@ -487,6 +509,10 @@ export interface ShotRender {
   generationStartedAt?: string | null;
   /** ISO time when this render finished generating successfully. */
   videoGeneratedAt?: string;
+  /** Duration measured from the cached native video, when available. */
+  videoDurationSec?: number;
+  /** True only after the native media duration was actually probed. */
+  videoDurationVerified?: boolean;
   /** Sub-phase of `status === "generating"` derived from the latest Seedance poll. */
   seedancePhase?: SeedancePhase;
   error?: string | null;
@@ -542,6 +568,9 @@ export interface StitchJob {
   finalVideoTosPublishedAt?: string;
   finalVideoGeneratedAt?: string;
   finalVideoSignature?: string;
+  /** VideosBatch final-stitch provenance and independent audio timeline hash. */
+  videosBatchSourceHash?: string;
+  videosBatchAudioTimelineHash?: string;
   /** Current signature computed from this job's latest playlist/video inputs. Snapshot-only metadata. */
   currentInputSignature?: string;
   /** True when the saved final video no longer matches the current playlist/video inputs. Snapshot-only metadata. */

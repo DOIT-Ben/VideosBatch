@@ -8,8 +8,14 @@ VideosBatch uses SeeReel as its production runtime baseline.
 - Import strategy: exact pinned checkout copied into VideosBatch, with VideosBatch-only overlay files preserved.
 - Sync rule: future upstream syncs must be isolated in dedicated commits before VideosBatch workflow changes.
 
-The VideosBatch Phase 1 workflow specification remains in:
+The active VideosBatch workflow specification is:
+
+- `specs/videosbatch-workflow-canonical.md`
+
+The SeeReel projection and routing entry are derived references only:
 
 - `docs/seereel-injection-map.md`
-- `docs/superpowers/plans/2026-08-28-videosbatch-phase1-linear-workflow.md`
 - `.agents/skills/videosbatch-lesson-workflow/SKILL.md`
+
+Historical VideosBatch design material is archived under
+`docs/archive/videosbatch-design/`; see its `manifest.json` for hashes and restore paths.

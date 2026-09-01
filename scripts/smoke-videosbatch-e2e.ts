@@ -202,8 +202,9 @@ await withServer(async () => {
     assert.equal(storyboard.targetDuration, screenplay.targetDurationSeconds);
     assert.equal(storyboard.segments.length, screenplay.targetDurationSeconds / 10);
     assert.ok(storyboard.segments.every((segment: any) => segment.duration === 10));
-    assert.ok(storyboard.segments.every((segment: any) => segment.subshots.length >= 3 && segment.subshots.length <= 5));
-    assert.ok(storyboard.segments.every((segment: any) => segment.subshots.reduce((sum: number, item: any) => sum + item.duration, 0) === 10));
+    assert.ok(storyboard.segments.every((segment: any) => Array.isArray(segment.visualEffects) && segment.visualEffects.length >= 3 && segment.visualEffects.length <= 5));
+    assert.ok(storyboard.segments.every((segment: any) => segment.visualEffects.reduce((sum: number, item: any) => sum + item.duration, 0) === 10));
+    assert.ok(storyboard.segments.every((segment: any) => !Object.prototype.hasOwnProperty.call(segment, "subshots")), "canonical storyboard must not persist legacy subshots");
 
     const copyable = workflow.stages.COPYABLE_PROMPT.artifact;
     assert.equal(copyable.status, "READY");
@@ -221,11 +222,17 @@ await withServer(async () => {
     const nativeState = await request<NativeState>("/api/state");
     const sessionAssets = nativeState.assets.filter((asset) => asset.ownerSessionId === session.id);
     const sessionShots = nativeState.shots.filter((shot) => shot.sessionId === session.id);
-    assert.equal(sessionAssets.length, 1, "ASSET_CANDIDATES must project one native SeeReel Asset for the fake plan");
-    assert.equal(sessionAssets[0].workflowReferenceId, "P001-A001");
+    assert.equal(sessionAssets.length, candidateItems.length, "ASSET_CANDIDATES must project one native SeeReel Asset per plan item");
+    assert.deepEqual(
+      sessionAssets.map((asset) => asset.workflowReferenceId).sort(),
+      candidateItems.map((item: any) => item.publicAssetId).sort(),
+      "native assets must preserve the complete stable public asset set"
+    );
     assert.equal(sessionShots.length, 12, "120-second FINAL_STORYBOARD must project twelve native SeeReel Shots");
     assert.ok(sessionShots.every((shot) => shot.durationSec === 10));
-    assert.ok(sessionShots.every((shot) => shot.assetIds.includes(sessionAssets[0].id)), "EXECUTION projection must resolve stable public refs to the confirmed native asset");
+    const sessionAssetIds = new Set(sessionAssets.map((asset) => asset.id));
+    assert.ok(sessionShots.every((shot) => shot.assetIds.length > 0), "EXECUTION projection must resolve at least one confirmed asset per shot");
+    assert.ok(sessionShots.every((shot) => shot.assetIds.every((assetId) => sessionAssetIds.has(assetId))), "EXECUTION projection must resolve only current-session confirmed assets");
     assert.ok(!(sessionShots[0].rawPrompt || "").includes("【P001-A001】"), "native execution prompt must stay based on FINAL_STORYBOARD, not COPYABLE_PROMPT display text");
 
     workflow = await request<Workflow>(`/api/sessions/${session.id}/videosbatch/restart-from/COURSE_INTRO_SELECTION`, {

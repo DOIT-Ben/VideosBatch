@@ -74,20 +74,31 @@ const server = http.createServer(async (req, res) => {
   assert.equal(body.text.format.name, "videosbatch_course_intro_candidates");
 
   const ids = ["A-01", "A-02", "A-03", "B-01", "B-02", "B-03", "C-01", "C-02", "C-03"];
+  const directions = [
+    "原始问题与知识产生",
+    "可靠史实与时代背景",
+    "方法工具演变",
+    "古代真实需求",
+    "古今对照",
+    "现代工程科技应用",
+    "生活冲突与错误现场",
+    "推理游戏挑战",
+    "科技或自然异常"
+  ];
   const artifact = {
     candidates: ids.map((id, index) => ({
       id,
       name: `导入${id}`,
-      creativeType: index < 3 ? "数学史与知识由来" : index < 6 ? "历史需求与古今应用" : "创意故事与现代情境",
-      body: "学生围绕一个清晰的问题展开观察、比较和推理，情境逐步产生认知冲突。本课数学知识成为解决问题的关键线索，但导入阶段只呈现问题和必要背景，不提前揭示结论。".repeat(3).slice(0, 230),
+      creativeType: directions[index],
+      body: `${directions[index]}：学生围绕一个清晰的问题展开观察、比较和推理，情境逐步产生认知冲突。本课数学知识成为解决问题的关键线索，但导入阶段只呈现问题和必要背景，不提前揭示结论。`.repeat(3).slice(0, 280),
       endingQuestion: "究竟应该怎样判断并解决这个问题？",
       truthfulnessCategory: "完全虚构的故事化情境",
       truthfulnessNote: "用于接口契约测试的虚构教学情境。"
     })),
     recommendations: [
       { id: "A-01", reason: "课堂吸引力、知识连接和视频可行性综合较强。" },
-      { id: "B-01", reason: "真实需求清晰，便于自然引出数学问题。" },
-      { id: "C-01", reason: "冲突直观，学生容易代入且便于视觉表达。" }
+      { id: "B-01", reason: "课堂真实需求清晰，便于自然引出数学问题。" },
+      { id: "C-01", reason: "冲突直观，学生容易代入，适合视频制作。" }
     ]
   };
   res.setHeader("content-type", "application/json");

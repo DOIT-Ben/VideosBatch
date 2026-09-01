@@ -18,6 +18,19 @@ export interface StageExecutionContext {
 
 export interface StageResult<T = unknown> {
   artifact: T;
+  /** Optional execution evidence persisted by the runner with the artifact. */
+  attempts?: number;
+  provider?: string | null;
+  model?: string | null;
+  attemptLog?: Array<{
+    attempt: number;
+    provider: string;
+    model: string;
+    outcome: "success" | "error";
+    errorCode?: string;
+    status?: number;
+    durationMs?: number;
+  }>;
 }
 
 export interface StageDefinition<T = unknown> {

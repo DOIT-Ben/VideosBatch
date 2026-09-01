@@ -1,0 +1,82 @@
+{
+  "manifestVersion": "1",
+  "specId": "VIDEOSBATCH_WORKFLOW_CANONICAL",
+  "archivedAt": "2026-08-31T18:13:07.1651549+08:00",
+  "canonicalReplacement": "specs/videosbatch-workflow-canonical.md",
+  "entries": [
+    {
+      "originalPath": "docs/视频制作工作流完整步骤.md",
+      "archivePath": "docs/archive/videosbatch-design/upstream/视频制作工作流完整步骤.md",
+      "bytes": 60400,
+      "sha256": "8A794F875E117A9301150EBDEAF7E9B614EA2BDE18514652F8FEB729001E24B4",
+      "role": "FrameFlow 上游手册副本",
+      "replacementPaths": ["specs/videosbatch-workflow-canonical.md"],
+      "status": "archived"
+    },
+    {
+      "originalPath": "docs/superpowers/plans/2026-08-29-videosbatch-guided-studio-v2.md",
+      "archivePath": "docs/archive/videosbatch-design/plans/2026-08-29-videosbatch-guided-studio-v2.md",
+      "bytes": 18609,
+      "sha256": "F5D171CCA0D265649A66216109A1EE0F0C16705676BB5D536D149D26D9AE581F",
+      "role": "历史 Guided Studio 实施计划",
+      "replacementPaths": ["specs/videosbatch-workflow-canonical.md", "specs/ui-system.md"],
+      "status": "archived"
+    },
+    {
+      "originalPath": "docs/superpowers/plans/2026-08-29-videosbatch-product-ui-foundation.md",
+      "archivePath": "docs/archive/videosbatch-design/plans/2026-08-29-videosbatch-product-ui-foundation.md",
+      "bytes": 18958,
+      "sha256": "D0091274BABD2047B27F1A85403B0B18A80533E215F6A21B2EABD32788FA1F76",
+      "role": "历史产品 UI 基础实施计划",
+      "replacementPaths": ["specs/videosbatch-workflow-canonical.md", "specs/ui-system.md"],
+      "status": "archived"
+    },
+    {
+      "originalPath": "docs/superpowers/plans/2026-08-29-videosbatch-visual-consolidation.md",
+      "archivePath": "docs/archive/videosbatch-design/plans/2026-08-29-videosbatch-visual-consolidation.md",
+      "bytes": 14018,
+      "sha256": "BD3DA844EE7E2F178B2CB5A326AC07D7B8C18C9926B7E3FCF8EA63EDDACC6195",
+      "role": "历史视觉整合实施计划",
+      "replacementPaths": ["specs/videosbatch-workflow-canonical.md", "specs/ui-system.md"],
+      "status": "archived"
+    },
+    {
+      "originalPath": "docs/superpowers/specs/2026-08-29-videosbatch-guided-studio-v2-design.md",
+      "archivePath": "docs/archive/videosbatch-design/specs/2026-08-29-videosbatch-guided-studio-v2-design.md",
+      "bytes": 13095,
+      "sha256": "9DB6AC651195B6E3B629F14901618C63A2E62FCCCADA0FFEECBD3E3E711D9280",
+      "role": "历史 Guided Studio 产品规格",
+      "replacementPaths": ["specs/videosbatch-workflow-canonical.md", "specs/ui-system.md"],
+      "status": "archived"
+    },
+    {
+      "originalPath": "docs/superpowers/specs/2026-08-29-videosbatch-product-ui-design.md",
+      "archivePath": "docs/archive/videosbatch-design/specs/2026-08-29-videosbatch-product-ui-design.md",
+      "bytes": 16509,
+      "sha256": "5A792516DF820287B66EA891F240B054D85B8990F2B3DE6C7C76EA324FD01422",
+      "role": "历史产品 UI 规格",
+      "replacementPaths": ["specs/videosbatch-workflow-canonical.md", "specs/ui-system.md"],
+      "status": "archived"
+    },
+    {
+      "originalPath": "docs/superpowers/specs/2026-08-29-videosbatch-visual-consolidation-design.md",
+      "archivePath": "docs/archive/videosbatch-design/specs/2026-08-29-videosbatch-visual-consolidation-design.md",
+      "bytes": 6780,
+      "sha256": "0A1500E61DA981764E95D160B92F6290F94EDEF6AD88E2559C033F9BD4DAFD34",
+      "role": "历史视觉整合规格",
+      "replacementPaths": ["specs/videosbatch-workflow-canonical.md", "specs/ui-system.md"],
+      "status": "archived"
+    },
+    {
+      "originalPath": ".agents/skills/videosbatch-lesson-workflow/SKILL.md",
+      "archivePath": "docs/archive/videosbatch-design/skills/videosbatch-lesson-workflow/SKILL.md",
+      "bytes": 7328,
+      "sha256": "5F9340D7C9F4FADED17AD4942423CA6976CECD00BC4ECEB9C685F4FFE5E06955",
+      "role": "旧版阶段规则技能正文",
+      "replacementPaths": ["specs/videosbatch-workflow-canonical.md", ".agents/skills/videosbatch-lesson-workflow/SKILL.md"],
+      "sourceStatus": "replaced-by-derived-entry",
+      "status": "archived"
+    }
+  ],
+  "restore": "按 archivePath 反向移动到 originalPath；恢复前重新校验 sha256，并不得将归档内容作为当前规范入口。"
+}

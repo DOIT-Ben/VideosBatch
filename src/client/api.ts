@@ -109,7 +109,15 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
             continue;
           }
         }
-        throw new Error(body.error || `${response.status} ${response.statusText}`);
+        const errorBody = body?.error;
+        const message = typeof errorBody === "string"
+          ? errorBody
+          : typeof errorBody?.message === "string"
+            ? errorBody.message
+            : typeof body?.message === "string"
+              ? body.message
+              : `${response.status} ${response.statusText}`;
+        throw new Error(message);
       }
       return response.json() as Promise<T>;
     } catch (err) {
@@ -214,6 +222,14 @@ export const api = {
     }),
   restartVideosBatchFrom: (sessionId: string, stageId: VideosBatchStageId) =>
     request<VideosBatchWorkflowState>(`/api/sessions/${sessionId}/videosbatch/restart-from/${stageId}`, { method: "POST", body: "{}" }),
+  retryVideosBatchStage: (
+    sessionId: string,
+    stageId: VideosBatchStageId,
+    lineage: { sourceRevision: number; sourceHash: string; sourceHashes?: Partial<Record<VideosBatchStageId, string>> }
+  ) => request<VideosBatchWorkflowState>(`/api/sessions/${sessionId}/videosbatch/retry/${stageId}`, {
+    method: "POST",
+    body: JSON.stringify(lineage)
+  }),
   clearTokenUsage: (sessionId: string) =>
     request<SessionWithShots>(`/api/sessions/${sessionId}/token-usage`, { method: "DELETE" }),
   createStitchJob: (sessionId: string, job?: Partial<import("../shared/types").StitchJob>) =>

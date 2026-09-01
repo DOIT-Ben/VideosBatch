@@ -1,15 +1,13 @@
 import { useEffect, useState } from "react";
 import { Accordion, Tabs } from "radix-ui";
 import { Check, ChevronDown, Copy, Pencil, Save, X } from "lucide-react";
-import { updateStoryboardSegmentFields, updateStoryboardSubshotFields } from "../contentModel";
-
-const SEGMENT_FIELDS = [
-  ["visualPrompt", "画面 Prompt"],
-  ["teachingPurpose", "教学目的"],
-  ["narration", "旁白"],
-  ["subtitles", "字幕"],
-  ["transition", "转场"]
-] as const;
+import {
+  storyboardSegmentFieldDefinitions,
+  storyboardSegmentSubshots,
+  storyboardSegmentSummary,
+  updateStoryboardSegmentFields,
+  updateStoryboardSubshotFields
+} from "../contentModel";
 
 const SUBSHOT_FIELDS = [
   ["visual", "画面"],
@@ -104,14 +102,16 @@ export function StoryboardStage({
                 {visibleSegments.map((segment: any) => {
                   const start = (Number(segment.sequence || 1) - 1) * 10;
                   const references = Array.isArray(segment.references) ? segment.references : [];
-                  const subshots = Array.isArray(segment.subshots) ? segment.subshots : [];
+                  const subshots = storyboardSegmentSubshots(segment);
+                  const segmentFields = storyboardSegmentFieldDefinitions(editing ? draft : artifact, segment);
+                  const canonicalFields = segmentFields[0]?.[0] === "scene";
                   return (
                     <Accordion.Item className="vbs-shot-card vbs-storyboard-item" key={segment.sequence} value={`segment-${segment.sequence}`}>
                       <Accordion.Header className="vbs-storyboard-header">
                         <Accordion.Trigger className="vbs-storyboard-trigger">
                           <span className="vbs-storyboard-summary">
                             <span><span className="vbs-code">镜头 {String(segment.sequence).padStart(2, "0")}</span><strong>{String(start).padStart(2, "0")}–{String(start + Number(segment.duration || 10)).padStart(2, "0")}s · {segment.duration || 10}s</strong></span>
-                            <span className="vbs-storyboard-summary-copy">{segment.visualPrompt || "暂无画面 Prompt"}</span>
+                            <span className="vbs-storyboard-summary-copy">{storyboardSegmentSummary(segment) || "暂无画面内容"}</span>
                           </span>
                           <span className="vbs-storyboard-trigger-meta">
                             {segment.nativeShotId && <span className="vbs-native-pill">已同步制作画布</span>}
@@ -121,22 +121,22 @@ export function StoryboardStage({
                       </Accordion.Header>
                       <Accordion.Content className="vbs-storyboard-content">
                         {editing ? (
-                          <div className="vbs-storyboard-editor">
-                            <div className="vbs-structured-editor-grid">
-                              {SEGMENT_FIELDS.map(([field, label]) => (
-                                <label className={field === "visualPrompt" ? "wide" : ""} key={field}>
-                                  <span>{label}</span>
-                                  <textarea
-                                    rows={field === "visualPrompt" ? 5 : 3}
-                                    value={String(segment?.[field] || "")}
-                                    onChange={(event) => setDraft((current: any) => updateStoryboardSegmentFields(current, segment.sequence, { [field]: event.target.value }))}
-                                  />
+                            <div className="vbs-storyboard-editor">
+                              <div className="vbs-structured-editor-grid">
+                              {segmentFields.map(([field, label, wide]) => (
+                                  <label className={wide ? "wide" : ""} key={field}>
+                                    <span>{label}</span>
+                                    <textarea
+                                    rows={wide ? 5 : 3}
+                                      value={String(segment?.[field] || "")}
+                                      onChange={(event) => setDraft((current: any) => updateStoryboardSegmentFields(current, segment.sequence, { [field]: event.target.value }))}
+                                    />
                                 </label>
                               ))}
                             </div>
                             <div className="vbs-locked-structure">
                               <strong>结构锁定</strong>
-                              <span>主分镜时长 {segment.duration || 10}s · {references.length} 个稳定资产引用 · {subshots.length} 个子镜头</span>
+                              <span>主分镜时长 {segment.duration || 10}s · {references.length} 个语义资产引用 · {subshots.length} 个子镜头</span>
                             </div>
                             <div className="vbs-subshot-editor-list">
                               {subshots.map((subshot: any) => (
@@ -160,8 +160,18 @@ export function StoryboardStage({
                           </div>
                         ) : (
                           <>
-                            <p className="vbs-visual-prompt">{segment.visualPrompt}</p>
-                            {segment.teachingPurpose && <div className="vbs-teaching-purpose"><strong>教学目的</strong><span>{segment.teachingPurpose}</span></div>}
+                            {canonicalFields ? (
+                              <div className="vbs-storyboard-facts">
+                                {segmentFields.map(([field, label]) => String(segment?.[field] || "").trim() ? (
+                                  <div className="vbs-teaching-purpose" key={field}><strong>{label}</strong><span>{segment[field]}</span></div>
+                                ) : null)}
+                              </div>
+                            ) : (
+                              <>
+                                <p className="vbs-visual-prompt">{segment.visualPrompt}</p>
+                                {segment.teachingPurpose && <div className="vbs-teaching-purpose"><strong>教学目的</strong><span>{segment.teachingPurpose}</span></div>}
+                              </>
+                            )}
                             <div className="vbs-subshot-list">
                               {subshots.map((subshot: any) => (
                                 <div className="vbs-subshot" key={subshot.sequence}>
@@ -170,7 +180,7 @@ export function StoryboardStage({
                                 </div>
                               ))}
                             </div>
-                            {references.length > 0 && <div className="vbs-reference-chips">{references.map((reference: any) => <span key={reference.publicAssetId || reference.assetId}>{reference.label || reference.publicAssetId || reference.assetId}</span>)}</div>}
+                            {references.length > 0 && <div className="vbs-reference-chips">{references.map((reference: any, index: number) => <span key={`${reference.label || reference.publicAssetId || reference.assetId || "reference"}-${index}`}>{reference.label || reference.publicAssetId || reference.assetId}</span>)}</div>}
                             {(segment.narration || segment.subtitles) && <div className="vbs-dialogue-block">{segment.narration && <p><strong>旁白：</strong>{segment.narration}</p>}{segment.subtitles && <p><strong>字幕：</strong>{segment.subtitles}</p>}</div>}
                           </>
                         )}

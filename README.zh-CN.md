@@ -67,6 +67,12 @@ Handoff link 点开后，可以在 SeeReel 网页中查看这次生成的 workfl
 
 用户不只是观看最终视频，还可以回到这个画布继续修改参考图、prompt、故事板、分镜视频、首帧连续性桥接或拼接节点，然后从修改点继续生产。
 
+## VideosBatch Guided Studio
+
+VideosBatch 从教案到课程视频的阶段、提示词、Schema、门禁、版本血缘、重试、资产身份和媒体边界，统一由唯一有效规范 [`specs/videosbatch-workflow-canonical.md`](specs/videosbatch-workflow-canonical.md) 定义，规范标识为 `VIDEOSBATCH_WORKFLOW_CANONICAL`。旧版 VideosBatch 计划和上游手册仅保存在 [`docs/archive/videosbatch-design/`](docs/archive/videosbatch-design/) 中用于追溯。
+
+修改适配层前先运行文档一致性检查：`npm run smoke:videosbatch-doc-consistency`。
+
 参考图片来源：[4K Wallpapers](https://4kwallpapers.com/world/shanghai-city-9420.html)。
 
 ## 画布：亲手共创

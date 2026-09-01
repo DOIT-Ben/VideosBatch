@@ -15,6 +15,9 @@ Define the durable visual and interaction rules for the SeeReel workstation so t
 - Visual rules that affect the main SeeReel session workspace.
 - VideosBatch Guided Studio visual hierarchy when the product owns the focused workflow surface.
 
+VideosBatch 的阶段语义、提示词和产物合同不在本 UI 规格中定义，统一见
+[`videosbatch-workflow-canonical.md`](videosbatch-workflow-canonical.md)。
+
 ## Non-Goals
 
 - This spec does not define marketing landing pages.

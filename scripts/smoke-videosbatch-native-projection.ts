@@ -61,34 +61,53 @@ try {
   assert.ok(nativeAssets.every((asset: any) => asset.id.startsWith("asset_")));
 
   const storyboard = {
+    schemaVersion: "2",
+    title: "最终分镜",
+    kind: "VIDEO_STORYBOARD",
+    goal: "连续呈现观察冲突并留下课堂悬问",
+    overallScript: "从异常发现推进到待解决问题。",
+    visualContinuity: "人物和课堂空间保持连续。",
+    targetDuration: 20,
+    aspectRatio: "16:9",
+    deliveryMode: "SEGMENTED_MP4",
+    format: "FINAL_10_SECOND",
+    storyType: "STORY",
     segments: [
       {
         sequence: 1,
+        chapter: "第1章",
         duration: 10,
-        visualPrompt: "小宇在数学社团教室观察黑布窗口",
-        narration: "小宇发现了一个正方形窗口。",
+        scene: "小宇在数学社团教室观察黑布窗口",
+        characters: "【人物：小宇】",
+        keyProps: "【道具：观察尺】",
         references: [
-          { assetId: "P001-A001", publicAssetId: "P001-A001", label: "小宇" },
-          { assetId: "P001-A002", publicAssetId: "P001-A002", label: "数学社团教室" }
+          { label: "【人物：小宇】" },
+          { label: "【场景：数学社团教室】" }
         ],
-        subshots: [
-          { sequence: 1, duration: 3, visual: "中景", action: "观察", camera: "固定", sound: "环境声", voice: "旁白" },
-          { sequence: 2, duration: 3, visual: "近景", action: "比较", camera: "推近", sound: "轻响", voice: "对白" },
-          { sequence: 3, duration: 4, visual: "中景", action: "提问", camera: "稳定", sound: "提示音", voice: "悬问" }
+        screenplaySceneSequence: 1,
+        evidence: [],
+        visualEffects: [
+          { sequence: 1, timeRange: "0-2秒", duration: 2, visual: "【人物：小宇】突然发现窗口形状异常", action: "角色停下观察", camera: "固定中景", sound: "环境声", voice: "为什么会这样？" },
+          { sequence: 2, timeRange: "2-6秒", duration: 4, visual: "【道具：观察尺】呈现窗口边缘", action: "角色比较两条边", camera: "缓慢推近", sound: "轻响", voice: "无" },
+          { sequence: 3, timeRange: "6-10秒", duration: 4, visual: "【场景：数学社团教室】空间回到安静", action: "角色留下待解问题", camera: "稳定跟随", sound: "提示音", voice: "怎样才能判断它？" }
         ]
       },
       {
         sequence: 2,
         duration: 10,
-        visualPrompt: "同学们继续在数学社团教室讨论",
-        narration: "大家开始怀疑原来的判断。",
+        scene: "同学们继续在数学社团教室讨论",
+        characters: "【人物：小宇】",
+        keyProps: "【道具：观察尺】",
         references: [
-          { assetId: "P001-A002", publicAssetId: "P001-A002", label: "数学社团教室" }
+          { label: "【人物：小宇】" },
+          { label: "【场景：数学社团教室】" }
         ],
-        subshots: [
-          { sequence: 1, duration: 3, visual: "全景", action: "讨论", camera: "固定", sound: "环境声", voice: "旁白" },
-          { sequence: 2, duration: 3, visual: "近景", action: "指向物体", camera: "推近", sound: "轻响", voice: "对白" },
-          { sequence: 3, duration: 4, visual: "中景", action: "继续思考", camera: "稳定", sound: "提示音", voice: "悬问" }
+        screenplaySceneSequence: 1,
+        evidence: [],
+        visualEffects: [
+          { sequence: 1, timeRange: "0-2秒", duration: 2, visual: "【人物：小宇】再次看到判断出现矛盾", action: "角色迅速回头", camera: "固定全景", sound: "环境声", voice: "等等，真的一样吗？" },
+          { sequence: 2, timeRange: "2-6秒", duration: 4, visual: "【道具：观察尺】对照不同方向", action: "角色指向关键位置", camera: "近景推近", sound: "轻响", voice: "无" },
+          { sequence: 3, timeRange: "6-10秒", duration: 4, visual: "【场景：数学社团教室】讨论停在黑板前", action: "角色继续思考", camera: "稳定跟随", sound: "提示音", voice: "还缺少哪条线索？" }
         ]
       }
     ]
@@ -114,8 +133,9 @@ try {
   const snapshot = store.snapshot();
   const selectedByStable = new Map(confirmation.items.map((item: any) => [item.publicAssetId, item.selectedAssetId]));
   assert.deepEqual(resolvedShots[0].assetIds, [selectedByStable.get("P001-A001"), selectedByStable.get("P001-A002")]);
-  assert.deepEqual(resolvedShots[1].assetIds, [selectedByStable.get("P001-A002")]);
-  assert.equal(resolvedShots[0].rawPrompt, "小宇在数学社团教室观察黑布窗口", "execution projection must retain FINAL_STORYBOARD visualPrompt, not COPYABLE_PROMPT text");
+  assert.deepEqual(resolvedShots[1].assetIds, [selectedByStable.get("P001-A001"), selectedByStable.get("P001-A002")]);
+  assert.ok(resolvedShots[0].rawPrompt.includes("小宇在数学社团教室观察黑布窗口"), "execution projection must retain canonical FINAL_STORYBOARD visual content");
+  assert.ok(!resolvedShots[0].rawPrompt.includes("P001-A001"), "execution projection must not use COPYABLE_PROMPT stable markers");
 
   const session = store.getSession(sessionId)!;
   const graph = buildSessionGraph(snapshot, session);

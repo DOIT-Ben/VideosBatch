@@ -8,7 +8,8 @@ import {
 import type { CinemaStore } from "../store";
 import { MAX_LESSON_FILE_BYTES, parseLessonDocument } from "./lessonDocumentParser";
 import type { StageExecutionContext, StageRegistry } from "./stageContracts";
-import { replaceStageArtifact, restartFrom, runAll, runNext } from "./runner";
+import { replaceStageArtifact, restartFrom, retryLineageIssues, runAll, runNext } from "./runner";
+import { contentHash } from "./canonicalStoryboard";
 
 function routeParam(req: Request, key: string) {
   const value = req.params[key];
@@ -22,6 +23,57 @@ function queryString(req: Request, key: string) {
 
 function isStageId(value: string): value is VideosBatchStageId {
   return (VIDEOS_BATCH_STAGE_ORDER as readonly string[]).includes(value);
+}
+
+type ErrorLike = {
+  code?: unknown;
+  message?: unknown;
+  retryable?: unknown;
+  attempt?: unknown;
+  provider?: unknown;
+};
+
+function safeErrorMessage(value: unknown) {
+  const raw = value instanceof Error ? value.message : String(value ?? "VideosBatch request failed");
+  return raw
+    .replace(/Bearer\s+[^\s]+/giu, "Bearer [redacted]")
+    .replace(/(?:api[_-]?key|token|secret)\s*[:=]\s*[^,\s}]+/giu, "$1=[redacted]")
+    .replace(/\s+/gu, " ")
+    .trim()
+    .slice(0, 2_000);
+}
+
+function sendWorkflowError(
+  res: Response,
+  status: number,
+  input: {
+    code: string;
+    message: string;
+    retryable?: boolean;
+    attempt?: number;
+    provider?: string | null;
+  }
+) {
+  return res.status(status).json({
+    error: {
+      code: input.code,
+      message: safeErrorMessage(input.message),
+      retryable: input.retryable === true,
+      attempt: Number.isFinite(input.attempt) ? Math.max(0, Number(input.attempt)) : 0,
+      provider: input.provider || null
+    }
+  });
+}
+
+function sendCaughtError(res: Response, status: number, error: unknown, fallbackCode = "VIDEOSBATCH_REQUEST_FAILED") {
+  const value = (error && typeof error === "object" ? error : {}) as ErrorLike;
+  return sendWorkflowError(res, status, {
+    code: typeof value.code === "string" && value.code ? value.code : fallbackCode,
+    message: safeErrorMessage(error),
+    retryable: value.retryable === true,
+    attempt: typeof value.attempt === "number" ? value.attempt : 0,
+    provider: typeof value.provider === "string" ? value.provider : null
+  });
 }
 
 function sanitizeLessonSource(value: unknown): VideosBatchLessonSource | undefined {
@@ -72,7 +124,7 @@ async function persistWorkflow(store: CinemaStore, sessionId: string, workflow: 
 function requireSession(store: CinemaStore, req: Request, res: Response) {
   const session = store.getSession(routeParam(req, "sessionId"));
   if (!session) {
-    res.status(404).json({ error: "Session not found" });
+    sendWorkflowError(res, 404, { code: "SESSION_NOT_FOUND", message: "Session not found", retryable: false });
     return undefined;
   }
   return session;
@@ -82,7 +134,7 @@ function requireWorkflow(store: CinemaStore, req: Request, res: Response) {
   const session = requireSession(store, req, res);
   if (!session) return undefined;
   if (!session.videosBatchWorkflow) {
-    res.status(409).json({ error: "VideosBatch workflow has not been started" });
+    sendWorkflowError(res, 409, { code: "WORKFLOW_NOT_STARTED", message: "VideosBatch workflow has not been started", retryable: false });
     return undefined;
   }
   return session.videosBatchWorkflow;
@@ -100,8 +152,8 @@ export function registerVideosBatchWorkflowApi(
       const session = requireSession(store, req, res);
       if (!session) return;
       const fileName = queryString(req, "filename").trim();
-      if (!fileName) return res.status(400).json({ error: "filename is required" });
-      if (!Buffer.isBuffer(req.body)) return res.status(400).json({ error: "lesson document body must be raw file bytes" });
+      if (!fileName) return sendWorkflowError(res, 400, { code: "LESSON_FILENAME_REQUIRED", message: "filename is required" });
+      if (!Buffer.isBuffer(req.body)) return sendWorkflowError(res, 400, { code: "LESSON_BYTES_REQUIRED", message: "lesson document body must be raw file bytes" });
       try {
         const parsed = await parseLessonDocument({
           fileName,
@@ -110,7 +162,7 @@ export function registerVideosBatchWorkflowApi(
         });
         res.json(parsed);
       } catch (error) {
-        res.status(400).json({ error: error instanceof Error ? error.message : "Lesson document parsing failed" });
+        sendCaughtError(res, 400, error, "LESSON_PARSE_FAILED");
       }
     }
   );
@@ -126,7 +178,7 @@ export function registerVideosBatchWorkflowApi(
       await persistWorkflow(store, session.id, workflow);
       res.json(workflow);
     } catch (error) {
-      res.status(400).json({ error: error instanceof Error ? error.message : "Invalid VideosBatch start payload" });
+      sendCaughtError(res, 400, error, "WORKFLOW_START_INVALID");
     }
   });
 
@@ -140,24 +192,32 @@ export function registerVideosBatchWorkflowApi(
     const sessionId = routeParam(req, "sessionId");
     const ctx = workflowContext(store, sessionId);
     if (!ctx) {
-      if (!store.getSession(sessionId)) return res.status(404).json({ error: "Session not found" });
-      return res.status(409).json({ error: "VideosBatch workflow has not been started" });
+      if (!store.getSession(sessionId)) return sendWorkflowError(res, 404, { code: "SESSION_NOT_FOUND", message: "Session not found" });
+      return sendWorkflowError(res, 409, { code: "WORKFLOW_NOT_STARTED", message: "VideosBatch workflow has not been started" });
     }
-    const workflow = await runNext(ctx, registry);
-    await persistWorkflow(store, sessionId, workflow);
-    res.json(workflow);
+    try {
+      const workflow = await runNext(ctx, registry);
+      await persistWorkflow(store, sessionId, workflow);
+      res.json(workflow);
+    } catch (error) {
+      sendCaughtError(res, 500, error);
+    }
   });
 
   app.post("/api/sessions/:sessionId/videosbatch/run-all", async (req, res) => {
     const sessionId = routeParam(req, "sessionId");
     const ctx = workflowContext(store, sessionId);
     if (!ctx) {
-      if (!store.getSession(sessionId)) return res.status(404).json({ error: "Session not found" });
-      return res.status(409).json({ error: "VideosBatch workflow has not been started" });
+      if (!store.getSession(sessionId)) return sendWorkflowError(res, 404, { code: "SESSION_NOT_FOUND", message: "Session not found" });
+      return sendWorkflowError(res, 409, { code: "WORKFLOW_NOT_STARTED", message: "VideosBatch workflow has not been started" });
     }
-    const workflow = await runAll(ctx, registry);
-    await persistWorkflow(store, sessionId, workflow);
-    res.json(workflow);
+    try {
+      const workflow = await runAll(ctx, registry);
+      await persistWorkflow(store, sessionId, workflow);
+      res.json(workflow);
+    } catch (error) {
+      sendCaughtError(res, 500, error);
+    }
   });
 
   app.put("/api/sessions/:sessionId/videosbatch/stages/:stageId/artifact", async (req, res) => {
@@ -165,12 +225,44 @@ export function registerVideosBatchWorkflowApi(
     if (!workflow) return;
     const stageId = routeParam(req, "stageId");
     const sessionId = routeParam(req, "sessionId");
-    if (!isStageId(stageId)) return res.status(400).json({ error: "Unknown VideosBatch stage" });
-    if (!Object.hasOwn(req.body || {}, "artifact")) return res.status(400).json({ error: "artifact is required" });
+    if (!isStageId(stageId)) return sendWorkflowError(res, 400, { code: "UNKNOWN_STAGE", message: "Unknown VideosBatch stage" });
+    if (!Object.hasOwn(req.body || {}, "artifact")) return sendWorkflowError(res, 400, { code: "ARTIFACT_REQUIRED", message: "artifact is required" });
+    const ctx = workflowContext(store, sessionId);
+    if (!ctx) return sendWorkflowError(res, 409, { code: "WORKFLOW_NOT_STARTED", message: "VideosBatch workflow has not been started" });
 
-    const next = replaceStageArtifact(workflow, stageId, req.body.artifact);
-    await persistWorkflow(store, sessionId, next);
-    res.json(next);
+    try {
+      const next = replaceStageArtifact(workflow, stageId, req.body.artifact, undefined, registry, ctx);
+      const definition = registry[stageId];
+      if (stageId === "FINAL_STORYBOARD" && definition?.project) {
+        // Persist the user's canonical edit before touching native projections.
+        // A projection failure must never erase the text that was just saved.
+        await persistWorkflow(store, sessionId, next);
+        try {
+          const projectionBase = workflowContext(store, sessionId);
+          if (!projectionBase) throw new Error("VideosBatch workflow disappeared while projecting FINAL_STORYBOARD");
+          await definition.project(next.stages[stageId]?.artifact, {
+            ...projectionBase,
+            workflow: next,
+            session: { ...projectionBase.session, videosBatchWorkflow: next }
+          });
+          const finalState = next.stages[stageId];
+          if (finalState?.artifact !== undefined) finalState.contentHash = contentHash(finalState.artifact);
+          await persistWorkflow(store, sessionId, next);
+        } catch (error) {
+          const projectionError = Object.assign(
+            error instanceof Error ? error : new Error(String(error)),
+            { code: "FINAL_STORYBOARD_PROJECTION_FAILED", retryable: true }
+          );
+          sendCaughtError(res, 500, projectionError);
+          return;
+        }
+      } else {
+        await persistWorkflow(store, sessionId, next);
+      }
+      res.json(next);
+    } catch (error) {
+      sendCaughtError(res, 400, error, "ARTIFACT_INVALID");
+    }
   });
 
   app.post("/api/sessions/:sessionId/videosbatch/restart-from/:stageId", async (req, res) => {
@@ -178,10 +270,65 @@ export function registerVideosBatchWorkflowApi(
     if (!workflow) return;
     const stageId = routeParam(req, "stageId");
     const sessionId = routeParam(req, "sessionId");
-    if (!isStageId(stageId)) return res.status(400).json({ error: "Unknown VideosBatch stage" });
+    if (!isStageId(stageId)) return sendWorkflowError(res, 400, { code: "UNKNOWN_STAGE", message: "Unknown VideosBatch stage" });
 
-    const next = restartFrom(workflow, stageId);
-    await persistWorkflow(store, sessionId, next);
-    res.json(next);
+    try {
+      const next = restartFrom(workflow, stageId);
+      await persistWorkflow(store, sessionId, next);
+      res.json(next);
+    } catch (error) {
+      sendCaughtError(res, 400, error, "RESTART_INVALID");
+    }
+  });
+
+  app.post("/api/sessions/:sessionId/videosbatch/retry/:stageId", async (req, res) => {
+    const sessionId = routeParam(req, "sessionId");
+    const session = requireSession(store, req, res);
+    if (!session) return;
+    const workflow = session.videosBatchWorkflow;
+    if (!workflow) return sendWorkflowError(res, 409, { code: "WORKFLOW_NOT_STARTED", message: "VideosBatch workflow has not been started" });
+    const stageId = routeParam(req, "stageId");
+    if (!isStageId(stageId)) return sendWorkflowError(res, 400, { code: "UNKNOWN_STAGE", message: "Unknown VideosBatch stage" });
+    if (stageId === "LESSON_INPUT" || stageId === "COURSE_INTRO_SELECTION" || stageId === "ASSET_CONFIRMATION") {
+      return sendWorkflowError(res, 409, { code: "STAGE_RETRY_NOT_ALLOWED", message: `${stageId} is a manual or source gate and cannot use provider retry`, retryable: false });
+    }
+    const stage = workflow.stages[stageId];
+    if (!stage) return sendWorkflowError(res, 409, { code: "STAGE_NOT_INITIALIZED", message: `${stageId} is not initialized` });
+    if (stage.status !== "failed") return sendWorkflowError(res, 409, { code: "STAGE_NOT_FAILED", message: `${stageId} is not currently failed` });
+    if (stage.errorInfo?.retryable === false) return sendWorkflowError(res, 409, { code: "STAGE_RETRY_NOT_ALLOWED", message: `${stageId} failure is not retryable` });
+
+    const lineageIssues = retryLineageIssues(workflow, stageId, {
+      sourceRevision: req.body?.sourceRevision,
+      sourceHash: req.body?.sourceHash,
+      sourceHashes: req.body?.sourceHashes
+    });
+    if (lineageIssues.length) {
+      return sendWorkflowError(res, 409, {
+        code: "RETRY_LINEAGE_CONFLICT",
+        message: lineageIssues.join("\n"),
+        retryable: false,
+        attempt: stage.errorInfo?.attempt || stage.attempts || 0,
+        provider: stage.errorInfo?.provider || stage.provider || null
+      });
+    }
+
+    const ctx = workflowContext(store, sessionId);
+    if (!ctx) return sendWorkflowError(res, 409, { code: "WORKFLOW_NOT_STARTED", message: "VideosBatch workflow has not been started" });
+    try {
+      // An explicit retry is a new user operation: restartFrom preserves the
+      // failed artifact for inspection and runNext creates a fresh shared
+      // three-submission provider budget.
+      const restarted = restartFrom(workflow, stageId);
+      const retryCtx: StageExecutionContext = {
+        ...ctx,
+        workflow: restarted,
+        session: { ...ctx.session, videosBatchWorkflow: restarted }
+      };
+      const next = await runNext(retryCtx, registry);
+      await persistWorkflow(store, sessionId, next);
+      res.json(next);
+    } catch (error) {
+      sendCaughtError(res, 500, error, "STAGE_RETRY_FAILED");
+    }
   });
 }

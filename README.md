@@ -70,6 +70,12 @@ The handoff link opens this session's workflow in the SeeReel web app.
 
 The user does not only watch the final video. They can return to this canvas, revise the reference image, prompt, storyboard, generated shots, first-frame continuity bridge, or stitch node, and then continue production from the edited point.
 
+## VideosBatch Guided Studio
+
+VideosBatch's lesson-to-video stages, prompt contracts, schemas, gates, lineage, retry policy, asset identity, and media boundaries are governed by the single active specification [`specs/videosbatch-workflow-canonical.md`](specs/videosbatch-workflow-canonical.md), identified as `VIDEOSBATCH_WORKFLOW_CANONICAL`. Historical VideosBatch plans and the upstream lesson manual are retained only in [`docs/archive/videosbatch-design/`](docs/archive/videosbatch-design/).
+
+Run the documentation consistency check with `npm run smoke:videosbatch-doc-consistency` before changing the adapter.
+
 Reference image source: [4K Wallpapers](https://4kwallpapers.com/world/shanghai-city-9420.html).
 
 ## Canvas: Hands-On Co-Creation

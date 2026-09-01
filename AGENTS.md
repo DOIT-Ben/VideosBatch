@@ -128,3 +128,16 @@ or the web button "故事板 TOS".
 6. Retry polling failures before resubmitting.
 7. Stitch only after all required shots are `ready`.
 8. Return the final local path and browser URL.
+
+## Verified VideosBatch Local Facts
+
+The current local acceptance configuration and evidence snapshot is maintained in
+`docs/videosbatch-runtime-facts.md`. As of 2026-08-31, the local `.env` keeps
+`VIDEOSBATCH_EXECUTOR_MODE=fake` and `VIDEOSBATCH_MEDIA_MODE=fake`; the text route is
+`gpt-5.6-terra` with `deepseek-v4-flash` as the bounded-retry fallback. Final storyboard
+requests are split into two ranges and validated after merge. The `.env` file is ignored
+by Git and must never be copied into source, logs, screenshots, or commits.
+
+VideosBatch stage semantics and prompt contracts are defined only by
+`specs/videosbatch-workflow-canonical.md`. The runtime facts above are evidence, not a
+second workflow specification.

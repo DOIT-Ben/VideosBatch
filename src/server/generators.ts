@@ -12,6 +12,8 @@ import { composeSeedanceVideoText, composeSeedreamAssetPrompt, type Lang } from 
 import { fetchWithRetry } from "./fetchWithRetry";
 import { arkMissingKeyMessage, BYTEPLUS_ARK_BASE, resolveArkCredential, VOLCENGINE_CN_ARK_BASE, type ArkCredential, type StandardCredentialRouteConfig } from "./arkCredentials";
 import { seedreamWebSearchPayload } from "./seedreamOptions";
+import { generateShotVideoViaNewApiH3 } from "./videosBatchWorkflow/newApiH3Video";
+import type { VideosBatchAudioTimeline } from "../shared/videosBatchWorkflow";
 
 export interface BuildSeedancePayloadOpts {
   /** Override the assembled text content. Used when the user audited & edited the dryRun preview. */
@@ -27,6 +29,10 @@ export interface BuildSeedancePayloadOpts {
   generateAudio?: boolean;
   /** Request-scoped credential captured before handing work to background tasks. */
   credential?: ArkCredential;
+  /** VideosBatch NewAPI H3 hook: persist the upstream task id before polling starts. */
+  onProviderTaskSubmitted?(taskId: string): Promise<void> | void;
+  /** Resume an already-submitted NewAPI H3 task without issuing another POST. */
+  taskId?: string | null;
 }
 
 export const MEDIA_DIR = path.resolve(process.cwd(), "data", "media");
@@ -578,8 +584,36 @@ export async function generateAssetImage(
   }
   if (model === "seedream-4") return generateAssetImageViaSeedream(asset, referenceImageUrls, "seedream-4", opts);
   if (model === "seedream-5-lite") return generateAssetImageViaSeedream(asset, referenceImageUrls, "seedream-5-lite", opts);
+  if (model === "gpt-image-2-1k") {
+    const url = await generateAssetImageViaLyaiapp(asset, referenceImageUrls);
+    return { url, composedPrompt: "", model: "gpt-image-2-1k" };
+  }
   const url = await generateAssetImageViaOpenAI(asset, referenceImageUrls);
   return { url, composedPrompt: "", model: "gpt-image-2" };
+}
+
+async function generateAssetImageViaLyaiapp(asset: Asset, referenceImageUrls: string[] = []) {
+  const apiKey = process.env.VIDEOSBATCH_IMAGE_API_KEY?.trim();
+  if (!apiKey) throw new Error("Lyaiapp 图片生成需要配置 VIDEOSBATCH_IMAGE_API_KEY");
+  const baseUrl = (process.env.VIDEOSBATCH_IMAGE_BASE_URL?.trim() || "https://api.lyaiapp.com/v1").replace(/\/+$/, "");
+  const refs = await prepareOpenAIReferenceImages(referenceImageUrls);
+  const response = await fetch(`${baseUrl}/images/generations`, {
+    method: "POST",
+    headers: { ...jsonHeaders(apiKey), "User-Agent": "curl/8.5.0" },
+    body: JSON.stringify({
+      model: process.env.VIDEOSBATCH_IMAGE_MODEL?.trim() || "gpt-image-2-1k",
+      prompt: asset.prompt || asset.description || asset.name,
+      size: process.env.VIDEOSBATCH_IMAGE_SIZE?.trim() || "16:9",
+      ...(refs.length ? { image_urls: refs } : {})
+    })
+  });
+  const text = await response.text();
+  if (!response.ok) throw new Error(`Lyaiapp image API failed: ${response.status} ${text.slice(0, 1000)}`);
+  const body = text ? JSON.parse(text) as { data?: Array<{ url?: string; b64_json?: string }> } : {};
+  const first = body.data?.[0];
+  if (first?.url) return first.url;
+  if (first?.b64_json) return `data:image/png;base64,${first.b64_json}`;
+  throw new Error("Lyaiapp image API returned no image");
 }
 
 function isMissingSeedreamModelError(error: unknown) {
@@ -942,6 +976,12 @@ export async function cancelSeedanceVideoTask(taskId: string) {
 }
 
 export async function generateShotVideo(shot: Shot, assets: Asset[], opts: BuildSeedancePayloadOpts = {}) {
+  if ((process.env.VIDEOSBATCH_VIDEO_PROVIDER || "").trim().toLowerCase() === "newapi-h3") {
+    return generateShotVideoViaNewApiH3(shot, assets, {
+      taskId: opts.taskId ?? shot.generationTaskId,
+      onTaskSubmitted: opts.onProviderTaskSubmitted
+    });
+  }
   if (process.env.SEEDANCE_API_URL && process.env.SEEDANCE_API_KEY) {
     return generateShotVideoViaCustomEndpoint(shot, assets, opts);
   }
@@ -1975,6 +2015,8 @@ export interface StitchOptions {
   onProgress?: StitchProgressCallback;
   /** Force a fresh final artifact even when the input signature matches an existing file. */
   force?: boolean;
+  /** Independent VideosBatch audio timeline; never derived from the visual prompt. */
+  audioTimeline?: VideosBatchAudioTimeline;
 }
 
 export async function stitchShotVideos(sessionId: string, shots: Shot[], options: StitchOptions = {}) {
@@ -1994,12 +2036,12 @@ export async function stitchShotVideos(sessionId: string, shots: Shot[], options
     await report("mock final video (placehold inputs)");
     return {
       finalVideoUrl: `https://placehold.co/1280x720/0b0d10/f4c95d?text=${encodeURIComponent("Mock final video")}`,
-      signature: createStitchSignature(shots)
+      signature: createStitchSignature(shots, options.audioTimeline)
     };
   }
 
   await mkdir(MEDIA_DIR, { recursive: true });
-  const signature = createStitchSignature(shots);
+  const signature = createStitchSignature(shots, options.audioTimeline);
   const runSuffix = options.force ? `-${Date.now()}` : "";
   const outputName = `final-${sessionId}-${signature}${runSuffix}.mp4`;
   const outputPath = path.join(MEDIA_DIR, outputName);
@@ -2317,7 +2359,7 @@ function probeVideoDurationSec(filePath: string) {
   });
 }
 
-export function createStitchSignature(shots: Shot[]) {
+export function createStitchSignature(shots: Shot[], audioTimeline?: VideosBatchAudioTimeline) {
   const selectedVersions = shots.map((shot) => {
     const render = (shot.renders || []).find(
       (item) => item.videoUrl === shot.videoUrl || item.remoteVideoUrl === shot.videoUrl
@@ -2329,7 +2371,10 @@ export function createStitchSignature(shots: Shot[]) {
       videoUrl: shot.videoUrl
     };
   });
-  return createHash("sha1").update(JSON.stringify({ version: STITCH_SIGNATURE_VERSION, selectedVersions })).digest("hex").slice(0, 12);
+  const audioSignature = audioTimeline
+    ? createHash("sha1").update(JSON.stringify(audioTimeline)).digest("hex").slice(0, 12)
+    : undefined;
+  return createHash("sha1").update(JSON.stringify({ version: STITCH_SIGNATURE_VERSION, selectedVersions, audioSignature })).digest("hex").slice(0, 12);
 }
 
 async function mapWithConcurrency<T, R>(

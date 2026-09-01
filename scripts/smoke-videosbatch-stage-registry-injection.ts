@@ -5,24 +5,35 @@ import type { StructuredGenerationRequest, VideosBatchLlmExecutor } from "../src
 import { createVideosBatchStageRegistry } from "../src/server/videosBatchWorkflow/stages";
 
 const calls: StructuredGenerationRequest[] = [];
+const directions = [
+  "原始问题与知识产生",
+  "可靠史实与时代背景",
+  "方法工具演变",
+  "古代真实需求",
+  "古今对照",
+  "现代工程科技应用",
+  "生活冲突与错误现场",
+  "推理游戏挑战",
+  "科技或自然异常"
+];
 const executor: VideosBatchLlmExecutor = {
   async generateStructured<T>(request: StructuredGenerationRequest) {
     calls.push(request);
     return {
       data: {
-        candidates: ["A-01", "A-02", "A-03", "B-01", "B-02", "B-03", "C-01", "C-02", "C-03"].map((id) => ({
+        candidates: ["A-01", "A-02", "A-03", "B-01", "B-02", "B-03", "C-01", "C-02", "C-03"].map((id, index) => ({
           id,
           name: id,
-          creativeType: "test",
-          body: "字".repeat(220),
+          creativeType: directions[index],
+          body: `${directions[index]}：${"学生围绕一个真实问题观察、比较和推理，冲突逐步升级，本课知识成为关键线索，但此处不提前揭示结论。".repeat(5)}`.slice(0, 280),
           endingQuestion: "怎样解决？",
           truthfulnessCategory: "完全虚构的故事化情境",
           truthfulnessNote: "测试"
         })),
         recommendations: [
-          { id: "A-01", reason: "test" },
-          { id: "B-01", reason: "test" },
-          { id: "C-01", reason: "test" }
+          { id: "A-01", reason: "课堂吸引力和知识连接清晰，适合视频制作。" },
+          { id: "B-01", reason: "课堂真实需求明确，便于自然引出知识。" },
+          { id: "C-01", reason: "冲突直观，学生容易代入，适合视频化。" }
         ]
       } as T,
       provider: "openai-responses",

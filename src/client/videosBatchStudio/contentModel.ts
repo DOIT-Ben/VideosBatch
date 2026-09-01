@@ -159,15 +159,63 @@ export function updateStoryboardSubshotFields<T extends Record<string, any>>(
   const segments = Array.isArray(artifact.segments) ? artifact.segments : [];
   const nextSegments = segments.map((segment: any) => {
     if (Number(segment?.sequence) !== Number(segmentSequence)) return segment;
-    const subshots = Array.isArray(segment?.subshots) ? segment.subshots : [];
+    const subshotField = Array.isArray(segment?.visualEffects) ? "visualEffects" : "subshots";
+    const subshots = Array.isArray(segment?.[subshotField]) ? segment[subshotField] : [];
     const nextSubshots = subshots.map((subshot: any) =>
       Number(subshot?.sequence) === Number(subshotSequence)
         ? { ...subshot, ...patch, sequence: subshot.sequence, duration: subshot.duration }
         : subshot
     );
-    return { ...segment, subshots: nextSubshots };
+    return { ...segment, [subshotField]: nextSubshots };
   });
   return { ...artifact, segments: nextSegments };
+}
+
+export type VideosBatchStoryboardField = readonly [key: string, label: string, wide?: boolean];
+
+/** Return the handbook fields for a segment while retaining legacy display compatibility. */
+export function storyboardSegmentFieldDefinitions(artifact: any, segment: any): VideosBatchStoryboardField[] {
+  const rawType = String(artifact?.storyType || "").trim().toUpperCase();
+  const type = rawType === "STORY" || rawType.includes("故事") || Object.hasOwn(segment || {}, "characters")
+    ? "STORY"
+    : rawType === "SCIENCE" || rawType.includes("科普") || Object.hasOwn(segment || {}, "subjectObjects")
+      ? "SCIENCE"
+      : rawType === "KNOWLEDGE" || rawType.includes("知识") || Object.hasOwn(segment || {}, "coreImagery")
+        ? "KNOWLEDGE"
+        : "LEGACY";
+
+  if (type === "STORY") return [
+    ["scene", "场景画面", true],
+    ["characters", "人物", true],
+    ["keyProps", "关键道具", true]
+  ];
+  if (type === "SCIENCE") return [
+    ["scene", "场景画面", true],
+    ["subjectObjects", "主体对象", true],
+    ["supportingElements", "辅助元素", true]
+  ];
+  if (type === "KNOWLEDGE") return [
+    ["scene", "场景画面", true],
+    ["coreImagery", "核心意象", true],
+    ["supportingElements", "辅助元素", true]
+  ];
+  return [
+    ["visualPrompt", "画面 Prompt", true],
+    ["teachingPurpose", "教学目的"],
+    ["narration", "旁白"],
+    ["subtitles", "字幕"],
+    ["transition", "转场"]
+  ];
+}
+
+/** Read either the canonical visualEffects list or the legacy subshots list. */
+export function storyboardSegmentSubshots(segment: any): any[] {
+  if (Array.isArray(segment?.visualEffects)) return segment.visualEffects;
+  return Array.isArray(segment?.subshots) ? segment.subshots : [];
+}
+
+export function storyboardSegmentSummary(segment: any): string {
+  return String(segment?.visualPrompt || segment?.scene || "").trim();
 }
 
 export function preferredShotVideoUrl(shot: Partial<Shot> | undefined) {

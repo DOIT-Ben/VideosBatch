@@ -143,6 +143,14 @@ Define how SeeReel creates, edits, reviews, retries, and stitches generated medi
 - The asset confirmation UI must show the confirmation bar whenever the server gate is not satisfied — including when a stale confirmation artifact still carries `confirmed: true` from before an upstream regeneration. Hiding the only confirm control while the gate waits for confirmation is a forbidden dead end.
 - Marking upstream stages stale must not leave a manual-gate stage in a state where its stage body claims completion while the workflow still blocks on that stage.
 
+## VideosBatch Provider Recovery
+
+- A structured text result that parses as JSON but fails the stage business contract is a provider failure for routing purposes. The runtime must first make bounded repair calls with the same provider; every repair call must include the previous artifact and the exact validation errors so the model edits the failed fields instead of regenerating from scratch.
+- If the primary text provider exhausts its contract-repair attempts, the runtime must send the same source material, previous artifact, and unresolved validation errors to the configured fallback provider. Transport retries and contract repairs are separate bounded mechanisms and must remain observable through request metadata.
+- NewAPI H3 video submission must persist the returned upstream task id on the native Shot before polling begins. A resumed VideosBatch execution with a persisted task id must poll that task and must not submit another task for the same shot.
+- H3 multipart reference preparation must try the asset's persisted source candidates in order. If a remote source has expired, an existing `/media/...` cache may be used, but local reads must remain confined to the runtime `data/media` directory and must still enforce supported image types and size limits.
+- If H3 submission returns an ambiguous response or an idempotency conflict without a recoverable task id, the shot must retain a recoverable error state and must not blindly retry the same POST. A new submission is allowed only when no upstream task may have been created or when an operator explicitly starts a new generation attempt with a new idempotency key.
+
 ## Agent Skill System
 
 - `.agents/skills/` is the single source of truth for project skills. Runtime-specific directories such as `.cursor/skills/`, `.claude/skills/`, `~/.codex/skills/`, `~/.claude/skills/`, `~/.cursor/skills/`, and `~/.agents/skills/` are install or mirror surfaces.
@@ -314,3 +322,20 @@ Define how SeeReel creates, edits, reviews, retries, and stitches generated medi
 ## Change Policy
 
 Update this spec before changing node status semantics, prompt persistence, provider submission, review toggles, retry policy, stitching behavior, CLI/browser session handoff behavior, or agent skill packaging/routing behavior.
+
+## VideosBatch Canonical Workflow Adapter
+
+VideosBatch 的唯一阶段真源是 [`videosbatch-workflow-canonical.md`](videosbatch-workflow-canonical.md)，标识为
+`VIDEOSBATCH_WORKFLOW_CANONICAL`。本 SeeReel 通用规格只记录运行时能力，不复制 VideosBatch 的阶段、提示词、字段、
+时长、资产、重试或媒体合同。
+
+- 阶段语义、产品步骤、Schema、门禁和失败策略：见 canonical spec。
+- SeeReel 原生对象投影：见 [`docs/seereel-injection-map.md`](../docs/seereel-injection-map.md)。
+- 历史 VideosBatch 计划和规格：只存在于 [`docs/archive/videosbatch-design/`](../docs/archive/videosbatch-design/)。
+- 本文件中的通用 Session、Asset、Shot、Render、Review 和 Stitch 规则继续适用于 VideosBatch，但不得覆盖 canonical spec。
+
+### VideosBatch Adapter Verification
+
+- [ ] `npm run smoke:videosbatch-doc-consistency` 确认活动文档只链接 canonical spec，归档清单中的源文件不在活动路径。
+- [ ] `npm run smoke:videosbatch-frameflow-canonical`、`npm run smoke:videosbatch-text-stage-specs` 及定向 VideosBatch Smoke 通过。
+- [ ] `npm run verify:offline` 在代码实施阶段通过；真实 Provider 验收须另行授权。

@@ -26,7 +26,7 @@ const expectedStageOrder = [
 assert.deepEqual(
   [...VIDEOS_BATCH_STAGE_ORDER],
   expectedStageOrder,
-  "VideosBatch stage order must mirror FrameFlow COURSE_VIDEO_WORKFLOW_CANONICAL plus explicit local selection/stitch gates"
+  "VideosBatch stage order must mirror VIDEOSBATCH_WORKFLOW_CANONICAL plus explicit local selection/stitch gates"
 );
 
 const workflow = createVideosBatchWorkflow({ projectId: "P001", lessonText: "观察物体完整教案" }) as any;
@@ -163,12 +163,15 @@ const storyboard = getVideosBatchTextStageSpec("FINAL_STORYBOARD" as any);
 const storyboardPrompt = storyboard.systemPrompt + storyboard.buildUserPrompt(workflow);
 assert.ok(storyboardPrompt.includes("segments 数量必须等于 targetDuration/10"));
 assert.ok(storyboardPrompt.includes("9—15"));
-const segmentSchema = (storyboard.jsonSchema as any).properties.segments.items;
+const segmentSchemas = (storyboard.jsonSchema as any).properties.segments.items.oneOf;
+assert.equal(segmentSchemas.length, 3, "final storyboard must expose three mutually exclusive handbook layouts");
+const segmentSchema = segmentSchemas.find((candidate: any) => candidate.properties.characters);
+assert.ok(segmentSchema, "STORY storyboard layout must be present");
 assert.equal(segmentSchema.properties.duration.const, 10);
-assert.equal(segmentSchema.properties.subshots.minItems, 3);
-assert.equal(segmentSchema.properties.subshots.maxItems, 5);
-for (const field of ["sequence", "duration", "visual", "action", "camera", "sound", "voice"]) {
-  assert.ok(segmentSchema.properties.subshots.items.properties[field], `subshot must preserve ${field}`);
+assert.equal(segmentSchema.properties.visualEffects.minItems, 3);
+assert.equal(segmentSchema.properties.visualEffects.maxItems, 5);
+for (const field of ["sequence", "timeRange", "duration", "visual", "action", "camera", "sound", "voice"]) {
+  assert.ok(segmentSchema.properties.visualEffects.items.properties[field], `visualEffects subshot must preserve ${field}`);
 }
 
 const copyable = getVideosBatchTextStageSpec("COPYABLE_PROMPT" as any);

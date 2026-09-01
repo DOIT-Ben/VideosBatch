@@ -1,12 +1,13 @@
 import type { StageDefinition, StageRegistry } from "./stageContracts";
 import type { VideosBatchStageId } from "../../shared/videosBatchWorkflow";
 import type { VideosBatchLlmExecutor } from "./llmExecutor";
-import { createVideosBatchLlmTextStageRegistry, validateVideosBatchTextStage } from "./llmTextStages";
+import { createVideosBatchLlmTextStageRegistry, deriveCopyablePrompt, validateVideosBatchTextStage } from "./llmTextStages";
 import {
   applyConfirmedReferencesToNativeShots,
   projectAssetCandidatesIntoSeeReel,
   projectFinalStoryboardIntoSeeReel
 } from "./nativeProjection";
+import { canonicalStoryboardSourceHash, contentHash } from "./canonicalStoryboard";
 
 function pass<T>(id: VideosBatchStageId, artifact: T): StageDefinition<T> {
   return {
@@ -26,23 +27,36 @@ function projectIdFromWorkflow(ctx: any) {
 
 function fakeIntroArtifact() {
   const ids = ["A-01", "A-02", "A-03", "B-01", "B-02", "B-03", "C-01", "C-02", "C-03"];
+  const directions = [
+    "原始问题与知识产生：追问为什么需要这项知识",
+    "可靠史实与时代背景：还原知识出现的真实背景",
+    "方法工具演变：观察方法和工具如何逐步改进",
+    "古代真实需求：从当时生活中的实际需求出发",
+    "古今对照：比较不同年代解决同一问题的方法",
+    "现代工程科技应用：连接工程、科技与现实应用",
+    "生活冲突与错误现场：从一次可观察的错误展开",
+    "推理游戏挑战：把线索组织成一场推理挑战",
+    "科技或自然异常：从自然现象和科技异常提出问题"
+  ];
   return {
     candidates: ids.map((id, index) => ({
       id,
       name: `课程导入 ${id}`,
-      creativeType: index < 3 ? "数学史与知识由来" : index < 6 ? "历史需求与古今应用" : "创意故事与现代情境",
-      body: `这是${id}的课程导入。` + "学生围绕一个真实而清晰的问题展开观察、比较和推理，冲突逐步升级，本课数学知识成为解决问题的关键线索，但此处仍然不揭示结论。".repeat(4).slice(0, 210),
+      creativeType: directions[index],
+      body: `这是${id}的课程导入，${directions[index]}。` + "学生围绕一个真实而清晰的问题展开观察、比较和推理，冲突逐步升级，本课数学知识成为解决问题的关键线索，但此处仍然不揭示结论。".repeat(4).slice(0, 210),
       endingQuestion: "究竟应该怎样判断并解决这个问题？",
       truthfulnessCategory: "完全虚构的故事化情境",
       truthfulnessNote: "用于结构化工作流测试的虚构教学情境。"
     })),
     recommendations: [
       { id: "A-01", reason: "知识连接清晰，课堂吸引力强，便于视频化。" },
-      { id: "B-01", reason: "需求明确，能自然引出核心问题，场景易制作。" },
-      { id: "C-01", reason: "冲突直观，学生容易代入，镜头表达简单。" }
+      { id: "B-01", reason: "课堂需求明确，能自然引出核心问题，场景易制作。" },
+      { id: "C-01", reason: "冲突直观，学生容易代入，适合视频制作。" }
     ]
   };
 }
+
+const fakeStoryContent = "故事从一个明确的问题开始，学生发现仅凭眼前看到的现象无法直接作出结论，于是不断提出新的猜测并寻找证据。随着不同观察角度和条件逐步出现，原先看似确定的判断开始产生冲突，大家必须依靠本课的数学知识来重新组织线索。人物通过观察、比较、讨论和验证推进情节，但故事始终不提前给出课堂要学习的最终规律。最后，所有线索汇聚到一个尚未解决的问题上：怎样才能用更可靠的方法完成判断？";
 
 const fakeCourseIntroCandidates: StageDefinition<any> = {
   id: "COURSE_INTRO_CANDIDATES",
@@ -65,7 +79,7 @@ const fakeStoryScript: StageDefinition<any> = {
         title: `完整故事-${selected}`,
         storyType: "故事叙事型",
         truthfulnessNote: "完全虚构的故事化情境，用于工作流结构验证。",
-        content: ("故事从一个明确的问题开始，学生发现仅凭眼前看到的现象无法直接作出结论，于是不断提出新的猜测并寻找证据。随着不同观察角度和条件逐步出现，原先看似确定的判断开始产生冲突，大家必须依靠本课的数学知识来重新组织线索。人物通过观察、比较、讨论和验证推进情节，但故事始终不提前给出课堂要学习的最终规律。最后，所有线索汇聚到一个尚未解决的问题上：怎样才能用更可靠的方法完成判断？").repeat(4).slice(0, 680)
+        content: fakeStoryContent.repeat(4)
       }
     };
   },
@@ -84,19 +98,34 @@ const fakeAssetPlan: StageDefinition<any> = {
         kind: "VIDEO_ASSET_PLAN",
         subject: "数学",
         gradeBand: "小学",
-        candidateAssets: ["示例学生角色"],
-        omissionCheck: "已逐段回看故事，当前最小验证资产完整。",
+        candidateAssets: ["示例学生角色", "课堂观察区", "观察尺", "课堂小鸟"],
+        candidateInventory: [
+          { assetKey: "CHARACTER-HERO", name: "示例学生角色", category: "CHARACTER", required: true, sourceEvidence: "故事中的主要观察与推理角色。", decision: "required" },
+          { assetKey: "SCENE-CLASSROOM", name: "课堂观察区", category: "SCENE", required: true, sourceEvidence: "故事课堂场景。", decision: "required" },
+          { assetKey: "PROP-RULER", name: "观察尺", category: "PROP", required: true, sourceEvidence: "故事关键道具。", decision: "required" },
+          { assetKey: "CREATURE-BIRD", name: "课堂小鸟", category: "CREATURE", required: false, sourceEvidence: "故事生物。", decision: "optional" }
+        ],
+        omissionCheck: "已逐段回看故事，并按人物、场景、道具、生物四类完成二次核对。",
+        styleSpec: "影视级 3D 国漫 CG 风格，所有资产统一 16:9，保持跨镜头角色、空间和道具连续。",
+        negativePrompt: "不要文字，不要水印，不要 logo，不要主体裁切，不要主体缺失，不要多余人物，不要复杂背景，不要畸形肢体，不要低清模糊。",
         items: [
           {
             assetKey: "CHARACTER-HERO",
             category: "CHARACTER",
             name: "示例学生角色",
             description: "故事中的主要观察者，保持跨镜头形象一致。",
-            prompt: "高级影视级3D国漫CG风格人物三视图，正面全身、侧面全身、背面全身、面部特写，四格横向排列，纯白背景，16:9。",
+            prompt: "高级影视级 3D 国漫 CG 风格人物三视图，正面全身、侧面全身、背面全身、面部特写，四格横向排列，纯白背景，16:9；不要文字，不要水印。",
+            negativePrompt: "不要文字，不要水印，不要 logo，不要主体裁切，不要主体缺失，不要多余人物，不要复杂背景，不要畸形肢体，不要低清模糊。",
             aspectRatio: "16:9",
+            required: true,
+            usage: "跨所有分镜保持主角外观一致。",
             continuityNotes: "脸型、五官、发色、体型和基础服装保持一致。",
+            variantNotes: null,
             sourceEvidence: "故事中的主要观察与推理角色。"
-          }
+          },
+          { assetKey: "SCENE-CLASSROOM", category: "SCENE", name: "课堂观察区", description: "故事发生的课堂空间。", prompt: "影视级 3D 国漫 CG 风格纯环境空镜，16:9，前中远景清晰；不要文字，不要水印。", negativePrompt: "不要文字，不要水印，不要 logo，不要主体裁切，不要主体缺失，不要多余人物，不要复杂背景，不要畸形肢体，不要低清模糊。", aspectRatio: "16:9", required: true, usage: "建立连续的课堂观察空间。", continuityNotes: "空间结构保持一致。", variantNotes: null, sourceEvidence: "故事课堂场景。" },
+          { assetKey: "PROP-RULER", category: "PROP", name: "观察尺", description: "推动观察冲突的关键道具。", prompt: "影视级 3D 国漫 CG 风格单体道具设定图，纯白背景，主体完整；不要文字，不要水印。", negativePrompt: "不要文字，不要水印，不要 logo，不要主体裁切，不要主体缺失，不要多余人物，不要复杂背景，不要畸形肢体，不要低清模糊。", aspectRatio: "16:9", required: true, usage: "在关键观察镜头中提供可追踪的测量线索。", continuityNotes: "比例和刻度保持一致。", variantNotes: null, sourceEvidence: "故事关键道具。" },
+          { assetKey: "CREATURE-BIRD", category: "CREATURE", name: "课堂小鸟", description: "课堂窗外出现的非拟人生物。", prompt: "影视级 3D 国漫 CG 风格非拟人生物设定图，主体完整，纯白背景；不要文字，不要水印。", negativePrompt: "不要文字，不要水印，不要 logo，不要主体裁切，不要主体缺失，不要多余人物，不要复杂背景，不要畸形肢体，不要低清模糊。", aspectRatio: "16:9", required: false, usage: "作为一次性的环境线索，不抢占主叙事。", continuityNotes: "外观保持一致。", variantNotes: null, sourceEvidence: "故事生物。" }
         ]
       }
     };
@@ -176,15 +205,11 @@ const fakeFinalStoryboard: StageDefinition<any> = {
   id: "FINAL_STORYBOARD",
   async execute(ctx) {
     const duration = Number((ctx.workflow.stages.SCREENPLAY?.artifact as any)?.targetDurationSeconds || 120);
-    const confirmation = ctx.workflow.stages.ASSET_CONFIRMATION?.artifact as any;
-    const firstConfirmed = Array.isArray(confirmation?.items) ? confirmation.items[0] : undefined;
-    const references = firstConfirmed?.publicAssetId
-      ? [{ assetId: firstConfirmed.publicAssetId, publicAssetId: firstConfirmed.publicAssetId, label: "示例学生角色" }]
-      : [];
+    const references = [{ label: "【人物：示例学生角色】" }, { label: "【场景：课堂观察区】" }];
     const segmentCount = duration / 10;
     return {
       artifact: {
-        schemaVersion: "1",
+        schemaVersion: "2",
         title: "最终分镜",
         kind: "VIDEO_STORYBOARD",
         goal: "完整呈现课程导入故事并停在待解决的数学问题",
@@ -199,18 +224,17 @@ const fakeFinalStoryboard: StageDefinition<any> = {
           sequence: index + 1,
           screenplaySceneSequence: 1,
           duration: 10,
-          visualPrompt: `第${index + 1}条正式分镜：角色继续观察和推理，画面保持连续。`,
-          narration: `第${index + 1}段旁白。`,
-          subtitles: `第${index + 1}段字幕。`,
-          teachingPurpose: "推进问题情境但不提前给出结论。",
-          transition: index + 1 === segmentCount ? "停在课堂悬问" : "自然连续转场",
+          chapter: index === 0 ? "第1章" : undefined,
+          scene: `课堂观察区中出现第${index + 1}个新的观察问题，角色继续推理，画面保持连续。`,
+          characters: "【人物：示例学生角色】",
+          keyProps: "【道具：观察尺】",
+          visualEffects: [
+            { sequence: 1, timeRange: "0-2秒", duration: 2, visual: "【人物：示例学生角色】中景建立人物和环境，突然出现异常", action: "角色发现问题", camera: "固定中景", sound: "环境声", voice: "为什么会这样？" },
+            { sequence: 2, timeRange: "2-6秒", duration: 4, visual: "【道具：观察尺】近景呈现观察细节", action: "角色比较并记录变化", camera: "缓慢推近", sound: "轻响", voice: "无" },
+            { sequence: 3, timeRange: "6-10秒", duration: 4, visual: "【场景：课堂观察区】回到主体中景", action: "角色提出新的疑问并停住", camera: "稳定跟随", sound: "提示音", voice: "这个问题该怎么解决？" }
+          ],
           evidence: [],
           references,
-          subshots: [
-            { sequence: 1, duration: 3, visual: "中景建立人物和环境", action: "角色观察", camera: "固定中景", sound: "环境声", voice: "自然旁白" },
-            { sequence: 2, duration: 3, visual: "近景呈现观察细节", action: "角色比较", camera: "缓慢推近", sound: "轻微交互声", voice: "角色对白" },
-            { sequence: 3, duration: 4, visual: "回到双人或主体中景", action: "角色提出新的疑问", camera: "稳定跟随", sound: "转场提示音", voice: "留下悬问" }
-          ]
         }))
       }
     };
@@ -220,7 +244,11 @@ const fakeFinalStoryboard: StageDefinition<any> = {
   },
   async project(artifact, ctx) {
     if (!ctx.store) return;
-    const projected = await projectFinalStoryboardIntoSeeReel(ctx.store, ctx.session.id, artifact);
+    const sourceRevision = Number(ctx.workflow.stages.FINAL_STORYBOARD?.revision) || 0;
+    const projected = await projectFinalStoryboardIntoSeeReel(ctx.store, ctx.session.id, artifact, {
+      sourceRevision,
+      sourceHash: canonicalStoryboardSourceHash(artifact)
+    });
     (artifact.segments || []).forEach((segment: any, index: number) => {
       if (projected[index]) segment.nativeShotId = projected[index].id;
     });
@@ -230,25 +258,7 @@ const fakeFinalStoryboard: StageDefinition<any> = {
 const fakeCopyablePrompt: StageDefinition<any> = {
   id: "COPYABLE_PROMPT",
   async execute(ctx) {
-    const storyboard = ctx.workflow.stages.FINAL_STORYBOARD?.artifact as any;
-    const segments = (storyboard?.segments || []).map((segment: any) => {
-      const refs = (segment.references || [])
-        .map((reference: any) => String(reference.publicAssetId || reference.assetId || ""))
-        .filter(Boolean)
-        .slice(0, 7);
-      const markers = refs.map((id: string) => `【${id}】`).join(" ");
-      const text = `分镜${segment.sequence}\n画面效果：${markers}${markers ? " " : ""}${segment.visualPrompt}\n教师旁白：${segment.narration}\n字幕：${segment.subtitles}\n音效与转场：${segment.transition}`;
-      return { sequence: segment.sequence, text, referenceAssetIds: refs };
-    });
-    return {
-      artifact: {
-        schemaVersion: "1",
-        fullText: segments.map((segment: any) => segment.text).join("\n\n"),
-        status: "READY",
-        failedSegments: [],
-        segments
-      }
-    };
+    return { artifact: deriveCopyablePrompt(ctx) };
   },
   validate(artifact, ctx) {
     return validateVideosBatchTextStage("COPYABLE_PROMPT", artifact, ctx);
@@ -260,10 +270,18 @@ const fakeQuote: StageDefinition<any> = {
   async execute(ctx) {
     const storyboard = ctx.workflow.stages.FINAL_STORYBOARD;
     const confirmation = ctx.workflow.stages.ASSET_CONFIRMATION?.artifact as any;
+    const storyboardHash = storyboard?.artifact === undefined ? "" : contentHash(storyboard.artifact);
+    const confirmationState = ctx.workflow.stages.ASSET_CONFIRMATION;
+    const confirmationHash = confirmationState?.artifact === undefined ? "" : contentHash(confirmationState.artifact);
     return {
       artifact: {
         quoteId: `quote_${ctx.session.id}`,
         sourceStageRevision: storyboard?.revision || 0,
+        sourceHash: storyboardHash,
+        sourceHashes: {
+          FINAL_STORYBOARD: storyboardHash,
+          ASSET_CONFIRMATION: confirmationHash
+        },
         targetDurationSeconds: Number((storyboard?.artifact as any)?.targetDuration || 0),
         assetOrder: (confirmation?.items || []).map((item: any) => item.publicAssetId),
         current: true
@@ -286,7 +304,8 @@ const fakeExecution: StageDefinition<any> = {
       artifact: {
         executionId: `execution_${ctx.session.id}`,
         status: "READY",
-        renderIds: ctx.shots.map((shot) => `render_fake_${shot.id}`)
+        renderIds: ctx.shots.map((shot) => `render_fake_${shot.id}`),
+        nativeShotIds: ctx.shots.map((shot) => shot.id)
       }
     };
   },

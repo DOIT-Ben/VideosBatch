@@ -31,3 +31,5 @@ Small fixes can skip specs when they do not change product rules. Examples: typo
 - Verification must include `npm run verify:offline`; add browser, production, or API checks when relevant.
 - If code and spec disagree, treat that as a bug in either the implementation or the spec. Resolve the disagreement in the same change.
 
+VideosBatch 的阶段、提示词、字段和门禁唯一由
+[`videosbatch-workflow-canonical.md`](videosbatch-workflow-canonical.md) 定义；其他规格只能描述各自的 UI、运行时或发布职责。

@@ -50,7 +50,9 @@ try {
     VIDEOSBATCH_LLM_PROVIDER: "openai-responses",
     VIDEOSBATCH_LLM_API_KEY: "test-key",
     VIDEOSBATCH_LLM_BASE_URL: `http://127.0.0.1:${address.port}/v1`,
-    VIDEOSBATCH_LLM_MODEL: "test-model"
+    VIDEOSBATCH_LLM_MODEL: "test-model",
+    VIDEOSBATCH_LLM_MAX_RETRIES: "1",
+    VIDEOSBATCH_LLM_RETRY_DELAYS_MS: "0"
   });
   const executor = createVideosBatchLlmExecutor(config);
   const result = await executor.generateStructured<{ ok: boolean }>({
@@ -71,6 +73,113 @@ try {
   assert.equal(result.model, "test-model");
   assert.equal(result.responseId, "resp_test");
   assert.equal(result.usage?.totalTokens, 16);
+
+  let retryRequests = 0;
+  const retryKeys: string[] = [];
+  const retryServer = http.createServer(async (req, res) => {
+    retryRequests += 1;
+    retryKeys.push(String(req.headers["idempotency-key"] || ""));
+    if (retryRequests === 1) {
+      res.statusCode = 503;
+      res.end("temporary upstream failure");
+      return;
+    }
+    res.setHeader("content-type", "application/json");
+    res.end(JSON.stringify({ output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify({ ok: true }) }] }] }));
+  });
+  retryServer.listen(0, "127.0.0.1");
+  await once(retryServer, "listening");
+  const retryAddress = retryServer.address();
+  if (!retryAddress || typeof retryAddress === "string") throw new Error("retry server did not expose a TCP port");
+  try {
+    const retryConfig = resolveVideosBatchLlmConfig({
+      VIDEOSBATCH_LLM_API_KEY: "test-key",
+      VIDEOSBATCH_LLM_BASE_URL: `http://127.0.0.1:${retryAddress.port}/v1`,
+      VIDEOSBATCH_LLM_MODEL: "test-model",
+      VIDEOSBATCH_LLM_MAX_RETRIES: "1",
+      VIDEOSBATCH_LLM_RETRY_DELAYS_MS: "0"
+    });
+    const retryResult = await createVideosBatchLlmExecutor(retryConfig).generateStructured<{ ok: boolean }>({ operation: "RETRY", systemPrompt: "x", userPrompt: "y", schemaName: "retry", jsonSchema: { type: "object" }, idempotencyKey: "retry-operation-key" });
+    assert.deepEqual(retryResult.data, { ok: true });
+    assert.equal(retryRequests, 2, "503 should be retried once");
+    assert.ok(retryKeys[0] && retryKeys[0] === retryKeys[1], "network retries must reuse the same idempotency key");
+  } finally {
+    retryServer.close();
+    await once(retryServer, "close");
+  }
+
+  let fallbackRequests = 0;
+  const fallbackKeys: string[] = [];
+  let primaryFailureRequests = 0;
+  const fallbackServer = http.createServer(async (req, res) => {
+    fallbackRequests += 1;
+    fallbackKeys.push(String(req.headers["idempotency-key"] || ""));
+    let raw = "";
+    for await (const chunk of req) raw += chunk;
+    const body = JSON.parse(raw);
+    assert.equal(body.model, "deepseek-v4-flash");
+    assert.equal(req.headers.authorization, "Bearer test-fallback-key");
+    assert.equal(body.text.format.type, "json_schema");
+    assert.equal(body.reasoning, undefined);
+    res.setHeader("content-type", "application/json");
+    res.end(JSON.stringify({ output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify({ ok: true }) }] }] }));
+  });
+  let primaryKey = "";
+  const primaryFailureServer = http.createServer((req, res) => {
+    primaryFailureRequests += 1;
+    primaryKey = String(req.headers["idempotency-key"] || "");
+    res.statusCode = 503;
+    res.end("primary unavailable");
+  });
+  fallbackServer.listen(0, "127.0.0.1");
+  primaryFailureServer.listen(0, "127.0.0.1");
+  await Promise.all([once(fallbackServer, "listening"), once(primaryFailureServer, "listening")]);
+  const fallbackAddress = fallbackServer.address();
+  const primaryFailureAddress = primaryFailureServer.address();
+  if (!fallbackAddress || typeof fallbackAddress === "string" || !primaryFailureAddress || typeof primaryFailureAddress === "string") {
+    throw new Error("fallback servers did not expose TCP ports");
+  }
+  try {
+    const fallbackConfig = resolveVideosBatchLlmConfig({
+      VIDEOSBATCH_LLM_API_KEY: "test-primary-key",
+      VIDEOSBATCH_LLM_BASE_URL: `http://127.0.0.1:${primaryFailureAddress.port}/v1`,
+      VIDEOSBATCH_LLM_MODEL: "gpt-5.6-terra",
+      VIDEOSBATCH_LLM_FALLBACK_MODELS: "deepseek-v4-flash",
+      VIDEOSBATCH_LLM_FALLBACK_API_KEY: "test-fallback-key",
+      VIDEOSBATCH_LLM_FALLBACK_BASE_URL: `http://127.0.0.1:${fallbackAddress.port}/v1`,
+      VIDEOSBATCH_LLM_FALLBACK_OUTPUT_MODE: "json_schema",
+      VIDEOSBATCH_LLM_FALLBACK_REASONING: "none",
+      VIDEOSBATCH_LLM_MAX_RETRIES: "0"
+    });
+    const fallbackResult = await createVideosBatchLlmExecutor(fallbackConfig).generateStructured<{ ok: boolean }>({
+      operation: "FALLBACK",
+      systemPrompt: "x",
+      userPrompt: "y",
+      schemaName: "fallback",
+      jsonSchema: { type: "object" },
+      idempotencyKey: "fallback-operation-key"
+    });
+    assert.deepEqual(fallbackResult.data, { ok: true });
+    assert.equal(fallbackResult.model, "deepseek-v4-flash");
+    assert.equal(fallbackRequests, 1, "a failed primary model should route once to the configured fallback");
+    assert.ok(fallbackKeys[0] && fallbackKeys[0] !== primaryKey, "provider switch must use a distinct idempotency key");
+    const fallbackOnlyResult = await createVideosBatchLlmExecutor(fallbackConfig).generateStructured<{ ok: boolean }>({
+      operation: "CONTRACT_REPAIR",
+      systemPrompt: "x",
+      userPrompt: "repair exact validation errors",
+      schemaName: "fallback",
+      jsonSchema: { type: "object" },
+      providerRoute: "fallback-only",
+      idempotencyKey: "repair-operation-key"
+    });
+    assert.deepEqual(fallbackOnlyResult.data, { ok: true });
+    assert.equal(primaryFailureRequests, 1, "fallback-only contract repair must not call the primary provider again");
+    assert.equal(fallbackRequests, 2, "fallback-only contract repair must call the fallback provider directly");
+  } finally {
+    primaryFailureServer.close();
+    fallbackServer.close();
+    await Promise.all([once(primaryFailureServer, "close"), once(fallbackServer, "close")]);
+  }
 
   const missing = createVideosBatchLlmExecutor(resolveVideosBatchLlmConfig({
     VIDEOSBATCH_LLM_PROVIDER: "openai-responses",

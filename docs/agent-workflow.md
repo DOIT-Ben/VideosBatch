@@ -2,6 +2,10 @@
 
 SeeReel positions the web app as a production state layer for short-drama agents.
 
+For VideosBatch lesson-video work, this document remains a generic SeeReel agent/runtime guide.
+Stage semantics and prompt contracts come only from
+[`specs/videosbatch-workflow-canonical.md`](../specs/videosbatch-workflow-canonical.md).
+
 The intended user experience is conversational first: the creator works with Codex, Cursor Agent, Claude Code, or another agent framework to develop the short drama. The agent can brainstorm story, cast roles, generate visual references, import assets, publish references, submit Seedance shots, recover failures, and stitch the final cut. The web app remains open as the inspectable production board.
 
 ## Roles
