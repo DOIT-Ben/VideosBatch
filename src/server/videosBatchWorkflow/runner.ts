@@ -126,9 +126,10 @@ function dependencyIssues(workflow: VideosBatchWorkflowState, stageId: VideosBat
 
 function assetBelongsToSession(asset: any, sessionId: string, sessionShotIds: Set<string>, ownerUserId?: string) {
   if (!asset) return false;
+  if (asset.ownerUserId && (!ownerUserId || asset.ownerUserId !== ownerUserId)) return false;
   if (asset.ownerSessionId === sessionId) return true;
   if (asset.ownerShotId && sessionShotIds.has(asset.ownerShotId)) return true;
-  if (!asset.ownerSessionId && !asset.ownerShotId) return !asset.ownerUserId || !ownerUserId || asset.ownerUserId === ownerUserId;
+  if (!asset.ownerSessionId && !asset.ownerShotId) return !asset.ownerUserId || Boolean(ownerUserId && asset.ownerUserId === ownerUserId);
   return Boolean(ownerUserId && asset.ownerUserId === ownerUserId && !asset.ownerShotId);
 }
 
@@ -194,12 +195,15 @@ function clearIntroSelection(workflow: VideosBatchWorkflowState) {
 }
 
 function stageErrorInfo(error: unknown): VideosBatchStageError {
-  const value = error as Partial<{ code: string; retryable: boolean; attempt: number; provider: string | null; model: string | null }> | undefined;
+  const value = error as Partial<{ code: string; retryable: boolean; attempt: number; attempts: number; provider: string | null; model: string | null }> | undefined;
+  const attempt = typeof value?.attempt === "number" && value.attempt > 0
+    ? value.attempt
+    : typeof value?.attempts === "number" ? value.attempts : 0;
   return {
     code: typeof value?.code === "string" && value.code ? value.code : "STAGE_EXECUTION_FAILED",
     message: error instanceof Error ? error.message : String(error),
     retryable: typeof value?.retryable === "boolean" ? value.retryable : true,
-    attempt: typeof value?.attempt === "number" ? value.attempt : 0,
+    attempt,
     provider: typeof value?.provider === "string" ? value.provider : null,
     ...(typeof value?.model === "string" ? { model: value.model } : {})
   };
@@ -214,7 +218,8 @@ function resultAttemptLog(result: any): VideosBatchAttemptRecord[] | undefined {
     outcome: item.outcome === "success" ? "success" : "error",
     ...(typeof item.errorCode === "string" ? { errorCode: item.errorCode } : {}),
     ...(typeof item.status === "number" ? { status: item.status } : {}),
-    ...(typeof item.durationMs === "number" ? { durationMs: item.durationMs } : {})
+    ...(typeof item.durationMs === "number" ? { durationMs: item.durationMs } : {}),
+    ...(item.metadata && typeof item.metadata === "object" ? { metadata: structuredClone(item.metadata) } : {})
   }));
 }
 
@@ -225,6 +230,17 @@ function stateWithResultMeta<T extends VideosBatchStageState<any>>(state: T, res
     ...(typeof result?.attempts === "number" ? { attempts: result.attempts } : {}),
     ...(result?.provider !== undefined ? { provider: result.provider || null } : {}),
     ...(result?.model !== undefined ? { model: result.model || null } : {}),
+    ...(attemptLog ? { attemptLog } : {})
+  } as T;
+}
+
+function stateWithErrorMeta<T extends VideosBatchStageState<any>>(state: T, error: any): T {
+  const attemptLog = resultAttemptLog(error);
+  return {
+    ...state,
+    ...(typeof error?.attempts === "number" ? { attempts: error.attempts } : {}),
+    ...(error?.provider !== undefined ? { provider: error.provider || null } : {}),
+    ...(error?.model !== undefined ? { model: error.model || null } : {}),
     ...(attemptLog ? { attemptLog } : {})
   } as T;
 }
@@ -323,10 +339,13 @@ export async function runNext(ctx: StageExecutionContext, registry: StageRegistr
   workflow.stages[stageId] = { ...current, status: "running", error: undefined, errorInfo: undefined, staleReason: undefined, updatedAt: startedAt };
   const runningCtx = contextWithWorkflow(ctx, workflow);
 
+  let stageResult: any;
+  let failedResultState: VideosBatchStageState<any> | undefined;
   try {
-    const stageResult = await definition.execute(runningCtx);
+    stageResult = await definition.execute(runningCtx);
     const validation = definition.validate(stageResult.artifact, runningCtx);
     const withMeta = stateWithResultMeta({ ...current, artifact: stageResult.artifact }, stageResult);
+    failedResultState = withMeta;
     const mediaFailure = validation.ok ? mediaArtifactFailure(stageId, stageResult.artifact) : undefined;
     if (!validation.ok || mediaFailure) {
       const updatedAt = nowIso();
@@ -388,7 +407,18 @@ export async function runNext(ctx: StageExecutionContext, registry: StageRegistr
   } catch (error) {
     const updatedAt = nowIso();
     const info = stageErrorInfo(error);
-    workflow.stages[stageId] = { ...current, status: "failed", ...dependencySnapshot(workflow, stageId), error: info.message, errorInfo: info, updatedAt };
+    const errorBase = stageResult?.artifact !== undefined
+      ? stateWithErrorMeta(failedResultState || { ...current, artifact: stageResult.artifact }, stageResult)
+      : stateWithErrorMeta(current, error);
+    workflow.stages[stageId] = {
+      ...errorBase,
+      status: "failed",
+      ...(stageResult?.artifact !== undefined ? { artifact: stageResult.artifact, contentHash: artifactHash(stageResult.artifact) } : {}),
+      ...dependencySnapshot(workflow, stageId),
+      error: info.message,
+      errorInfo: info,
+      updatedAt
+    };
     workflow.updatedAt = updatedAt;
     return workflow;
   }

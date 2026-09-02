@@ -401,11 +401,12 @@ export async function applyConfirmedReferencesToNativeShots(
       const selectedAssetId = String(item.selectedAssetId || "").trim();
       const stableId = String(item.publicAssetId || "").trim();
       const asset = snapshot.assets.find((candidate) => candidate.id === selectedAssetId);
-      const ownedBySession = Boolean(asset && (
-        asset.ownerSessionId === sessionId
-        || (asset.ownerShotId && sessionShotIds.has(asset.ownerShotId))
-        || (!asset.ownerSessionId && !asset.ownerShotId)
-      ));
+       const userMatches = Boolean(asset && (!asset.ownerUserId || (session.ownerUserId && asset.ownerUserId === session.ownerUserId)));
+       const ownedBySession = Boolean(asset && userMatches && (
+         asset.ownerSessionId === sessionId
+         || (asset.ownerShotId && sessionShotIds.has(asset.ownerShotId))
+         || (!asset.ownerSessionId && !asset.ownerShotId && !asset.ownerUserId)
+       ));
       if (!asset || !ownedBySession) return undefined;
       return {
         stableId,

@@ -86,10 +86,13 @@ export class CinemaStore {
 
   async save() {
     const started = performance.now();
-    const payload = JSON.stringify(this.data, null, 2);
-    const tmpFile = `${STORE_FILE}.${process.pid}.${Date.now()}.${crypto.randomUUID().slice(0, 8)}.tmp`;
     const write = this.writeQueue.then(async () => {
       await mkdir(DATA_DIR, { recursive: true });
+      // Snapshot only after waiting for earlier writes. Taking the payload
+      // before entering the queue lets a slower stale caller overwrite a
+      // newer in-memory mutation when saves overlap.
+      const payload = JSON.stringify(this.data, null, 2);
+      const tmpFile = `${STORE_FILE}.${process.pid}.${Date.now()}.${crypto.randomUUID().slice(0, 8)}.tmp`;
       await writeFile(tmpFile, payload, "utf8");
       await rename(tmpFile, STORE_FILE);
     });

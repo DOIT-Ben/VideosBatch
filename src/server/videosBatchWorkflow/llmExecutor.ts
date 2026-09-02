@@ -15,13 +15,16 @@ export interface VideosBatchProviderAttempt {
   errorCode?: string;
   status?: number;
   durationMs?: number;
+  /** Non-secret request diagnostics retained locally, never sent as body metadata. */
+  metadata?: Record<string, string>;
 }
 
 /**
- * A mutable budget is created once for a user operation and passed through all
- * contract repairs, network retries and provider switches.  It is deliberately
- * separate from the configured retry count so nested callers cannot multiply
- * the number of paid submissions.
+ * A mutable budget is created for one bounded submission class. Network
+ * retries and provider switches in that class share the same ceiling. The
+ * text-stage adapter may create a second, explicitly labelled budget for
+ * contract repair; that budget is intentionally independent of the initial
+ * provider-generation budget and is still bounded.
  */
 export interface VideosBatchLlmAttemptBudget {
   maxAttempts: number;
@@ -49,6 +52,9 @@ export class VideosBatchLlmError extends Error {
   readonly provider: VideosBatchLlmProvider | null;
   readonly model: string | null;
   readonly status?: number;
+  /** Provider attempts consumed before this error was surfaced to the runner. */
+  attempts?: number;
+  attemptLog?: VideosBatchProviderAttempt[];
 
   constructor(input: {
     code: string;
@@ -80,9 +86,13 @@ export interface StructuredGenerationRequest {
   reasoningEffort?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
   outputMode?: VideosBatchLlmOutputMode;
   temperature?: number;
+  /** Optional provider output cap; prevents unbounded structured generations. */
+  maxOutputTokens?: number;
+  /** Optional per-request timeout override, in milliseconds. */
+  timeoutMs?: number;
   metadata?: Record<string, string>;
   providerRoute?: "auto" | "fallback-only";
-  /** Shared operation budget. Omit only for a standalone, bounded call. */
+  /** Budget for one bounded submission class. Omit only for a standalone call. */
   budget?: VideosBatchLlmAttemptBudget;
   /** Stable key reused for network retries of the same logical submission. */
   idempotencyKey?: string;
@@ -247,6 +257,61 @@ function extractOutputText(payload: any): string | undefined {
   return joined || undefined;
 }
 
+function escapeControlCharactersInJsonString(value: string) {
+  let output = "";
+  let inString = false;
+  let escaped = false;
+  for (const character of value) {
+    const code = character.charCodeAt(0);
+    if (!inString) {
+      output += character;
+      if (character === '"') inString = true;
+      continue;
+    }
+    if (escaped) {
+      if (code < 0x20) {
+        output += code === 0x0a ? "\\n" : code === 0x0d ? "\\r" : code === 0x09 ? "\\t" : `\\u${code.toString(16).padStart(4, "0")}`;
+      } else {
+        output += character;
+      }
+      escaped = false;
+      continue;
+    }
+    if (character === "\\") {
+      output += character;
+      escaped = true;
+      continue;
+    }
+    if (character === '"') {
+      output += character;
+      inString = false;
+      continue;
+    }
+    if (code < 0x20) {
+      output += code === 0x0a ? "\\n" : code === 0x0d ? "\\r" : code === 0x09 ? "\\t" : `\\u${code.toString(16).padStart(4, "0")}`;
+      continue;
+    }
+    output += character;
+  }
+  return output;
+}
+
+/** Parse provider JSON while tolerating one outer Markdown code fence only. */
+function parseStructuredJson<T>(rawText: string): T {
+  const trimmed = rawText.trim();
+  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/iu);
+  const candidate = (fenced ? fenced[1] : trimmed).trim();
+  try {
+    return JSON.parse(candidate) as T;
+  } catch (firstError) {
+    try {
+      return JSON.parse(escapeControlCharactersInJsonString(candidate)) as T;
+    } catch {
+      throw firstError;
+    }
+  }
+}
+
 function parseUsage(rawUsage: any): StructuredGenerationUsage | undefined {
   if (!rawUsage || typeof rawUsage !== "object") return undefined;
   return {
@@ -266,8 +331,22 @@ function sleep(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
+function normalizedTimeout(value: unknown, fallback: number) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+}
+
+function withAttemptEvidence(error: VideosBatchLlmError, budget: VideosBatchLlmAttemptBudget) {
+  error.attempts = budget.used;
+  error.attemptLog = [...budget.records];
+  return error;
+}
+
 function retryableStatus(status: number) {
-  return status === 502 || status === 503 || status === 504;
+  // Include proxy/CDN timeout variants such as Cloudflare 524. These are
+  // definitive pre-response transport failures and are safe to retry within
+  // the shared bounded submission budget; client/auth errors remain terminal.
+  return status === 408 || status === 425 || status === 429 || (status >= 500 && status <= 599);
 }
 
 function safeProviderDetail(value: string) {
@@ -277,6 +356,14 @@ function safeProviderDetail(value: string) {
     .replace(/\s+/gu, " ")
     .trim()
     .slice(0, 240);
+}
+
+function safeAttemptMetadata(metadata: Record<string, string> | undefined) {
+  if (!metadata) return undefined;
+  const entries = Object.entries(metadata)
+    .filter(([key]) => key !== "session_id")
+    .filter(([, value]) => typeof value === "string" && value.length <= 120);
+  return entries.length ? Object.fromEntries(entries) : undefined;
 }
 
 function errorCode(error: unknown) {
@@ -329,12 +416,13 @@ class OpenAIResponsesLlmExecutor implements VideosBatchLlmExecutor {
 
     const budget = request.budget || createVideosBatchLlmAttemptBudget(3);
     if (budget.used >= budget.maxAttempts) {
-      throw new VideosBatchLlmError({
+      const error = new VideosBatchLlmError({
         code: "ATTEMPT_BUDGET_EXHAUSTED",
-        message: `VideosBatch ${request.operation} exhausted its shared ${budget.maxAttempts}-submission budget.`,
+        message: `VideosBatch ${request.operation} exhausted its bounded ${budget.maxAttempts}-submission budget.`,
         retryable: false,
         attempt: budget.used
       });
+      throw withAttemptEvidence(error, budget);
     }
 
     const primaryModel = request.model?.trim() || this.config.model;
@@ -393,11 +481,12 @@ class OpenAIResponsesLlmExecutor implements VideosBatchLlmExecutor {
         const normalized = normalizeError(error, request.operation, model, budget.used);
         lastError = normalized;
         if (!candidate.fallback) budget.primaryExhausted = true;
-        if (!normalized.retryable || budget.used >= budget.maxAttempts) throw normalized;
+        if (!normalized.retryable || budget.used >= budget.maxAttempts) throw withAttemptEvidence(normalized, budget);
         const next = candidates[candidates.indexOf(candidate) + 1];
         if (next) console.warn(`[videosbatch-llm] ${request.operation} failed on ${model}; trying configured fallback ${next.model}`);
       }
     }
+    if (lastError instanceof VideosBatchLlmError) throw withAttemptEvidence(lastError, budget);
     throw lastError instanceof Error ? lastError : new Error(String(lastError));
   }
 
@@ -419,24 +508,30 @@ class OpenAIResponsesLlmExecutor implements VideosBatchLlmExecutor {
       text: {
         format: { type: "json_schema", name: request.schemaName, strict: true, schema: request.jsonSchema }
       },
-      metadata: {
-        operation: request.operation,
-        ...(request.metadata || {})
-      }
     };
     if (typeof request.temperature === "number") body.temperature = request.temperature;
-    const reasoningEffort = fallbackReasoningEffort !== undefined ? fallbackReasoningEffort : request.reasoningEffort;
-    if (reasoningEffort && reasoningEffort !== "none") {
-      body.reasoning = { effort: reasoningEffort };
+    if (Number.isFinite(request.maxOutputTokens) && Number(request.maxOutputTokens) > 0) {
+      body.max_output_tokens = Math.floor(Number(request.maxOutputTokens));
     }
+    // A fallback route may declare its own reasoning policy. This lets the
+    // primary storyboard request keep medium reasoning while the DeepSeek
+    // fallback explicitly disables thinking; omission is not equivalent and
+    // can consume the whole output budget before JSON is emitted.
+    const reasoningEffort = candidate.fallback && fallbackReasoningEffort !== undefined
+      ? fallbackReasoningEffort
+      : request.reasoningEffort !== undefined
+        ? request.reasoningEffort
+        : fallbackReasoningEffort;
+    if (reasoningEffort !== undefined) body.reasoning = { effort: reasoningEffort };
 
     const maxRetries = Math.min(2, Math.max(0, Math.floor(this.config.maxRetries ?? 0)));
+    const timeoutMs = normalizedTimeout(request.timeoutMs, this.config.timeoutMs);
     let localAttempt = 0;
     while (localAttempt <= maxRetries) {
       if (budget.used >= budget.maxAttempts) {
         throw new VideosBatchLlmError({
           code: "ATTEMPT_BUDGET_EXHAUSTED",
-          message: `VideosBatch ${request.operation} exhausted its shared ${budget.maxAttempts}-submission budget.`,
+          message: `VideosBatch ${request.operation} exhausted its bounded ${budget.maxAttempts}-submission budget.`,
           retryable: false,
           attempt: budget.used,
           provider: "openai-responses",
@@ -457,29 +552,30 @@ class OpenAIResponsesLlmExecutor implements VideosBatchLlmExecutor {
       budget.used = attempt;
       localAttempt += 1;
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), this.config.timeoutMs);
+      const timeout = setTimeout(() => controller.abort(), timeoutMs);
       const startedAt = Date.now();
       const idempotencyKey = providerScopedIdempotencyKey(
         request.idempotencyKey?.trim() || request.metadata?.idempotency_key?.trim(),
         candidate
       );
+      const requestMetadata = {
+        ...(request.metadata || {}),
+        attempt: String(attempt),
+        attempt_budget_used: String(attempt),
+        attempt_budget_max: String(budget.maxAttempts)
+      };
       try {
-        const metadata = {
-          operation: request.operation,
-          ...(request.metadata || {}),
-          ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
-          attempt: String(attempt),
-          attempt_budget_used: String(attempt),
-          attempt_budget_max: String(budget.maxAttempts)
-        };
         const response = await fetch(`${baseUrl}/responses`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${apiKey}`,
-            ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {})
+            ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
+            "X-VideosBatch-Operation": request.operation,
+            "X-VideosBatch-Attempt": String(attempt),
+            ...(request.metadata?.attempt_kind ? { "X-VideosBatch-Attempt-Kind": request.metadata.attempt_kind } : {})
           },
-          body: JSON.stringify({ ...body, metadata }),
+          body: JSON.stringify(body),
           signal: controller.signal
         });
 
@@ -494,28 +590,41 @@ class OpenAIResponsesLlmExecutor implements VideosBatchLlmExecutor {
             model,
             status: response.status
           });
-          budget.records.push({ attempt, provider: "openai-responses", model, idempotencyKey, outcome: "error", errorCode: error.code, status: response.status, durationMs: Date.now() - startedAt });
+          budget.records.push({ attempt, provider: "openai-responses", model, idempotencyKey, outcome: "error", errorCode: error.code, status: response.status, durationMs: Date.now() - startedAt, metadata: safeAttemptMetadata(requestMetadata) });
           if (!error.retryable || localAttempt > maxRetries || budget.used >= budget.maxAttempts || (reserveForFallback && budget.used >= budget.maxAttempts - 1)) throw error;
           console.warn(`[videosbatch-llm] retrying ${request.operation} after HTTP ${response.status} (attempt ${attempt}/${budget.maxAttempts})`);
           await sleep(this.config.retryDelaysMs?.[localAttempt - 1] ?? this.config.retryDelaysMs?.at(-1) ?? 0);
           continue;
         }
 
-        const payload = await response.json() as any;
-        const rawText = extractOutputText(payload);
+         const payload = await response.json() as any;
+         if (typeof payload?.status === "string" && payload.status !== "completed") {
+           const reason = typeof payload?.incomplete_details?.reason === "string"
+             ? ` (${payload.incomplete_details.reason})`
+             : "";
+           throw new VideosBatchLlmError({
+             code: "INCOMPLETE_STRUCTURED_OUTPUT",
+             message: `VideosBatch LLM returned an incomplete response for ${request.operation}${reason}.`,
+             retryable: true,
+             attempt,
+             provider: "openai-responses",
+             model
+           });
+         }
+         const rawText = extractOutputText(payload);
         if (!rawText) {
           throw new VideosBatchLlmError({ code: "EMPTY_STRUCTURED_OUTPUT", message: `VideosBatch LLM returned no structured text for ${request.operation}.`, retryable: true, attempt, provider: "openai-responses", model });
         }
 
         let data: T;
         try {
-          data = JSON.parse(rawText) as T;
+           data = parseStructuredJson<T>(rawText);
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           throw new VideosBatchLlmError({ code: "INVALID_JSON", message: `VideosBatch LLM returned invalid JSON for ${request.operation}: ${message.slice(0, 180)}`, retryable: true, attempt, provider: "openai-responses", model });
         }
 
-        budget.records.push({ attempt, provider: "openai-responses", model, idempotencyKey, outcome: "success", durationMs: Date.now() - startedAt });
+        budget.records.push({ attempt, provider: "openai-responses", model, idempotencyKey, outcome: "success", durationMs: Date.now() - startedAt, metadata: safeAttemptMetadata(requestMetadata) });
         return {
           data,
           provider: "openai-responses",
@@ -531,10 +640,10 @@ class OpenAIResponsesLlmExecutor implements VideosBatchLlmExecutor {
         const normalized = error instanceof VideosBatchLlmError
           ? error
           : error instanceof Error && error.name === "AbortError"
-            ? new VideosBatchLlmError({ code: "TIMEOUT", message: `VideosBatch LLM request timed out after ${this.config.timeoutMs}ms for ${request.operation} on ${model}.`, retryable: true, attempt, provider: "openai-responses", model })
+          ? new VideosBatchLlmError({ code: "TIMEOUT", message: `VideosBatch LLM request timed out after ${timeoutMs}ms for ${request.operation} on ${model}.`, retryable: true, attempt, provider: "openai-responses", model })
             : new VideosBatchLlmError({ code: "NETWORK_ERROR", message: `VideosBatch LLM network request failed for ${request.operation} on ${model}.`, retryable: isRetryableNetworkError(error), attempt, provider: "openai-responses", model });
         const alreadyRecorded = budget.records.some((record) => record.attempt === attempt && record.model === model);
-        if (!alreadyRecorded) budget.records.push({ attempt, provider: "openai-responses", model, idempotencyKey, outcome: "error", errorCode: normalized.code, durationMs: Date.now() - startedAt });
+        if (!alreadyRecorded) budget.records.push({ attempt, provider: "openai-responses", model, idempotencyKey, outcome: "error", errorCode: normalized.code, durationMs: Date.now() - startedAt, metadata: safeAttemptMetadata(requestMetadata) });
         if (!normalized.retryable || localAttempt > maxRetries || budget.used >= budget.maxAttempts || (reserveForFallback && budget.used >= budget.maxAttempts - 1)) throw normalized;
         console.warn(`[videosbatch-llm] retrying ${request.operation} after ${normalized.code} (attempt ${attempt}/${budget.maxAttempts})`);
         await sleep(this.config.retryDelaysMs?.[localAttempt - 1] ?? this.config.retryDelaysMs?.at(-1) ?? 0);

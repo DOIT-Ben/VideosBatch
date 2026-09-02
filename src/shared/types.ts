@@ -3,6 +3,18 @@ export type AssetMediaKind = "image" | "video" | "audio" | "none";
 export type AssetImageModel = "gpt-image-2" | "gpt-image-2-1k" | "seedream-4" | "seedream-4-5" | "seedream-5-lite";
 export type AssetImageSize = "2K" | "4K";
 export type StandardApiKeyRoute = "byteplus" | "volcengine-cn";
+
+/**
+ * Auditable record for a provider-specific prompt adaptation. The canonical
+ * asset prompt remains unchanged; only the submitted provider text is
+ * adapted after an explicit content-policy rejection.
+ */
+export interface AssetPromptAdaptation {
+  strategy: "provider-safe-v1";
+  trigger: "IMAGE_CONTENT_POLICY";
+  originalPromptHash: string;
+  submittedPromptHash: string;
+}
 /** Seedream-only subset of AssetImageModel that the sub-storyboard endpoint supports (no gpt-image-2). */
 export type SubStoryboardModel = "seedream-4" | "seedream-4-5" | "seedream-5-lite";
 
@@ -265,6 +277,8 @@ export interface Asset {
   generationModelActual?: string;
   /** Debug metadata for generated images/storyboards: credential route used for the last generation. */
   generationCredentialSource?: "standard" | "agent-plan" | "missing";
+  /** Provider-safe adaptation audit; the canonical `prompt` is never overwritten. */
+  generationPromptAdaptation?: AssetPromptAdaptation;
   /**
    * Reference-video analysis result. When this asset is a video the user uploaded as a reference,
    * the server runs ffmpeg + vision LLM to break it down

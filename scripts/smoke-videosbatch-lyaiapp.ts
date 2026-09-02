@@ -1,5 +1,5 @@
 import { strict as assert } from "node:assert";
-import { generateAssetImage } from "../src/server/generators";
+import { buildProviderSafeImagePrompt, generateAssetImage } from "../src/server/generators";
 
 const previous = {
   key: process.env.VIDEOSBATCH_IMAGE_API_KEY,
@@ -45,6 +45,54 @@ try {
   const b64Result = await generateAssetImage(asset, "gpt-image-2-1k");
   assert.equal(b64Result.url, "data:image/png;base64,ZmFrZQ==");
   assert.equal(calls, 1, "the mocked URL request should be observed exactly once");
+
+  const policyAsset = {
+    id: "asset_lyaiapp_policy_smoke",
+    name: "小雨",
+    prompt: "中国小学女生小雨，约9岁，纤细匀称的儿童体型，穿浅蓝色校服。"
+  } as any;
+  assert.doesNotMatch(buildProviderSafeImagePrompt(policyAsset.prompt), /约?9\s*岁|小学女生小雨|儿童体型/u);
+  assert.match(buildProviderSafeImagePrompt(policyAsset.prompt), /不涉及性化/u);
+
+  const policyPrompts: string[] = [];
+  let policyCalls = 0;
+  globalThis.fetch = async (_input, init) => {
+    policyCalls += 1;
+    policyPrompts.push(JSON.parse(String(init?.body)).prompt);
+    if (policyCalls === 1) {
+      return new Response(JSON.stringify({ error: { code: "content_policy_violation", message: "blocked" } }), {
+        status: 400,
+        headers: { "content-type": "application/json" }
+      });
+    }
+    return new Response(JSON.stringify({ data: [{ url: "https://cdn.test/policy-safe.png" }] }), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    });
+  };
+  const adaptedResult = await generateAssetImage(policyAsset, "gpt-image-2-1k");
+  assert.equal(adaptedResult.url, "https://cdn.test/policy-safe.png");
+  assert.equal(policyCalls, 2, "an explicit policy rejection should receive one provider-safe retry");
+  assert.match(policyPrompts[0], /小雨|9岁/u);
+  assert.doesNotMatch(policyPrompts[1], /小雨|9岁|儿童体型/u);
+  assert.equal(adaptedResult.composedPrompt, policyPrompts[1]);
+  assert.equal(adaptedResult.promptAdaptation?.strategy, "provider-safe-v1");
+  assert.equal(adaptedResult.promptAdaptation?.trigger, "IMAGE_CONTENT_POLICY");
+  assert.notEqual(adaptedResult.promptAdaptation?.originalPromptHash, adaptedResult.promptAdaptation?.submittedPromptHash);
+
+  let rejectedCalls = 0;
+  globalThis.fetch = async () => {
+    rejectedCalls += 1;
+    return new Response(JSON.stringify({ error: { code: "content_policy_violation", message: "blocked" } }), {
+      status: 400,
+      headers: { "content-type": "application/json" }
+    });
+  };
+  await assert.rejects(
+    () => generateAssetImage(policyAsset, "gpt-image-2-1k"),
+    (error: any) => error?.code === "IMAGE_CONTENT_POLICY" && error?.retryable === false
+  );
+  assert.equal(rejectedCalls, 2, "a second policy rejection must stop after the single safe retry");
   console.log("VideosBatch LyAIApp image smoke passed");
 } finally {
   if (previous.key === undefined) delete process.env.VIDEOSBATCH_IMAGE_API_KEY;

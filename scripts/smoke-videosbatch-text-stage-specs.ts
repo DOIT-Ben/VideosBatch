@@ -52,16 +52,23 @@ for (const token of ["人物三视图", "统一负面提示词", "assetKey", "�
 const screenplay = getVideosBatchTextStageSpec("SCREENPLAY");
 assert.deepEqual((screenplay.jsonSchema as any).properties.targetDurationSeconds.enum, [90, 100, 110, 120, 130, 140, 150]);
 
-const storyboard = getVideosBatchTextStageSpec("FINAL_STORYBOARD");
-const segmentLayouts = (storyboard.jsonSchema as any).properties.segments.items.oneOf;
-assert.equal(segmentLayouts.length, 3);
-const segment = segmentLayouts.find((candidate: any) => candidate.properties.characters);
-assert.ok(segment);
+const storyboard = getVideosBatchTextStageSpec("FINAL_STORYBOARD", {
+  stages: {
+    SCREENPLAY: { status: "ready", revision: 1, artifact: { storyType: "STORY", targetDurationSeconds: 120 } }
+  }
+} as any);
+const segment = (storyboard.jsonSchema as any).properties.segments.items;
+assert.equal(segment.oneOf, undefined, "provider schema must not use unsupported oneOf");
+assert.ok(segment.properties.characters);
+assert.match(segment.properties.references.items.properties.label.pattern, /人物/);
 assert.equal(segment.properties.duration.const, 10);
 assert.equal(segment.properties.visualEffects.minItems, 3);
-assert.equal(segment.properties.visualEffects.maxItems, 5);
-assert.equal((storyboard.jsonSchema as any).properties.segments.minItems, 9);
-assert.equal((storyboard.jsonSchema as any).properties.segments.maxItems, 15);
+assert.equal(segment.properties.visualEffects.maxItems, 3);
+assert.equal((storyboard.jsonSchema as any).properties.segments.minItems, 12);
+assert.equal((storyboard.jsonSchema as any).properties.segments.maxItems, 12);
+const genericStoryboard = getVideosBatchTextStageSpec("FINAL_STORYBOARD");
+assert.equal((genericStoryboard.jsonSchema as any).properties.segments.minItems, 9);
+assert.equal((genericStoryboard.jsonSchema as any).properties.segments.maxItems, 15);
 
 const copyable = getVideosBatchTextStageSpec("COPYABLE_PROMPT");
 assert.equal((copyable.jsonSchema as any).properties.segments.items.properties.referenceAssetIds.maxItems, 7);

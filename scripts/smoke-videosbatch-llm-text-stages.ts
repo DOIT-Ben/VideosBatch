@@ -1,7 +1,7 @@
 import { strict as assert } from "node:assert";
 import { createVideosBatchWorkflow } from "../src/shared/videosBatchWorkflow";
 import type { Session } from "../src/shared/types";
-import type { VideosBatchLlmExecutor, StructuredGenerationRequest } from "../src/server/videosBatchWorkflow/llmExecutor";
+import { VideosBatchLlmError, type VideosBatchLlmExecutor, type StructuredGenerationRequest } from "../src/server/videosBatchWorkflow/llmExecutor";
 import { createVideosBatchLlmTextStageRegistry, deriveCopyablePrompt } from "../src/server/videosBatchWorkflow/llmTextStages";
 import type { StageExecutionContext } from "../src/server/videosBatchWorkflow/stageContracts";
 import { renderCanonicalSegmentText } from "../src/server/videosBatchWorkflow/canonicalStoryboard";
@@ -216,15 +216,65 @@ const repairExecutor: VideosBatchLlmExecutor = {
     assert.doesNotMatch(request.userPrompt, /<previous_artifact_json>/);
     assert.match(request.userPrompt, /字{199}/);
     assert.equal(request.metadata?.attempt, "2");
-    return { data: structuredClone(introArtifact) as T, provider: "openai-responses", model: "fake-model", rawText: JSON.stringify(introArtifact) };
+    const repaired = structuredClone(introArtifact);
+    repaired.candidates[1].name = "模型不应改写的未受影响字段";
+    return { data: repaired as T, provider: "openai-responses", model: "fake-model", rawText: JSON.stringify(repaired) };
   }
 };
 const repairRegistry = createVideosBatchLlmTextStageRegistry(repairExecutor);
 const repairedIntro = await repairRegistry.COURSE_INTRO_CANDIDATES!.execute(ctx);
 assert.equal(repairCalls, 2, "validation failure should trigger one bounded repair call");
 assert.ok(repairKeys[0] && repairKeys[1] && repairKeys[0] !== repairKeys[1], "contract repair must derive a new idempotency key from the changed prompt");
-assert.deepEqual(repairPrimaryExhausted, [false, false], "contract repair must let the primary model use its shared retry budget before fallback");
+assert.deepEqual(repairPrimaryExhausted, [false, false], "contract repair must start with a fresh provider budget");
 assert.equal(repairRegistry.COURSE_INTRO_CANDIDATES!.validate(repairedIntro.artifact, ctx).ok, true);
+assert.equal(repairedIntro.artifact.candidates[1].name, introArtifact.candidates[1].name, "targeted repair must preserve unaffected candidate fields");
+
+let recommendationRepairCalls = 0;
+const recommendationRepairExecutor: VideosBatchLlmExecutor = {
+  async generateStructured<T>(request: StructuredGenerationRequest) {
+    recommendationRepairCalls += 1;
+    if (recommendationRepairCalls === 1) {
+      const invalid = structuredClone(introArtifact);
+      invalid.recommendations[2].reason = "冲突明显";
+      return { data: invalid as T, provider: "openai-responses", model: "fake-model", rawText: JSON.stringify(invalid) };
+    }
+    assert.match(request.userPrompt, /Recommendation C-01 reason must cover classroom, knowledge, or production value/);
+    assert.match(request.userPrompt, /recommendations/);
+    assert.match(request.userPrompt, /冲突明显/);
+    assert.doesNotMatch(request.userPrompt, /课堂吸引力强/u, "recommendation repair must send only the affected recommendation");
+    return { data: structuredClone(introArtifact) as T, provider: "openai-responses", model: "fake-model", rawText: JSON.stringify(introArtifact) };
+  }
+};
+const recommendationRepairRegistry = createVideosBatchLlmTextStageRegistry(recommendationRepairExecutor);
+const repairedRecommendation = await recommendationRepairRegistry.COURSE_INTRO_CANDIDATES!.execute(ctx);
+assert.equal(recommendationRepairCalls, 2, "recommendation contract failure should trigger one targeted repair call");
+assert.equal(recommendationRepairRegistry.COURSE_INTRO_CANDIDATES!.validate(repairedRecommendation.artifact, ctx).ok, true);
+
+let multiRepairCalls = 0;
+const multiRepairExecutor: VideosBatchLlmExecutor = {
+  async generateStructured<T>(request: StructuredGenerationRequest) {
+    multiRepairCalls += 1;
+    if (multiRepairCalls === 1) {
+      const invalid = structuredClone(introArtifact);
+      invalid.candidates[1].body = "字".repeat(199);
+      invalid.candidates[7].body = "字".repeat(199);
+      invalid.recommendations[0].reason = "冲突明显";
+      invalid.recommendations[1].reason = "知识清楚";
+      invalid.recommendations[2].reason = "画面直观";
+      return { data: invalid as T, provider: "openai-responses", model: "fake-model", rawText: JSON.stringify(invalid) };
+    }
+    assert.match(request.userPrompt, /A-02 body must be 200-300 characters/);
+    assert.match(request.userPrompt, /C-02 body must be 200-300 characters/);
+    assert.match(request.userPrompt, /Recommendation A-01 reason/);
+    assert.match(request.userPrompt, /Recommendation C-01 reason/);
+    assert.match(request.userPrompt, /字{199}/);
+    return { data: structuredClone(introArtifact) as T, provider: "openai-responses", model: "fake-model", rawText: JSON.stringify(introArtifact) };
+  }
+};
+const multiRepairRegistry = createVideosBatchLlmTextStageRegistry(multiRepairExecutor);
+const multiRepaired = await multiRepairRegistry.COURSE_INTRO_CANDIDATES!.execute(ctx);
+assert.equal(multiRepairCalls, 2, "all affected candidate and recommendation entries must be included in one targeted repair");
+assert.equal(multiRepairRegistry.COURSE_INTRO_CANDIDATES!.validate(multiRepaired.artifact, ctx).ok, true);
 
 const compactMaterial = renderPromptMaterial({ first: "完整字段值", second: "另一个完整字段值" }, "", 64);
 assert.ok(compactMaterial.length <= 64, "prompt material must stay within its budget");
@@ -241,21 +291,71 @@ assert.throws(
 );
 
 let exhaustedCalls = 0;
-const exhaustedRoutes: Array<StructuredGenerationRequest["providerRoute"]> = [];
+const exhaustedBudgetMax: number[] = [];
+const exhaustedBudgetUsed: number[] = [];
+const exhaustedKinds: string[] = [];
 const exhaustedExecutor: VideosBatchLlmExecutor = {
   async generateStructured<T>(request) {
     exhaustedCalls += 1;
-    exhaustedRoutes.push(request.providerRoute);
+    exhaustedBudgetMax.push(request.budget?.maxAttempts || 0);
+    exhaustedBudgetUsed.push(request.budget?.used || 0);
+    exhaustedKinds.push(request.metadata?.attempt_kind || "");
+    if (exhaustedCalls === 1) {
+      // Simulate the real executor having consumed all three provider
+      // submissions before the business-contract validator runs.
+      assert.ok(request.budget);
+      request.budget.used = request.budget.maxAttempts;
+      const invalid = structuredClone(introArtifact);
+      invalid.candidates[0].body = "字".repeat(199);
+      return { data: invalid as T, provider: "openai-responses", model: "fake-model", rawText: JSON.stringify(invalid) };
+    }
+    assert.equal(request.budget?.maxAttempts, 2, "contract repair must receive an independent two-submission budget");
+    assert.equal(request.metadata?.contract_repair, "1");
+    assert.equal(request.metadata?.contract_repair_attempt, "1");
+    return { data: structuredClone(introArtifact) as T, provider: "openai-responses", model: "fake-model", rawText: JSON.stringify(introArtifact) };
+  }
+};
+const exhaustedRegistry = createVideosBatchLlmTextStageRegistry(exhaustedExecutor);
+const exhaustedIntro = await exhaustedRegistry.COURSE_INTRO_CANDIDATES!.execute(ctx);
+assert.equal(exhaustedCalls, 2, "contract repair must remain available after the provider budget is exhausted");
+assert.deepEqual(exhaustedBudgetMax, [3, 2]);
+assert.deepEqual(exhaustedBudgetUsed, [0, 0]);
+assert.deepEqual(exhaustedKinds, ["provider", "contract_repair"]);
+assert.equal(exhaustedRegistry.COURSE_INTRO_CANDIDATES!.validate(exhaustedIntro.artifact, ctx).ok, true);
+
+let repairExhaustedCalls = 0;
+const repairExhaustedMax: number[] = [];
+const repairExhaustedExecutor: VideosBatchLlmExecutor = {
+  async generateStructured<T>(request) {
+    repairExhaustedCalls += 1;
+    repairExhaustedMax.push(request.budget?.maxAttempts || 0);
+    assert.ok(request.budget);
+    if (repairExhaustedCalls === 1) request.budget.used = request.budget.maxAttempts;
+    else request.budget.used += 1;
     const invalid = structuredClone(introArtifact);
     invalid.candidates[0].body = "字".repeat(199);
     return { data: invalid as T, provider: "openai-responses", model: "fake-model", rawText: JSON.stringify(invalid) };
   }
 };
-const exhaustedRegistry = createVideosBatchLlmTextStageRegistry(exhaustedExecutor);
-const exhaustedIntro = await exhaustedRegistry.COURSE_INTRO_CANDIDATES!.execute(ctx);
-assert.equal(exhaustedCalls, 3, "contract repair must share one three-submission budget");
-assert.deepEqual(exhaustedRoutes, ["auto", "auto", "auto"]);
-assert.equal(exhaustedRegistry.COURSE_INTRO_CANDIDATES!.validate(exhaustedIntro.artifact, ctx).ok, false);
+const repairExhaustedRegistry = createVideosBatchLlmTextStageRegistry(repairExhaustedExecutor);
+const repairExhaustedIntro = await repairExhaustedRegistry.COURSE_INTRO_CANDIDATES!.execute(ctx);
+assert.equal(repairExhaustedCalls, 3, "contract repair must stop after its independent two-attempt budget");
+assert.deepEqual(repairExhaustedMax, [3, 2, 2]);
+assert.equal(repairExhaustedRegistry.COURSE_INTRO_CANDIDATES!.validate(repairExhaustedIntro.artifact, ctx).ok, false);
+
+let transportFailureCalls = 0;
+const transportFailureExecutor: VideosBatchLlmExecutor = {
+  async generateStructured() {
+    transportFailureCalls += 1;
+    throw new VideosBatchLlmError({ code: "TIMEOUT", message: "simulated timeout", retryable: true, attempt: transportFailureCalls, provider: "openai-responses", model: "fake-model" });
+  }
+};
+const transportFailureRegistry = createVideosBatchLlmTextStageRegistry(transportFailureExecutor);
+await assert.rejects(
+  () => transportFailureRegistry.COURSE_INTRO_CANDIDATES!.execute(ctx),
+  (error: unknown) => error instanceof VideosBatchLlmError && error.code === "TIMEOUT" && error.attempt === 3
+);
+assert.equal(transportFailureCalls, 3, "transport failures retain the bounded three-attempt error contract");
 
 workflow.stages.COURSE_INTRO_CANDIDATES = { status: "ready", revision: 1, artifact: introArtifact };
 workflow.stages.COURSE_INTRO_SELECTION = {
@@ -277,6 +377,26 @@ workflow.stages.STORY_SCRIPT = { status: "ready", revision: 1, artifact: storyAr
 ctx = context(workflow);
 const assetResult = await registry.ASSET_PLAN!.execute(ctx);
 assert.equal(registry.ASSET_PLAN!.validate(assetResult.artifact, ctx).ok, true);
+const assetPlanRequest = calls.find((request) => request.operation === "ASSET_PLAN");
+assert.equal(assetPlanRequest?.reasoningEffort, "none", "ASSET_PLAN must default to non-thinking mode");
+const assetPlanStats = assetPlanRequest?.metadata || {};
+const systemChars = Number(assetPlanStats.system_prompt_chars);
+const userChars = Number(assetPlanStats.user_prompt_chars);
+const schemaChars = Number(assetPlanStats.schema_chars);
+assert.ok(systemChars > 0 && userChars > 0 && schemaChars > 0);
+assert.equal(Number(assetPlanStats.prompt_chars_total), systemChars + userChars + schemaChars);
+assert.ok(Number(assetPlanStats.prompt_chars_total) < 10_000, "asset-plan input should stay small enough to rule out an oversized prompt");
+assert.equal(assetPlanRequest?.timeoutMs, 180_000, "ASSET_PLAN must use its dedicated 180s timeout by default");
+assert.equal(assetPlanRequest?.maxOutputTokens, 12_000, "ASSET_PLAN must use a bounded structured-output cap by default");
+assert.equal(assetPlanStats.timeout_ms, "180000");
+assert.equal(assetPlanStats.max_output_tokens, "12000");
+console.log(`ASSET_PLAN prompt stats: system=${systemChars}, user=${userChars}, schema=${schemaChars}, total=${Number(assetPlanStats.prompt_chars_total)}, reasoning=${assetPlanRequest?.reasoningEffort}`);
+const noCreaturePlan = structuredClone(assetPlanArtifact) as any;
+noCreaturePlan.items = noCreaturePlan.items.filter((item: any) => item.category !== "CREATURE");
+noCreaturePlan.candidateAssets = noCreaturePlan.candidateAssets.filter((name: string) => name !== "课堂小鸟");
+noCreaturePlan.candidateInventory = noCreaturePlan.candidateInventory.filter((item: any) => item.category !== "CREATURE");
+noCreaturePlan.omissionCheck = "已完成四类二次核对；生物类不存在任何神兽、灵宠或非拟人生物，不创建 CREATURE 资产。";
+assert.equal(registry.ASSET_PLAN!.validate(noCreaturePlan, ctx).ok, true, "an explicitly absent asset category must not force a fabricated asset");
 const invalidAsset = structuredClone(assetPlanArtifact) as any;
 invalidAsset.items[0].assetId = "P001-A001";
 const invalidAssetValidation = registry.ASSET_PLAN!.validate(invalidAsset, ctx);
@@ -303,6 +423,8 @@ assert.equal(registry.FINAL_STORYBOARD!.validate(storyboardResult.artifact, ctx)
 const storyboardRequest = calls.find((request) => request.operation === "FINAL_STORYBOARD");
 assert.equal(storyboardRequest?.model, "gpt-5.6-terra");
 assert.equal(storyboardRequest?.reasoningEffort, "medium");
+assert.equal(storyboardRequest?.timeoutMs, 300_000, "FINAL_STORYBOARD must use its dedicated full-output timeout by default");
+assert.equal(storyboardRequest?.maxOutputTokens, 24_000, "FINAL_STORYBOARD must use a bounded full-output cap by default");
 
 const previousChunked = process.env.VIDEOSBATCH_FINAL_STORYBOARD_CHUNKED;
 const previousChunkCount = process.env.VIDEOSBATCH_FINAL_STORYBOARD_CHUNK_COUNT;
@@ -358,5 +480,9 @@ assert.equal(repeatedPersonMarkers, 1, "the same asset must be marked only at it
 const invalidCopy = structuredClone(copyResult.artifact);
 invalidCopy.segments[0].text = invalidCopy.segments[0].text.replace("【P001-A001】", "图片1");
 assert.equal(registry.COPYABLE_PROMPT!.validate(invalidCopy, ctx).ok, false, "copyable visual text must reject positional image references");
+const markerOutsideVisual = structuredClone(copyResult.artifact);
+markerOutsideVisual.segments[0].text = markerOutsideVisual.segments[0].text.replace("旁白/台词：", "【P001-A003】旁白/台词：");
+markerOutsideVisual.segments[0].referenceAssetIds = ["P001-A003"];
+assert.equal(registry.COPYABLE_PROMPT!.validate(markerOutsideVisual, ctx).ok, false, "stable markers must stay inside 画面效果");
 
 console.log("VideosBatch canonical LLM text-stage adapter smoke passed");

@@ -6,4 +6,4 @@
 
 - [`specs/videosbatch-workflow-canonical.md`](../../../specs/videosbatch-workflow-canonical.md)
 
-归档清单见 [`manifest.json`](manifest.json)。清单记录原路径、归档路径、字节数、SHA-256、归档时间和替代入口。恢复时必须按清单反向移动并重新校验哈希；不得在活动目录保留重复副本。
+归档清单见 [`manifest.json`](manifest.json)。每项的 `bytes/sha256` 是仓库内归档文件的实际字节数和 SHA-256；如果来源文件在入库时经过 `.gitattributes` 换行规范化，则以 `sourceBytes/sourceSha256` 保留原始来源指纹，并记录 `archiveNormalization`。恢复时必须按清单反向移动并重新校验归档及来源哈希；不得在活动目录保留重复副本。

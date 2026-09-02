@@ -313,7 +313,7 @@ function subshotSchema(): Record<string, unknown> {
     type: "object", additionalProperties: false,
     properties: {
       sequence: { type: "integer", minimum: 1, maximum: 5 },
-      timeRange: { type: "string", minLength: 3 },
+      timeRange: { type: "string", pattern: "^\\d+[-至]\\d+(?:秒|s)$" },
       duration: { type: "integer", minimum: 1, maximum: 8 },
       visual: { type: "string", minLength: 1 }, action: { type: "string", minLength: 1 },
       camera: { type: "string", minLength: 1 }, sound: { type: "string", minLength: 1 }, voice: { type: "string", minLength: 1 }
@@ -322,8 +322,25 @@ function subshotSchema(): Record<string, unknown> {
   };
 }
 
-function referenceSchema(): Record<string, unknown> {
-  return { type: "object", additionalProperties: false, properties: { label: { type: "string", minLength: 1 } }, required: ["label"] };
+function referenceSchema(type?: CanonicalStoryboardType): Record<string, unknown> {
+  const prefixes = type === "STORY"
+    ? ["人物", "场景", "道具"]
+    : type === "SCIENCE"
+      ? ["主体", "场景", "辅助元素"]
+      : type === "KNOWLEDGE"
+        ? ["核心意象", "场景", "辅助元素"]
+        : ["人物", "场景", "道具", "主体", "辅助元素", "核心意象"];
+  return {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      label: {
+        type: "string",
+        pattern: `^【(?:${prefixes.join("|")})：[^】]+】$`
+      }
+    },
+    required: ["label"]
+  };
 }
 
 function evidenceSchema(): Record<string, unknown> {
@@ -331,15 +348,49 @@ function evidenceSchema(): Record<string, unknown> {
 }
 
 /** JSON Schema for one handbook-specific segment layout. */
-export function canonicalSegmentSchema(type: CanonicalStoryboardType): Record<string, unknown> {
+export function canonicalSegmentSchema(type: CanonicalStoryboardType, subshotCount?: number): Record<string, unknown> {
   const role = canonicalRoleField(type);
   const support = canonicalSupportField(type);
+  const fixedSubshotCount = Number.isInteger(subshotCount) && Number(subshotCount) >= 3 && Number(subshotCount) <= 5
+    ? Number(subshotCount)
+    : undefined;
   const properties: Record<string, unknown> = {
     sequence: { type: "integer", minimum: 1, maximum: 15 },
-    chapter: { type: "string", minLength: 1 },
+    // Strict providers require every property to be listed in `required`.
+    // `null` preserves the handbook rule that repeated chapters are omitted.
+    chapter: { type: ["string", "null"], pattern: "^第\\d+章$" },
     scene: { type: "string", minLength: 1 },
     [role]: { type: "string", minLength: 1 },
     [support]: { type: "string", minLength: 1 },
+    duration: { type: "integer", const: 10 },
+    visualEffects: { type: "array", minItems: fixedSubshotCount ?? 3, maxItems: fixedSubshotCount ?? 5, items: subshotSchema() },
+    references: { type: "array", maxItems: 7, items: referenceSchema(type) },
+    screenplaySceneSequence: { type: "integer", minimum: 1, maximum: 48 },
+    evidence: { type: "array", items: evidenceSchema() }
+  };
+  return {
+    type: "object", additionalProperties: false, properties,
+    required: ["sequence", "chapter", "scene", role, support, "duration", "visualEffects", "references", "screenplaySceneSequence", "evidence"]
+  };
+}
+
+/**
+ * Provider-compatible fallback schema used when the screenplay type is not
+ * available at schema construction time. Strict OpenAI-compatible providers
+ * reject `oneOf` inside array items, so all three handbook role fields are
+ * represented as nullable and the server enforces their mutual exclusion.
+ */
+export function canonicalStoryboardTransportSegmentSchema(): Record<string, unknown> {
+  const nullableString = { type: ["string", "null"] };
+  const properties: Record<string, unknown> = {
+    sequence: { type: "integer", minimum: 1, maximum: 15 },
+    chapter: nullableString,
+    scene: { type: "string", minLength: 1 },
+    characters: nullableString,
+    keyProps: nullableString,
+    subjectObjects: nullableString,
+    supportingElements: nullableString,
+    coreImagery: nullableString,
     duration: { type: "integer", const: 10 },
     visualEffects: { type: "array", minItems: 3, maxItems: 5, items: subshotSchema() },
     references: { type: "array", maxItems: 7, items: referenceSchema() },
@@ -347,13 +398,23 @@ export function canonicalSegmentSchema(type: CanonicalStoryboardType): Record<st
     evidence: { type: "array", items: evidenceSchema() }
   };
   return {
-    type: "object", additionalProperties: false, properties,
-    required: ["sequence", "scene", role, support, "duration", "visualEffects", "references", "screenplaySceneSequence", "evidence"]
+    type: "object",
+    additionalProperties: false,
+    properties,
+    required: Object.keys(properties)
   };
 }
 
-export function canonicalStoryboardSegmentsSchema(): Record<string, unknown> {
-  return { type: "array", minItems: 9, maxItems: 15, items: { oneOf: CANONICAL_STORYBOARD_TYPES.map(canonicalSegmentSchema) } };
+export function canonicalStoryboardSegmentsSchema(type?: CanonicalStoryboardType, expectedCount?: number, subshotCount?: number): Record<string, unknown> {
+  const count = Number.isInteger(expectedCount) && Number(expectedCount) >= 9 && Number(expectedCount) <= 15
+    ? Number(expectedCount)
+    : undefined;
+  return {
+    type: "array",
+    minItems: count ?? 9,
+    maxItems: count ?? 15,
+    items: type ? canonicalSegmentSchema(type, subshotCount) : canonicalStoryboardTransportSegmentSchema()
+  };
 }
 
 /** Human-readable handbook projection used by the copyable derived artifact. */

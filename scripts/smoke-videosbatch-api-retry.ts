@@ -46,10 +46,18 @@ try {
   };
 
   let executeCalls = 0;
+  let concurrentSessionId = "";
+  let concurrentCalls = 0;
+  const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
   const registry = stageModule.createPhase1FakeStageRegistry();
   registry.COURSE_INTRO_CANDIDATES = {
     id: "COURSE_INTRO_CANDIDATES",
-    async execute() {
+    async execute(ctx) {
+      if (ctx.session.id === concurrentSessionId) {
+        concurrentCalls += 1;
+        await delay(100);
+        return { artifact: structuredClone(validIntro) };
+      }
       executeCalls += 1;
       if (executeCalls === 1) return { artifact: { ...validIntro, candidates: validIntro.candidates.slice(0, 8) } };
       return { artifact: structuredClone(validIntro) };
@@ -81,7 +89,9 @@ try {
 
   const app = express();
   app.use(express.json());
-  apiModule.registerVideosBatchWorkflowApi(app, store, registry);
+  apiModule.registerVideosBatchWorkflowApi(app, store, registry, {
+    authorizeSession: (session, req) => !session.ownerUserId || session.ownerUserId === req.header("x-test-user")
+  });
   const server = app.listen(0, "127.0.0.1");
   await once(server, "listening");
   const address = server.address();
@@ -181,8 +191,76 @@ try {
     assert.equal(manualRetry.response.status, 409);
     assert.equal(manualRetry.body.error.code, "STAGE_RETRY_NOT_ALLOWED");
 
+    const owned = await store.createSession({ title: "Owned session", logline: "", style: "test", targetDurationSec: 90, shotCount: 0 }, "owner-a");
+    const denied = await request<any>(`/api/sessions/${owned.id}/videosbatch/start`, {
+      method: "POST",
+      body: JSON.stringify({ projectId: "P001", lessonText: "不应被其他用户读取" }),
+      headers: { "x-test-user": "owner-b" }
+    });
+    assert.equal(denied.response.status, 404, "owned workflow must reject another user's request");
+    const allowed = await request<any>(`/api/sessions/${owned.id}/videosbatch/start`, {
+      method: "POST",
+      body: JSON.stringify({ projectId: "P001", lessonText: "归属校验" }),
+      headers: { "x-test-user": "owner-a" }
+    });
+    assert.equal(allowed.response.status, 200);
+
+    const concurrent = await store.createSession({ title: "Concurrent session", logline: "", style: "test", targetDurationSec: 90, shotCount: 0 });
+    concurrentSessionId = concurrent.id;
+    const concurrentStart = await request<any>(`/api/sessions/${concurrent.id}/videosbatch/start`, {
+      method: "POST",
+      body: JSON.stringify({ projectId: "P001", lessonText: "并发单飞" })
+    });
+    assert.equal(concurrentStart.response.status, 200);
+    const concurrentResults = await Promise.all([
+      request<any>(`/api/sessions/${concurrent.id}/videosbatch/run-next`, { method: "POST", body: "{}" }),
+      request<any>(`/api/sessions/${concurrent.id}/videosbatch/run-next`, { method: "POST", body: "{}" })
+    ]);
+    assert.deepEqual(concurrentResults.map((item) => item.response.status), [200, 200]);
+    assert.equal(concurrentCalls, 1, "concurrent run-next requests must share one in-flight execution");
+    assert.ok(concurrentResults.every((item) => item.body.currentStage === "COURSE_INTRO_SELECTION"));
+
     const persisted = store.getSession(created.id)?.videosBatchWorkflow;
     assert.equal(persisted?.stages.COURSE_INTRO_CANDIDATES?.status, "ready");
+
+    const projectionWorkflow = workflowModule.createVideosBatchWorkflow({ projectId: "P001", lessonText: "投影错误保留产物" });
+    projectionWorkflow.currentStage = "FINAL_STORYBOARD";
+    projectionWorkflow.stages.SCREENPLAY = { status: "ready", revision: 1, artifact: {} };
+    projectionWorkflow.stages.ASSET_CONFIRMATION = { status: "ready", revision: 1, artifact: {} };
+    const projectionRegistry: any = {
+      FINAL_STORYBOARD: {
+        id: "FINAL_STORYBOARD",
+        async execute() { return { artifact: { sentinel: "keep-me" } }; },
+        validate() { return { ok: true, errors: [] }; },
+        async project() { throw Object.assign(new Error("projection failed"), { code: "PROJECTION_FAILED", retryable: true }); }
+      }
+    };
+    const projectionSession: any = { id: "ses_projection", shots: [], videosBatchWorkflow: projectionWorkflow };
+    const projectionResult = await runnerModule.runNext({ session: projectionSession, workflow: projectionWorkflow, assets: [], shots: [] }, projectionRegistry);
+    assert.equal(projectionResult.stages.FINAL_STORYBOARD.status, "failed");
+    assert.equal(projectionResult.stages.FINAL_STORYBOARD.artifact.sentinel, "keep-me", "projection failure must retain generated artifact");
+
+    const telemetryWorkflow = workflowModule.createVideosBatchWorkflow({ projectId: "P001", lessonText: "错误证据保留" });
+    const telemetryError = Object.assign(new Error("provider timeout"), {
+      code: "TIMEOUT",
+      retryable: true,
+      attempt: 3,
+      attempts: 3,
+      provider: "openai-responses",
+      model: "test-model",
+      attemptLog: [
+        { attempt: 1, provider: "openai-responses", model: "test-model", outcome: "error", errorCode: "TIMEOUT" },
+        { attempt: 2, provider: "openai-responses", model: "test-model", outcome: "error", errorCode: "TIMEOUT" },
+        { attempt: 3, provider: "openai-responses", model: "test-model", outcome: "error", errorCode: "TIMEOUT" }
+      ]
+    });
+    const telemetryResult = await runnerModule.runNext(
+      { session: { id: "ses_telemetry", shots: [], videosBatchWorkflow: telemetryWorkflow }, workflow: telemetryWorkflow, assets: [], shots: [] },
+      { COURSE_INTRO_CANDIDATES: { id: "COURSE_INTRO_CANDIDATES", async execute() { throw telemetryError; }, validate() { return { ok: true, errors: [] }; } } }
+    );
+    assert.equal(telemetryResult.stages.COURSE_INTRO_CANDIDATES.status, "failed");
+    assert.equal(telemetryResult.stages.COURSE_INTRO_CANDIDATES.attempts, 3);
+    assert.equal(telemetryResult.stages.COURSE_INTRO_CANDIDATES.attemptLog.length, 3);
   } finally {
     server.close();
     await once(server, "close");

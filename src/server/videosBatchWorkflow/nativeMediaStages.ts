@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Asset, AssetImageModel, Shot, ShotRender } from "../../shared/types";
+import type { Asset, AssetImageModel, AssetPromptAdaptation, Shot, ShotRender } from "../../shared/types";
 import type {
   VideosBatchAudioEvent,
   VideosBatchAudioTimeline,
@@ -34,6 +34,7 @@ export interface NativeAssetImageResult {
   composedPrompt?: string;
   model: AssetImageModel;
   credentialSource?: "standard" | "agent-plan" | "missing";
+  promptAdaptation?: AssetPromptAdaptation;
   rawUsage?: unknown;
 }
 
@@ -707,6 +708,7 @@ export function createVideosBatchNativeMediaStageRegistry(
               generationModel: generated.model,
               generationModelActual: generated.model,
               generationCredentialSource: generated.credentialSource,
+              generationPromptAdaptation: generated.promptAdaptation,
               composedPrompt: generated.composedPrompt || asset.prompt,
               videosBatchError: undefined
             });

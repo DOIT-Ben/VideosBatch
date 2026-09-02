@@ -6,6 +6,11 @@ import {
   resolveVideosBatchLlmConfig
 } from "../src/server/videosBatchWorkflow/llmExecutor";
 
+const previousNoProxy = process.env.NO_PROXY;
+const previousNoProxyLower = process.env.no_proxy;
+process.env.NO_PROXY = [previousNoProxy, "127.0.0.1", "localhost"].filter(Boolean).join(",");
+process.env.no_proxy = [previousNoProxyLower, "127.0.0.1", "localhost"].filter(Boolean).join(",");
+
 const server = http.createServer(async (req, res) => {
   if (req.method !== "POST" || req.url !== "/v1/responses") {
     res.statusCode = 404;
@@ -26,15 +31,17 @@ const server = http.createServer(async (req, res) => {
   assert.deepEqual(body.text.format.schema.required, ["ok"]);
   assert.equal(body.input[0].role, "system");
   assert.equal(body.input[1].role, "user");
-  assert.equal(body.metadata.operation, "COURSE_INTRO_CANDIDATES");
+  assert.equal(body.metadata, undefined, "provider request bodies must not include unsupported metadata");
+  assert.equal(req.headers["x-videosbatch-operation"], "COURSE_INTRO_CANDIDATES");
 
   res.setHeader("content-type", "application/json");
+  const malformedStringJson = "{\"ok\":true,\"note\":\"line1" + "\n" + "line2\"}";
   res.end(JSON.stringify({
     id: "resp_test",
     model: "test-model",
     output: [{
       type: "message",
-      content: [{ type: "output_text", text: JSON.stringify({ ok: true }) }]
+       content: [{ type: "output_text", text: "```json\n" + malformedStringJson + "\n```" }]
     }],
     usage: { input_tokens: 12, output_tokens: 4, total_tokens: 16 }
   }));
@@ -68,7 +75,7 @@ try {
     }
   });
 
-  assert.deepEqual(result.data, { ok: true });
+  assert.deepEqual(result.data, { ok: true, note: "line1\nline2" });
   assert.equal(result.provider, "openai-responses");
   assert.equal(result.model, "test-model");
   assert.equal(result.responseId, "resp_test");
@@ -108,6 +115,37 @@ try {
     await once(retryServer, "close");
   }
 
+  let exhaustedRequests = 0;
+  const exhaustedServer = http.createServer((_req, res) => {
+    exhaustedRequests += 1;
+    res.statusCode = 524;
+    res.end("temporary upstream failure");
+  });
+  exhaustedServer.listen(0, "127.0.0.1");
+  await once(exhaustedServer, "listening");
+  const exhaustedAddress = exhaustedServer.address();
+  if (!exhaustedAddress || typeof exhaustedAddress === "string") throw new Error("exhausted server did not expose a TCP port");
+  try {
+    const exhaustedConfig = resolveVideosBatchLlmConfig({
+      VIDEOSBATCH_LLM_API_KEY: "test-key",
+      VIDEOSBATCH_LLM_BASE_URL: `http://127.0.0.1:${exhaustedAddress.port}/v1`,
+      VIDEOSBATCH_LLM_MODEL: "test-model",
+      VIDEOSBATCH_LLM_MAX_RETRIES: "2",
+      VIDEOSBATCH_LLM_RETRY_DELAYS_MS: "0"
+    });
+    await assert.rejects(
+      () => createVideosBatchLlmExecutor(exhaustedConfig).generateStructured({ operation: "EXHAUSTED", systemPrompt: "x", userPrompt: "y", schemaName: "exhausted", jsonSchema: { type: "object" } }),
+      (error: any) => error?.code === "HTTP_524"
+        && error?.attempts === 3
+        && Array.isArray(error?.attemptLog)
+        && error.attemptLog.length === 3
+    );
+    assert.equal(exhaustedRequests, 3, "bounded provider failure must expose all three attempts");
+  } finally {
+    exhaustedServer.close();
+    await once(exhaustedServer, "close");
+  }
+
   let fallbackRequests = 0;
   const fallbackKeys: string[] = [];
   let primaryFailureRequests = 0;
@@ -120,7 +158,7 @@ try {
     assert.equal(body.model, "deepseek-v4-flash");
     assert.equal(req.headers.authorization, "Bearer test-fallback-key");
     assert.equal(body.text.format.type, "json_schema");
-    assert.equal(body.reasoning, undefined);
+    assert.deepEqual(body.reasoning, { effort: "none" }, "an explicit stage reasoning=none must be sent on the fallback route");
     res.setHeader("content-type", "application/json");
     res.end(JSON.stringify({ output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify({ ok: true }) }] }] }));
   });
@@ -148,7 +186,7 @@ try {
       VIDEOSBATCH_LLM_FALLBACK_API_KEY: "test-fallback-key",
       VIDEOSBATCH_LLM_FALLBACK_BASE_URL: `http://127.0.0.1:${fallbackAddress.port}/v1`,
       VIDEOSBATCH_LLM_FALLBACK_OUTPUT_MODE: "json_schema",
-      VIDEOSBATCH_LLM_FALLBACK_REASONING: "none",
+       VIDEOSBATCH_LLM_FALLBACK_REASONING: "none",
       VIDEOSBATCH_LLM_MAX_RETRIES: "0"
     });
     const fallbackResult = await createVideosBatchLlmExecutor(fallbackConfig).generateStructured<{ ok: boolean }>({
@@ -157,6 +195,7 @@ try {
       userPrompt: "y",
       schemaName: "fallback",
       jsonSchema: { type: "object" },
+      reasoningEffort: "medium",
       idempotencyKey: "fallback-operation-key"
     });
     assert.deepEqual(fallbackResult.data, { ok: true });
@@ -169,6 +208,7 @@ try {
       userPrompt: "repair exact validation errors",
       schemaName: "fallback",
       jsonSchema: { type: "object" },
+      reasoningEffort: "medium",
       providerRoute: "fallback-only",
       idempotencyKey: "repair-operation-key"
     });
@@ -200,4 +240,8 @@ try {
 } finally {
   server.close();
   await once(server, "close");
+  if (previousNoProxy === undefined) delete process.env.NO_PROXY;
+  else process.env.NO_PROXY = previousNoProxy;
+  if (previousNoProxyLower === undefined) delete process.env.no_proxy;
+  else process.env.no_proxy = previousNoProxyLower;
 }

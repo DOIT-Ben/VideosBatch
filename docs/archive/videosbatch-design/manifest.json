@@ -7,8 +7,11 @@
     {
       "originalPath": "docs/视频制作工作流完整步骤.md",
       "archivePath": "docs/archive/videosbatch-design/upstream/视频制作工作流完整步骤.md",
-      "bytes": 60400,
-      "sha256": "8A794F875E117A9301150EBDEAF7E9B614EA2BDE18514652F8FEB729001E24B4",
+      "bytes": 59386,
+      "sha256": "888A49FB0E430D52795621C05345E48893B740485C5E3F5FA8BCEF01EC0757C8",
+      "sourceBytes": 60400,
+      "sourceSha256": "8A794F875E117A9301150EBDEAF7E9B614EA2BDE18514652F8FEB729001E24B4",
+      "archiveNormalization": "UTF-8 text normalized to LF by repository .gitattributes",
       "role": "FrameFlow 上游手册副本",
       "replacementPaths": ["specs/videosbatch-workflow-canonical.md"],
       "status": "archived"

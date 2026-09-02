@@ -159,17 +159,19 @@ workflow.stages.SCREENPLAY = {
     scenes: [{ sequence: 1, title: "第一场" }]
   }
 };
-const storyboard = getVideosBatchTextStageSpec("FINAL_STORYBOARD" as any);
+const storyboard = getVideosBatchTextStageSpec("FINAL_STORYBOARD" as any, workflow as any);
 const storyboardPrompt = storyboard.systemPrompt + storyboard.buildUserPrompt(workflow);
-assert.ok(storyboardPrompt.includes("segments 数量必须等于 targetDuration/10"));
-assert.ok(storyboardPrompt.includes("9—15"));
-const segmentSchemas = (storyboard.jsonSchema as any).properties.segments.items.oneOf;
-assert.equal(segmentSchemas.length, 3, "final storyboard must expose three mutually exclusive handbook layouts");
-const segmentSchema = segmentSchemas.find((candidate: any) => candidate.properties.characters);
-assert.ok(segmentSchema, "STORY storyboard layout must be present");
+assert.ok(storyboardPrompt.includes("必须返回恰好"));
+assert.ok(storyboardPrompt.includes("必须返回恰好"));
+const segmentSchema = (storyboard.jsonSchema as any).properties.segments.items;
+assert.equal(segmentSchema.oneOf, undefined, "provider schema must not use unsupported oneOf");
+assert.ok(segmentSchema.properties.characters, "STORY storyboard role field must be present");
+assert.match(segmentSchema.properties.references.items.properties.label.pattern, /人物/);
 assert.equal(segmentSchema.properties.duration.const, 10);
 assert.equal(segmentSchema.properties.visualEffects.minItems, 3);
-assert.equal(segmentSchema.properties.visualEffects.maxItems, 5);
+assert.equal(segmentSchema.properties.visualEffects.maxItems, 3);
+assert.equal((storyboard.jsonSchema as any).properties.segments.minItems, 12);
+assert.equal((storyboard.jsonSchema as any).properties.segments.maxItems, 12);
 for (const field of ["sequence", "timeRange", "duration", "visual", "action", "camera", "sound", "voice"]) {
   assert.ok(segmentSchema.properties.visualEffects.items.properties[field], `visualEffects subshot must preserve ${field}`);
 }

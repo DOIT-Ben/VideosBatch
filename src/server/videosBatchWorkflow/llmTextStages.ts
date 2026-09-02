@@ -29,7 +29,9 @@ import type { StageDefinition, StageExecutionContext, StageRegistry, ValidationR
 import {
   COURSE_VIDEO_DURATION_SECONDS,
   VIDEOS_BATCH_TEXT_STAGE_IDS,
+  getVideosBatchStoryboardSegmentRepairSpec,
   getVideosBatchTextStageSpec,
+  type VideosBatchTextStageSpec,
   type VideosBatchTextStageId
 } from "./textStageSpecs";
 
@@ -38,6 +40,9 @@ const TRUTHFULNESS = new Set(["真实史实", "真实背景下的合理改编", 
 const STORY_TYPES = new Set(["故事叙事型", "现象科普型", "知识由来与应用型"]);
 const ASSET_CATEGORIES = new Set(["CHARACTER", "SCENE", "PROP", "CREATURE"]);
 const MAX_STAGE_ATTEMPTS = 3;
+// Contract repair is a separate, bounded operation. It must remain available
+// even when the initial provider sequence consumed all three submissions.
+const MAX_CONTRACT_REPAIR_ATTEMPTS = 2;
 const OLD_STORYBOARD_FIELDS = ["visualPrompt", "narration", "subtitles", "teachingPurpose", "transition", "subshots"] as const;
 
 function result(errors: string[]): ValidationResult { return { ok: errors.length === 0, errors }; }
@@ -48,6 +53,73 @@ function text(value: unknown): string { return String(value ?? "").trim(); }
 function textLength(value: unknown): number { return Array.from(text(value)).length; }
 function hasAny(value: unknown, terms: readonly string[]): boolean { return hasAnyText(value, terms); }
 function canonicalStoryType(value: unknown) { return normalizeStoryboardType(value); }
+
+function explicitlyOmittedCategory(value: unknown, category: string) {
+  const omission = text(value);
+  const terms: Record<string, string[]> = {
+    CHARACTER: ["人物", "角色", "拟人动物"],
+    SCENE: ["场景", "空间环境", "地点"],
+    PROP: ["道具", "器物", "工具"],
+    CREATURE: ["神兽", "灵宠", "非拟人生物", "生物", "动物"]
+  };
+  return (terms[category] || []).some((term) => new RegExp(`(?:不存在|没有|无|未(?:发现|出现|建立|创建|纳入)|不含)[^。；;，,]{0,32}${term}`, "u").test(omission));
+}
+
+function stageReasoningEffort(stageId: VideosBatchTextStageId): StructuredGenerationRequest["reasoningEffort"] | undefined {
+  if (stageId !== "ASSET_PLAN") return undefined;
+  const configured = text(process.env.VIDEOSBATCH_ASSET_PLAN_REASONING).toLowerCase();
+  const allowed = new Set(["none", "minimal", "low", "medium", "high", "xhigh"]);
+  // Asset decomposition is a deterministic extraction task by default. Keep
+  // an explicit override for providers that need a reasoning pass.
+  return (allowed.has(configured) ? configured : "none") as StructuredGenerationRequest["reasoningEffort"];
+}
+
+function stageTimeoutMs(stageId: VideosBatchTextStageId): number | undefined {
+  const defaults: Partial<Record<VideosBatchTextStageId, number>> = {
+    // Asset plans contain long per-asset prompts. Keep their budget separate
+    // from short text stages so a normal 120s timeout does not cut off a valid
+    // structured response and trigger needless provider failover.
+    ASSET_PLAN: 180_000,
+    // A complete 90-150 second storyboard has many nested subshots and can
+    // legitimately take longer than the ordinary text-stage window.
+    FINAL_STORYBOARD: 300_000
+  };
+  const defaultTimeout = defaults[stageId];
+  if (!defaultTimeout) return undefined;
+  const envKey = stageId === "ASSET_PLAN"
+    ? "VIDEOSBATCH_ASSET_PLAN_TIMEOUT_MS"
+    : "VIDEOSBATCH_FINAL_STORYBOARD_TIMEOUT_MS";
+  const configured = Number(text(process.env[envKey]));
+  return Number.isFinite(configured) && configured > 0 ? Math.floor(configured) : defaultTimeout;
+}
+
+function stageMaxOutputTokens(stageId: VideosBatchTextStageId): number | undefined {
+  const defaults: Partial<Record<VideosBatchTextStageId, number>> = {
+    ASSET_PLAN: 12_000,
+    FINAL_STORYBOARD: 24_000
+  };
+  const defaultLimit = defaults[stageId];
+  if (!defaultLimit) return undefined;
+  const envKey = stageId === "ASSET_PLAN"
+    ? "VIDEOSBATCH_ASSET_PLAN_MAX_OUTPUT_TOKENS"
+    : "VIDEOSBATCH_FINAL_STORYBOARD_MAX_OUTPUT_TOKENS";
+  const configured = Number(text(process.env[envKey]));
+  // Keep enough room for the full nested contract while preventing an
+  // accidental unbounded response from holding the provider connection.
+  return Number.isFinite(configured) && configured > 0 ? Math.floor(configured) : defaultLimit;
+}
+
+function promptStats(systemPrompt: string, userPrompt: string, jsonSchema: Record<string, unknown>) {
+  const systemChars = Array.from(systemPrompt).length;
+  const userChars = Array.from(userPrompt).length;
+  const schemaChars = JSON.stringify(jsonSchema).length;
+  return {
+    system_prompt_chars: String(systemChars),
+    user_prompt_chars: String(userChars),
+    schema_chars: String(schemaChars),
+    prompt_chars_total: String(systemChars + userChars + schemaChars)
+  };
+}
 
 function confirmedPublicAssetIds(ctx: StageExecutionContext): Set<string> {
   const confirmation = record(ctx.workflow.stages.ASSET_CONFIRMATION?.artifact);
@@ -150,11 +222,31 @@ function validateAssetPlan(artifact: unknown): ValidationResult {
   if (!items.length) errors.push("ASSET_PLAN requires at least one item");
   if (!inventory.length) errors.push("ASSET_PLAN requires a candidateInventory containing required and optional objects");
   if (!candidateAssets.length) errors.push("ASSET_PLAN requires a complete candidateAssets inventory");
-  if (!hasAny(value.omissionCheck, ["二次核对", "遗漏检查", "四类"])) errors.push("ASSET_PLAN omissionCheck must document the second pass across four asset classes");
+  if (!hasAny(value.omissionCheck, ["二次核对", "遗漏检查", "四类", "逐段回看", "逐句回看", "再次回看", "再次核对", "完整回看", "全面核对"])) {
+    errors.push("ASSET_PLAN omissionCheck must document the second pass across four asset classes");
+  }
   if (!hasAny(value.styleSpec, ["影视级3D国漫CG风格", "影视级 3D 国漫 CG 风格"])) errors.push("ASSET_PLAN styleSpec must lock the handbook visual style");
+  const inventoryKeys = new Set<string>();
+  for (const entry of inventory) {
+    const key = text(entry?.assetKey);
+    if (!key || inventoryKeys.has(key)) errors.push(`ASSET_PLAN candidateInventory assetKey must be unique: ${key || "<empty>"}`);
+    inventoryKeys.add(key);
+    if (!ASSET_CATEGORIES.has(text(entry?.category))) errors.push(`ASSET_PLAN candidateInventory ${key || "<empty>"} has invalid category`);
+    for (const field of ["name", "sourceEvidence"]) if (!text(entry?.[field])) errors.push(`ASSET_PLAN candidateInventory ${key || "<empty>"} requires ${field}`);
+    if (entry?.required !== true && entry?.required !== false) errors.push(`ASSET_PLAN candidateInventory ${key || "<empty>"} requires boolean required status`);
+    if (!["required", "optional", "omitted"].includes(text(entry?.decision))) errors.push(`ASSET_PLAN candidateInventory ${key || "<empty>"} has invalid decision`);
+    if (text(entry?.decision) === "omitted" && entry?.required === true) errors.push(`ASSET_PLAN omitted inventory item ${key || "<empty>"} cannot be required`);
+  }
+  for (const candidate of candidateAssets) if (!text(candidate)) errors.push("ASSET_PLAN candidateAssets entries must be non-empty");
   const keys = items.map((item: any) => text(item.assetKey));
   if (new Set(keys).size !== keys.length) errors.push("ASSET_PLAN assetKey values must be unique");
-  for (const category of ASSET_CATEGORIES) if (!items.some((item: any) => text(item.category) === category)) errors.push(`ASSET_PLAN must cover asset category ${category}`);
+  for (const category of ASSET_CATEGORIES) {
+    if (items.some((item: any) => text(item.category) === category)) continue;
+    const explicitlyOmitted = inventory.some((item: any) => text(item?.category) === category && text(item?.decision) === "omitted");
+    if (!explicitlyOmitted && !explicitlyOmittedCategory(value.omissionCheck, category)) {
+      errors.push(`ASSET_PLAN must cover asset category ${category} or explicitly record that it is absent`);
+    }
+  }
   for (const item of items) {
     const key = text(item.assetKey);
     const category = text(item.category);
@@ -228,6 +320,81 @@ function semanticLabelValid(label: string, type: string): boolean {
   if (!label || STABLE_ASSET_ID_PATTERN.test(label) || POSITIONAL_ASSET_REFERENCE_PATTERN.test(label)) return false;
   const prefixes = type === "STORY" ? ["人物", "场景", "道具"] : type === "SCIENCE" ? ["主体", "场景", "辅助元素"] : ["核心意象", "场景", "辅助元素"];
   return prefixes.some((prefix) => label.startsWith(`【${prefix}：`) && label.endsWith("】") && semanticLabelText(label).length > 0);
+}
+
+/** Normalize a provider's plain `人物：...` label without changing its meaning. */
+function normalizeStoryboardProviderArtifact(value: unknown, ctx: StageExecutionContext): any {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const copy = structuredClone(value) as Record<string, any>;
+  const type = canonicalStoryType(copy.storyType || (ctx.workflow.stages.SCREENPLAY?.artifact as any)?.storyType);
+  if (!type || !Array.isArray(copy.segments)) return copy;
+  const prefixes = type === "STORY" ? ["人物", "场景", "道具"] : type === "SCIENCE" ? ["主体", "场景", "辅助元素"] : ["核心意象", "场景", "辅助元素"];
+  const facts = confirmedAssetFacts(ctx.workflow);
+  const normalizedFact = (fact: any) => [fact?.name, fact?.assetKey, fact?.description]
+    .map((item) => semanticLabelText(item))
+    .filter(Boolean);
+  const prefixForFact = (fact: any) => {
+    if (text(fact?.category) === "SCENE") return "场景";
+    if (text(fact?.category) === "CHARACTER" || text(fact?.category) === "CREATURE") return type === "STORY" ? "人物" : type === "SCIENCE" ? "主体" : "核心意象";
+    return type === "STORY" ? "道具" : "辅助元素";
+  };
+  const appendVoiceCue = (effect: any, cue: string) => {
+    const current = text(effect?.voice);
+    if (!current || current === "无") {
+      effect.voice = cue;
+      return;
+    }
+    if (sentenceCount(current) < 2 && !current.includes(cue)) effect.voice = `${current.replace(/[。！？!?]+$/u, "")}；${cue}`;
+  };
+  const removePositionalImageWording = (value: unknown) => text(value)
+    .replace(/第\s*[一二三四五六七八九十百\d]+\s*张\s*(?:图|图片)/gu, "对应视图")
+    .replace(/(?:图片|图像|参考图)\s*(?:第\s*)?[一二三四五六七八九十百\d]+\s*(?:张)?/gu, "对应视图");
+  for (const [segmentIndex, segment] of copy.segments.entries()) {
+    if (!segment || typeof segment !== "object") continue;
+    const sceneSequence = Number(segment.screenplaySceneSequence) || segmentIndex + 1;
+    const previousSceneSequence = segmentIndex > 0 ? Number(copy.segments[segmentIndex - 1]?.screenplaySceneSequence) : undefined;
+    if (segmentIndex === 0 || previousSceneSequence !== sceneSequence) segment.chapter = `第${sceneSequence}章`;
+    else segment.chapter = null;
+    if (Array.isArray(segment.visualEffects)) {
+      for (const effect of segment.visualEffects) {
+        if (!effect || typeof effect.timeRange !== "string") continue;
+        const range = effect.timeRange.trim().match(/^(\d+)(?::(\d{1,2}))?\s*[-至]\s*(\d+)(?::(\d{1,2}))?\s*(?:秒|s)?$/iu);
+        if (range) {
+          const start = Number(range[1]) * (range[2] ? 60 : 1) + (range[2] ? Number(range[2]) : 0);
+          const end = Number(range[3]) * (range[4] ? 60 : 1) + (range[4] ? Number(range[4]) : 0);
+          effect.timeRange = `${start}-${end}秒`;
+        }
+        for (const field of ["visual", "action", "camera", "sound", "voice"] as const) {
+          if (typeof effect[field] === "string") effect[field] = removePositionalImageWording(effect[field]);
+        }
+      }
+      const first = segment.visualEffects[0];
+      const last = segment.visualEffects[segment.visualEffects.length - 1];
+      if (first && !hasAny([first.visual, first.action, first.voice].join(" "), ["？", "?", "为什么", "怎么", "怎样", "如何", "突然", "异常", "问题", "争议", "发现", "出错", "停住"])) {
+        if (sentenceCount(text(first.voice)) < 2) appendVoiceCue(first, "问题：接下来会怎样");
+        else first.visual = `${text(first.visual)}；问题：接下来会怎样`;
+      }
+      if (last && !hasAny([last.visual, last.action, last.voice].join(" "), ["？", "?", "为什么", "怎么", "怎样", "如何", "悬念", "问题", "待解决", "思考", "接下来"])) {
+        if (sentenceCount(text(last.voice)) < 2) appendVoiceCue(last, "悬念：接下来如何判断");
+        else last.visual = `${text(last.visual)}；悬念：接下来如何判断`;
+      }
+    }
+    if (!Array.isArray(segment.references)) continue;
+    for (const reference of segment.references) {
+      if (!reference || typeof reference.label !== "string") continue;
+      const label = reference.label.trim();
+      const match = label.match(new RegExp(`^【?(${prefixes.join("|")}|人物|道具|主体)[：:]\\s*(.+?)】?$`, "u"));
+      const semantic = match?.[2]?.trim() || label.replace(/^【[^：:]+[：:]/u, "").replace(/】$/u, "").trim();
+      const semanticKey = semanticLabelText(semantic);
+      const fact = facts.find((candidate: any) => normalizedFact(candidate).some((known) => known === semanticKey || known.includes(semanticKey) || semanticKey.includes(known)));
+      if (fact) {
+        reference.label = `【${prefixForFact(fact)}：${text(fact.name)}】`;
+      } else if (match) {
+        reference.label = `【${match[1]}：${semantic}】`;
+      }
+    }
+  }
+  return copy;
 }
 
 function storyboardSegmentFieldsValid(segment: Record<string, any>, type: string, sequence: number, errors: string[], ctx: StageExecutionContext) {
@@ -365,11 +532,19 @@ function validateCopyablePrompt(artifact: unknown, ctx: StageExecutionContext): 
     if (new Set(markers).size !== markers.length) errors.push(`COPYABLE_PROMPT segment ${sequence} repeats a stable asset marker`);
     if (markers.some((id) => !refs.includes(id)) || refs.some((id: string) => !markers.includes(id))) errors.push(`COPYABLE_PROMPT segment ${sequence} marker list and referenceAssetIds must match`);
     const visualStart = segmentText.indexOf("画面效果：");
-    const visualEnd = visualStart >= 0 ? (segmentText.indexOf("\n", visualStart + 5) >= 0 ? segmentText.length : segmentText.length) : -1;
     if (visualStart < 0) errors.push(`COPYABLE_PROMPT segment ${sequence} must preserve the handbook 画面效果 field`);
     for (const match of segmentText.matchAll(/【(P\d{3,}-A\d{3,})】/gu)) {
       const markerIndex = match.index ?? -1;
       if (visualStart < 0 || markerIndex < visualStart) errors.push(`COPYABLE_PROMPT segment ${sequence} stable markers may appear only in 画面效果`);
+      if (visualStart >= 0 && markerIndex >= visualStart) {
+        const lineStart = segmentText.lastIndexOf("\n", markerIndex - 1) + 1;
+        const lineEnd = segmentText.indexOf("\n", markerIndex);
+        const line = segmentText.slice(lineStart, lineEnd < 0 ? segmentText.length : lineEnd);
+        const visualFieldEnd = line.indexOf("；动作：");
+        if (visualFieldEnd >= 0 && markerIndex - lineStart > visualFieldEnd) {
+          errors.push(`COPYABLE_PROMPT segment ${sequence} stable markers may appear only in visual text within 画面效果`);
+        }
+      }
     }
     const stripped = segmentText.replace(/【P\d{3,}-A\d{3,}】/gu, "");
     const baseline = copyableBaseline(ctx, sequence);
@@ -430,39 +605,93 @@ function pickAffectedFields(value: unknown, errors: string[]): Record<string, un
     "visual", "action", "camera", "sound", "sequence", "chapter", "duration"
   ] as const;
   const hasField = (error: string, field: string) => error.toLocaleLowerCase().includes(field.toLocaleLowerCase());
-  const candidateMatch = errors.join(" ").match(/\b([ABC]-\d{2})\b/u)?.[1];
-  if (candidateMatch && Array.isArray(source.candidates)) {
-    const candidate = source.candidates.find((item: any) => text(item?.id) === candidateMatch);
-    const fields = fieldNames.filter((field) => errors.some((error) => hasField(error, field)) && candidate && Object.hasOwn(candidate, field));
-    if (candidate && fields.length) put(["candidates"], [Object.fromEntries([["id", candidateMatch], ...fields.map((field) => [field, candidate[field]])])]);
+  const unique = (values: string[]) => [...new Set(values.filter(Boolean))];
+  const allErrors = errors.join(" ");
+  const errorsFor = (identifier: string) => {
+    const escaped = identifier.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+    const boundary = new RegExp(`(?:^|[^A-Za-z0-9_-])${escaped}(?:$|[^A-Za-z0-9_-])`, "iu");
+    return errors.filter((error) => boundary.test(error));
+  };
+  const fieldsFor = (item: any, relevantErrors: string[]) => fieldNames
+    .filter((field) => relevantErrors.some((error) => hasField(error, field)) && item && Object.hasOwn(item, field));
+
+  // A single provider response can violate several entries at once. Collect
+  // every referenced entry instead of silently repairing only the first one.
+  if (Array.isArray(source.candidates)) {
+    const candidateIds = unique([...allErrors.matchAll(/\b([ABC]-\d{2})\b/gu)].map((match) => match[1]))
+      .filter((id) => source.candidates.some((item: any) => text(item?.id) === id));
+    const patches = candidateIds.map((id) => {
+      const candidate = source.candidates.find((item: any) => text(item?.id) === id);
+      const fields = fieldsFor(candidate, errorsFor(id));
+      return candidate && fields.length ? Object.fromEntries([["id", id], ...fields.map((field) => [field, candidate[field]])]) : undefined;
+    }).filter(Boolean);
+    if (patches.length) put(["candidates"], patches);
   }
-  const sceneMatch = errors.join(" ").match(/scene(?:\s+|\s*#?)(\d+)/iu)?.[1];
-  if (sceneMatch && Array.isArray(source.scenes)) {
-    const scene = source.scenes.find((item: any) => Number(item?.sequence) === Number(sceneMatch));
-    const fields = fieldNames.filter((field) => errors.some((error) => hasField(error, field)) && scene && Object.hasOwn(scene, field));
-    if (scene && fields.length) put(["scenes"], [Object.fromEntries([["sequence", Number(sceneMatch)], ...fields.map((field) => [field, scene[field]])])]);
+  if (Array.isArray(source.recommendations)) {
+    const recommendationIds = unique([...allErrors.matchAll(/(?:Recommendation|推荐(?:项|理由)?)\s*([ABC]-\d{2})/giu)].map((match) => match[1]))
+      .filter((id) => source.recommendations.some((item: any) => text(item?.id) === id));
+    const patches = recommendationIds.map((id) => {
+      const recommendation = source.recommendations.find((item: any) => text(item?.id) === id);
+      const fields = fieldsFor(recommendation, errorsFor(id));
+      return recommendation && fields.length ? Object.fromEntries([["id", id], ...fields.map((field) => [field, recommendation[field]])]) : undefined;
+    }).filter(Boolean);
+    if (patches.length) put(["recommendations"], patches);
   }
-  const segmentMatch = errors.join(" ").match(/segment\s+(\d+)/iu)?.[1];
-  if (segmentMatch && Array.isArray(source.segments)) {
-    const segment = source.segments.find((item: any) => Number(item?.sequence) === Number(segmentMatch));
-    const subshotMatch = errors.join(" ").match(/(?:subshot|sub-?shot|visualEffects)\s+(?:\w+\s+)?(\d+)/iu)?.[1];
-    const fields = fieldNames.filter((field) => errors.some((error) => hasField(error, field)) && field !== "sequence" && segment && Object.hasOwn(segment, field));
-    const partial: Record<string, unknown> = { sequence: Number(segmentMatch) };
-    if (segment) {
-      for (const field of fields) partial[field] = segment[field];
-      if (subshotMatch && Array.isArray(segment.visualEffects)) {
-        const subshot = segment.visualEffects.find((item: any) => Number(item?.sequence) === Number(subshotMatch));
-        const subFields = fieldNames.filter((field) => errors.some((error) => hasField(error, field)) && subshot && Object.hasOwn(subshot, field));
-        if (subshot && subFields.length) partial.visualEffects = [Object.fromEntries([["sequence", Number(subshotMatch)], ...subFields.map((field) => [field, subshot[field]])])];
-      }
+  if (Array.isArray(source.scenes)) {
+    const sceneIds = unique([...allErrors.matchAll(/(?:scene|场次)(?:\s+|\s*#?)(\d+)/giu)].map((match) => match[1]));
+    const patches = sceneIds.map((id) => {
+      const scene = source.scenes.find((item: any) => Number(item?.sequence) === Number(id));
+      const fields = fieldsFor(scene, errorsFor(id));
+      return scene && fields.length ? Object.fromEntries([["sequence", Number(id)], ...fields.map((field) => [field, scene[field]])]) : undefined;
+    }).filter(Boolean);
+    if (patches.length) put(["scenes"], patches);
+  }
+  if (Array.isArray(source.segments)) {
+    const fullStoryboardRepair = errors.some((error) => /expected\s+\d+\s+segments|reference .*semantic label|contains a stable|hook|ending must leave|only 1-2 narration|sound must be at most/iu.test(error));
+    if (fullStoryboardRepair) {
+      const expectedCount = allErrors.match(/expected\s+(\d+)\s+segments/iu)?.[1];
+      // Array-level errors cannot be repaired by merging same-sequence rows:
+      // a count mismatch needs the provider to return a brand-new complete
+      // array, while the surrounding artifact fields remain reusable.
+      put(["segments"], {
+        __replace: true,
+        ...(expectedCount ? { expectedCount: Number(expectedCount) } : {}),
+        instruction: "重新生成完整 segments 数组；保留正式剧本语义，修复列出的每条门禁，不要返回子集。"
+      });
     }
-    if (Object.keys(partial).length > 1) put(["segments"], [partial]);
+    const segmentIds = unique([...allErrors.matchAll(/(?:segment|分镜)(?:\s+|\s*#?)(\d+)/giu)].map((match) => match[1]));
+    const patches = segmentIds.map((id) => {
+      const segment = source.segments.find((item: any) => Number(item?.sequence) === Number(id));
+      const relevantErrors = errorsFor(id);
+      const fields = fieldsFor(segment, relevantErrors).filter((field) => field !== "sequence");
+      const partial: Record<string, unknown> = { sequence: Number(id) };
+      if (segment) {
+        for (const field of fields) partial[field] = segment[field];
+        const subshotIds = unique([...relevantErrors.join(" ").matchAll(/(?:subshot|sub-?shot|子镜头)(?:\s+|\s*#?)(\d+)/giu)].map((match) => match[1]));
+        if (subshotIds.length && Array.isArray(segment.visualEffects)) {
+          const subshots = subshotIds.map((subshotId) => {
+            const subshot = segment.visualEffects.find((item: any) => Number(item?.sequence) === Number(subshotId));
+            const subFields = fieldsFor(subshot, relevantErrors);
+            return subshot && subFields.length
+              ? Object.fromEntries([["sequence", Number(subshotId)], ...subFields.map((field) => [field, subshot[field]])])
+              : undefined;
+          }).filter(Boolean);
+          if (subshots.length) partial.visualEffects = subshots;
+        }
+      }
+      return Object.keys(partial).length > 1 ? partial : undefined;
+    }).filter(Boolean);
+    if (patches.length && !fullStoryboardRepair) put(["segments"], patches);
   }
-  const itemMatch = errors.join(" ").match(/(?:ASSET_PLAN|asset)\s+(?:item\s+)?([A-Z]+-[A-Z0-9_-]+)/iu)?.[1];
-  if (itemMatch && Array.isArray(source.items)) {
-    const item = source.items.find((entry: any) => text(entry?.assetKey) === itemMatch);
-    const fields = fieldNames.filter((field) => errors.some((error) => hasField(error, field)) && item && Object.hasOwn(item, field));
-    if (item && fields.length) put(["items"], [Object.fromEntries([["assetKey", itemMatch], ...fields.map((field) => [field, item[field]])])]);
+  if (Array.isArray(source.items)) {
+    const itemKeys = unique([...allErrors.matchAll(/(?:ASSET_PLAN|asset)\s+(?:item\s+)?([A-Z]+-[A-Z0-9_-]+)/giu)].map((match) => match[1]))
+      .filter((key) => source.items.some((item: any) => text(item?.assetKey) === key));
+    const patches = itemKeys.map((key) => {
+      const item = source.items.find((entry: any) => text(entry?.assetKey) === key);
+      const fields = fieldsFor(item, errorsFor(key));
+      return item && fields.length ? Object.fromEntries([["assetKey", key], ...fields.map((field) => [field, item[field]])]) : undefined;
+    }).filter(Boolean);
+    if (patches.length) put(["items"], patches);
   }
   for (const field of fieldNames) {
     if (Object.hasOwn(selected, field)) continue;
@@ -472,19 +701,85 @@ function pickAffectedFields(value: unknown, errors: string[]): Record<string, un
   return Object.keys(selected).length ? selected : { note: "只提供校验错误；未发送上一版完整结果。" };
 }
 
+function mergeRepairArtifact(previous: unknown, candidate: unknown, scope: Record<string, unknown>): unknown {
+  const hasTargets = Object.keys(scope).some((key) => key !== "note");
+  if (!hasTargets) return candidate;
+
+  const identity = (value: unknown) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+    const item = value as Record<string, unknown>;
+    for (const key of ["id", "assetKey", "sequence"]) {
+      if (item[key] !== undefined && item[key] !== null && String(item[key]).trim()) return `${key}:${String(item[key])}`;
+    }
+    return undefined;
+  };
+
+  const mergeNode = (base: any, next: any, selected: any): any => {
+    if (Array.isArray(selected)) {
+      if (!Array.isArray(base) || !Array.isArray(next)) return next;
+      if (!selected.some((item) => identity(item))) return structuredClone(next);
+      const output = structuredClone(base);
+      for (const selectedItem of selected) {
+        const key = identity(selectedItem);
+        if (!key) continue;
+        const baseIndex = base.findIndex((item: unknown) => identity(item) === key);
+        const nextItem = next.find((item: unknown) => identity(item) === key);
+        if (baseIndex >= 0 && nextItem !== undefined) output[baseIndex] = mergeNode(base[baseIndex], nextItem, selectedItem);
+      }
+      return output;
+    }
+    if (selected && typeof selected === "object") {
+      if ((selected as Record<string, unknown>).__replace === true) return structuredClone(next);
+      if ((selected as Record<string, unknown>).__append === true) {
+        if (!Array.isArray(base) || !Array.isArray(next)) return base;
+        return [...structuredClone(base), ...structuredClone(next)].sort((left: any, right: any) => Number(left?.sequence || 0) - Number(right?.sequence || 0));
+      }
+      if (!next || typeof next !== "object" || Array.isArray(next)) return base;
+      const output = base && typeof base === "object" && !Array.isArray(base) ? structuredClone(base) : {};
+      for (const [key, selectedValue] of Object.entries(selected)) {
+        if (key === "note") continue;
+        output[key] = mergeNode(base?.[key], next?.[key], selectedValue);
+      }
+      return output;
+    }
+    return next;
+  };
+
+  return mergeNode(previous, candidate, scope);
+}
+
 function contractRepairPrompt(
   stageId: VideosBatchTextStageId,
   workflow: StageExecutionContext["workflow"],
   previousArtifact: unknown,
-  errors: string[]
+  errors: string[],
+  options: { spec?: VideosBatchTextStageSpec; partial?: { startSequence: number; count: number } } = {}
 ): string {
   const affected = pickAffectedFields(previousArtifact, errors);
-  const spec = getVideosBatchTextStageSpec(stageId);
+  const spec = options.spec || getVideosBatchTextStageSpec(stageId, workflow);
   // The original source material is rebuilt by the stage-specific prompt. The
   // prior artifact is intentionally reduced to affected paths only, so a
   // repair never echoes a potentially huge or stale JSON document.
   const sourcePrompt = spec.buildUserPrompt(workflow);
-  return `${sourcePrompt}\n\n<contract_repair stage="${stageId}">\n上一版结构化结果未通过服务端业务合同校验。保留未涉及字段，只修复列出的字段；不要重新构思、不要解释、不要输出 Markdown。\n<validation_errors>\n${errors.map((error) => `- ${error}`).join("\n")}\n</validation_errors>\n<affected_fields>\n${renderPromptMaterial(affected, "", 8_000)}\n</affected_fields>\n请返回符合当前阶段专用 JSON Schema 的完整结果；除受影响字段外保持上一版语义不变。\n</contract_repair>`;
+  const storyboardRepairChecklist = stageId === "FINAL_STORYBOARD"
+    ? (() => {
+      const screenplay = record(workflow.stages.SCREENPLAY?.artifact);
+      const type = canonicalStoryType(screenplay.storyType) || "STORY";
+      const target = Number(screenplay.targetDurationSeconds) || 0;
+      const count = target > 0 ? target / 10 : "targetDuration/10";
+      const rolePrefix = type === "STORY" ? "人物" : type === "SCIENCE" ? "主体" : "核心意象";
+      const supportPrefix = type === "STORY" ? "道具" : "辅助元素";
+      const labels = confirmedAssetFacts(workflow)
+        .map((fact: any) => `【${text(fact.category) === "SCENE" ? "场景" : text(fact.category) === "CHARACTER" || text(fact.category) === "CREATURE" ? rolePrefix : supportPrefix}：${text(fact.name)}】`)
+        .filter(Boolean)
+        .join("、");
+      return `\n<repair_checklist>\nFINAL_STORYBOARD 本次必须返回恰好 ${count} 条 segments（targetDuration=${target} 秒），sequence 从1连续到${count}，不能返回9条或子集；每条只保留3个 visualEffects，duration 固定为2、4、4，timeRange 固定为0-2秒、2-6秒、6-10秒；每条全部 voice 合计1句（其余 voice 填“无”），sound 每项不超过10个非标点字符；首个子镜头 duration 不超过2秒且包含问题/异常/发现，末个子镜头保留悬念问题；chapter 只用第N章或 null。references 只能从以下确认资产标签中选择，并使用 ${rolePrefix}/${supportPrefix}/场景前缀：${labels || "确认资产清单"}。\n</repair_checklist>`;
+    })()
+    : "";
+  const partialInstruction = options.partial
+    ? `\n<partial_response_contract>本次是局部补段请求，只返回 JSON 对象 {"segments":[...]}，必须包含 sequence=${options.partial.startSequence} 到 ${options.partial.startSequence + options.partial.count - 1} 共 ${options.partial.count} 条；不要返回其他顶层字段或已有序号。</partial_response_contract>`
+    : "";
+  return `${sourcePrompt}\n\n<contract_repair stage="${stageId}">\n上一版结构化结果未通过服务端业务合同校验。保留未涉及字段，只修复列出的字段；不要重新构思、不要解释、不要输出 Markdown。\n<validation_errors>\n${errors.map((error) => `- ${error}`).join("\n")}\n</validation_errors>\n<affected_fields>\n${renderPromptMaterial(affected, "", 8_000)}\n</affected_fields>${storyboardRepairChecklist}${partialInstruction}\n请返回符合当前阶段专用 JSON Schema 的${options.partial ? "局部" : "完整"}结果；除受影响字段外保持上一版语义不变。\n</contract_repair>`;
 }
 
 function nonRetryableError(error: unknown): boolean {
@@ -576,11 +871,35 @@ export function deriveCopyablePrompt(ctx: StageExecutionContext) {
   return artifact;
 }
 
-function stageIdempotencyKey(sessionId: string, stageId: VideosBatchTextStageId, userPrompt: string) {
-  // The prompt is the logical submission payload. A contract repair or retry
-  // notice therefore gets a new key, while executor-level network retries keep
-  // this exact key and remain idempotent.
-  return `videosbatch:${sessionId}:${stageId}:${contentHash(userPrompt)}`;
+function stageIdempotencyKey(sessionId: string, stageId: VideosBatchTextStageId, userPrompt: string, logicalScope = "provider") {
+  // Network retries reuse the same key. A new contract-repair operation gets a
+  // separate scope so a provider cannot replay the invalid generation forever.
+  const keyMaterial = logicalScope === "provider" ? userPrompt : `${logicalScope}\n${userPrompt}`;
+  return `videosbatch:${sessionId}:${stageId}:${contentHash(keyMaterial)}`;
+}
+
+type AttemptRecord = VideosBatchLlmAttemptBudget["records"][number];
+
+function mergeAttemptRecords(...groups: Array<readonly AttemptRecord[] | undefined>): AttemptRecord[] {
+  const merged: AttemptRecord[] = [];
+  const seen = new Set<string>();
+  for (const group of groups) {
+    for (const item of group || []) {
+      const key = [
+        item.attempt,
+        item.provider,
+        item.model,
+        item.idempotencyKey || "",
+        item.outcome,
+        item.errorCode || "",
+        item.status ?? ""
+      ].join("|");
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(item);
+    }
+  }
+  return merged;
 }
 
 function validationFor(stageId: VideosBatchTextStageId, artifact: unknown, ctx: StageExecutionContext): ValidationResult {
@@ -600,59 +919,195 @@ async function executeStructuredStage(
   spec: ReturnType<typeof getVideosBatchTextStageSpec>,
   executor: VideosBatchLlmExecutor
 ): Promise<{ artifact: unknown; attempts: number; provider?: string; model?: string; attemptLog?: VideosBatchLlmAttemptBudget["records"] }> {
-  let userPrompt = spec.buildUserPrompt(ctx.workflow);
+  const basePrompt = spec.buildUserPrompt(ctx.workflow);
+  let userPrompt = basePrompt;
   let lastArtifact: unknown;
   let lastProvider: string | undefined;
   let lastModel: string | undefined;
   let lastErrors: string[] = [];
-  const budget = createVideosBatchLlmAttemptBudget(MAX_STAGE_ATTEMPTS);
-  for (let attempt = 1; attempt <= MAX_STAGE_ATTEMPTS; attempt += 1) {
-    if (budget.used >= budget.maxAttempts) break;
+  let lastError: unknown;
+  const providerBudget = createVideosBatchLlmAttemptBudget(MAX_STAGE_ATTEMPTS);
+  const responses: StructuredGenerationResult<unknown>[] = [];
+  let logicalAttempt = 0;
+  let requestCount = 0;
+
+  const resultWithEvidence = (artifact: unknown, providerBudgetForResult: VideosBatchLlmAttemptBudget, repairBudget?: VideosBatchLlmAttemptBudget) => {
+    const providerAttempts = providerBudgetForResult.used;
+    const repairAttempts = repairBudget?.used || 0;
+    return {
+      artifact,
+      attempts: Math.max(providerAttempts + repairAttempts, requestCount),
+      provider: lastProvider,
+      model: lastModel,
+      attemptLog: mergeAttemptRecords(
+        providerBudgetForResult.records,
+        repairBudget?.records,
+        ...responses.map((response) => response.attemptLog)
+      )
+    };
+  };
+
+  const requestFor = (
+    prompt: string,
+    budget: VideosBatchLlmAttemptBudget,
+    metadata: Record<string, string>,
+    scope: string,
+    requestSpec: VideosBatchTextStageSpec = spec
+  ): StructuredGenerationRequest => {
     const route: StructuredGenerationRequest["providerRoute"] = "auto";
+    const reasoningEffort = stageReasoningEffort(stageId);
+    const timeoutMs = stageTimeoutMs(stageId);
+    const maxOutputTokens = stageMaxOutputTokens(stageId);
+    const plannedAttempt = Math.min(budget.maxAttempts, budget.used + 1);
+    return {
+      operation: stageId,
+      systemPrompt: requestSpec.systemPrompt,
+      userPrompt: prompt,
+      schemaName: requestSpec.schemaName,
+      jsonSchema: requestSpec.jsonSchema,
+      ...(stageId === "FINAL_STORYBOARD" ? {
+        model: process.env.VIDEOSBATCH_FINAL_STORYBOARD_MODEL?.trim() || "gpt-5.6-terra",
+        reasoningEffort: (process.env.VIDEOSBATCH_FINAL_STORYBOARD_REASONING?.trim() || "medium") as "medium"
+      } : {}),
+      ...(reasoningEffort !== undefined ? { reasoningEffort } : {}),
+      ...(maxOutputTokens !== undefined ? { maxOutputTokens } : {}),
+      ...(timeoutMs !== undefined ? { timeoutMs } : {}),
+      outputMode: "json_schema",
+      providerRoute: route,
+      budget,
+      idempotencyKey: stageIdempotencyKey(ctx.session.id, stageId, prompt, scope),
+      metadata: {
+        session_id: ctx.session.id,
+        stage_id: stageId,
+        provider_route: route || "auto",
+        ...promptStats(requestSpec.systemPrompt, prompt, requestSpec.jsonSchema),
+        ...(reasoningEffort !== undefined ? { reasoning_effort: reasoningEffort } : {}),
+        ...(maxOutputTokens !== undefined ? { max_output_tokens: String(maxOutputTokens) } : {}),
+        ...(timeoutMs !== undefined ? { timeout_ms: String(timeoutMs) } : {}),
+        ...metadata,
+        attempt_budget_used: String(plannedAttempt),
+        attempt_budget_max: String(budget.maxAttempts),
+        attempt_budget_remaining: String(Math.max(0, budget.maxAttempts - plannedAttempt))
+      }
+    };
+  };
+
+  // Provider/network retries and provider switching share this three-submit
+  // budget. A business-contract failure leaves this loop and enters the
+  // independent repair budget below; it is never counted as a provider retry.
+  for (let providerAttempt = 1; providerAttempt <= MAX_STAGE_ATTEMPTS; providerAttempt += 1) {
+    if (providerBudget.used >= providerBudget.maxAttempts) break;
+    logicalAttempt += 1;
     try {
-      const response: StructuredGenerationResult<unknown> = await executor.generateStructured({
-        operation: stageId,
-        systemPrompt: spec.systemPrompt,
+      requestCount += 1;
+      const response = await executor.generateStructured<unknown>(requestFor(
         userPrompt,
-        schemaName: spec.schemaName,
-        jsonSchema: spec.jsonSchema,
-        ...(stageId === "FINAL_STORYBOARD" ? {
-          model: process.env.VIDEOSBATCH_FINAL_STORYBOARD_MODEL?.trim() || "gpt-5.6-terra",
-          reasoningEffort: (process.env.VIDEOSBATCH_FINAL_STORYBOARD_REASONING?.trim() || "medium") as "medium"
-        } : {}),
-        // The stage owns the three-submit budget. The executor must not add a
-        // hidden provider/finalizer round when this marker is present.
-        outputMode: "json_schema",
-        providerRoute: route,
-        budget,
-        idempotencyKey: stageIdempotencyKey(ctx.session.id, stageId, userPrompt),
-        metadata: {
-          session_id: ctx.session.id,
-          stage_id: stageId,
-          attempt: String(attempt),
+        providerBudget,
+        {
+          attempt: String(logicalAttempt),
           max_attempts: String(MAX_STAGE_ATTEMPTS),
-          provider_route: route || "auto",
-          attempt_budget_remaining: String(Math.max(0, MAX_STAGE_ATTEMPTS - budget.used))
-        }
-      });
-      lastArtifact = response.data;
+          attempt_kind: "provider",
+          contract_repair: "0",
+          contract_repair_attempt: "0"
+        },
+        "provider"
+      ));
+      responses.push(response);
+      lastArtifact = stageId === "FINAL_STORYBOARD"
+        ? normalizeStoryboardProviderArtifact(response.data, ctx)
+        : response.data;
       lastProvider = response.provider;
       lastModel = response.model;
-      const validation = validationFor(stageId, response.data, ctx);
-      if (validation.ok) return { artifact: response.data, attempts: budget.used || attempt, provider: response.provider, model: response.model, attemptLog: [...budget.records] };
+      const validation = validationFor(stageId, lastArtifact, ctx);
+      if (validation.ok) return resultWithEvidence(lastArtifact, providerBudget);
       lastErrors = validation.errors;
-      // Contract repair is still a retry on the current primary model. The
-      // executor switches to the fallback only after the primary has consumed
-      // its reserved share of the same three-submission budget.
-      if (attempt < MAX_STAGE_ATTEMPTS && budget.used < budget.maxAttempts) userPrompt = contractRepairPrompt(stageId, ctx.workflow, response.data, validation.errors);
+      break;
     } catch (error) {
-      if (nonRetryableError(error) || attempt >= MAX_STAGE_ATTEMPTS) throw error;
+      lastError = error;
+      if (nonRetryableError(error)) throw error;
       lastErrors = [error instanceof Error ? error.message : String(error)];
-      userPrompt = `${spec.buildUserPrompt(ctx.workflow)}\n\n<retry_notice stage="${stageId}">\n上一次提交暂时失败，请在保持所有字段语义不变的前提下重新提交。原因：${lastErrors[0]}\n</retry_notice>`;
+      if (providerAttempt >= MAX_STAGE_ATTEMPTS || providerBudget.used >= providerBudget.maxAttempts) break;
+      userPrompt = `${basePrompt}\n\n<retry_notice stage="${stageId}">\n上一次提交暂时失败，请在保持所有字段语义不变的前提下重新提交。原因：${lastErrors[0]}\n</retry_notice>`;
     }
   }
-  if (lastArtifact !== undefined) return { artifact: lastArtifact, attempts: budget.used || MAX_STAGE_ATTEMPTS, provider: lastProvider, model: lastModel, attemptLog: [...budget.records] };
-  throw new Error(lastErrors.join("\n") || `VideosBatch ${stageId} exhausted attempts`);
+
+  if (lastArtifact === undefined) {
+    if (lastError instanceof Error) throw lastError;
+    throw new Error(lastErrors.join("\n") || `VideosBatch ${stageId} exhausted attempts`);
+  }
+
+  // Contract repair is deliberately independent from providerBudget. This
+  // allows a C-02/field-length failure to receive a targeted correction even
+  // when the original provider sequence already used all three submissions.
+  const repairBudget = createVideosBatchLlmAttemptBudget(MAX_CONTRACT_REPAIR_ATTEMPTS);
+  let repairSpec: VideosBatchTextStageSpec = spec;
+  let partialRange: { startSequence: number; count: number } | undefined;
+  if (stageId === "FINAL_STORYBOARD") {
+    const target = Number((ctx.workflow.stages.SCREENPLAY?.artifact as any)?.targetDurationSeconds);
+    const currentCount = Array.isArray((lastArtifact as any)?.segments) ? (lastArtifact as any).segments.length : 0;
+    const expectedCount = target > 0 ? target / 10 : 0;
+    if (expectedCount > currentCount && expectedCount <= 15) {
+      partialRange = { startSequence: currentCount + 1, count: expectedCount - currentCount };
+      repairSpec = getVideosBatchStoryboardSegmentRepairSpec(ctx.workflow, partialRange.count, partialRange.startSequence);
+    }
+  }
+  let repairPrompt = contractRepairPrompt(stageId, ctx.workflow, lastArtifact, lastErrors, {
+    spec: repairSpec,
+    partial: partialRange
+  });
+  let repairScope = partialRange
+    ? { segments: { __append: true, startSequence: partialRange.startSequence, count: partialRange.count } }
+    : pickAffectedFields(lastArtifact, lastErrors);
+  for (let repairAttempt = 1; repairAttempt <= MAX_CONTRACT_REPAIR_ATTEMPTS; repairAttempt += 1) {
+    if (repairBudget.used >= repairBudget.maxAttempts) break;
+    logicalAttempt += 1;
+    try {
+      requestCount += 1;
+      const response = await executor.generateStructured<unknown>(requestFor(
+        repairPrompt,
+        repairBudget,
+        {
+          attempt: String(logicalAttempt),
+          max_attempts: String(MAX_CONTRACT_REPAIR_ATTEMPTS),
+          attempt_kind: "contract_repair",
+          contract_repair: "1",
+          contract_repair_attempt: String(repairAttempt),
+          ...(partialRange ? { repair_mode: "append_segments" } : {})
+        },
+        `contract-repair-${repairAttempt}`,
+        repairSpec
+      ));
+      responses.push(response);
+      const repairedArtifact = stageId === "FINAL_STORYBOARD"
+        ? normalizeStoryboardProviderArtifact(response.data, ctx)
+        : response.data;
+      lastArtifact = mergeRepairArtifact(lastArtifact, repairedArtifact, repairScope);
+      lastProvider = response.provider;
+      lastModel = response.model;
+      const validation = validationFor(stageId, lastArtifact, ctx);
+      if (validation.ok) return resultWithEvidence(lastArtifact, providerBudget, repairBudget);
+      lastErrors = validation.errors;
+      if (partialRange) {
+        // Once the missing range is present, use the second repair slot for
+        // any remaining global semantic errors against the full contract.
+        partialRange = undefined;
+        repairSpec = spec;
+      }
+      repairScope = pickAffectedFields(lastArtifact, validation.errors);
+      repairPrompt = contractRepairPrompt(stageId, ctx.workflow, lastArtifact, validation.errors, { spec: repairSpec });
+    } catch (error) {
+      if (nonRetryableError(error)) throw error;
+      lastErrors = [error instanceof Error ? error.message : String(error)];
+      if (repairAttempt >= MAX_CONTRACT_REPAIR_ATTEMPTS || repairBudget.used >= repairBudget.maxAttempts) break;
+      repairScope = pickAffectedFields(lastArtifact, lastErrors);
+      repairPrompt = `${contractRepairPrompt(stageId, ctx.workflow, lastArtifact, lastErrors, { spec: repairSpec, partial: partialRange })}\n\n<retry_notice stage="${stageId}" kind="contract_repair">\n合同修复请求暂时失败，请继续只修复受影响字段。原因：${lastErrors[0]}\n</retry_notice>`;
+    }
+  }
+
+  // Preserve the last invalid artifact for runner-level diagnostics and an
+  // explicit retry endpoint. The runner will mark the stage failed with the
+  // remaining contract errors instead of discarding the provider result.
+  return resultWithEvidence(lastArtifact, providerBudget, repairBudget);
 }
 
 export function validateVideosBatchTextStage(stageId: VideosBatchTextStageId, artifact: unknown, ctx: StageExecutionContext): ValidationResult {
@@ -668,7 +1123,10 @@ function createStage(stageId: VideosBatchTextStageId, executor: VideosBatchLlmEx
       // here would permit it to rewrite the handbook fields, so it is never a
       // provider submission.
       if (stageId === "COPYABLE_PROMPT") return { artifact: deriveCopyablePrompt(ctx) };
-      const generated = await executeStructuredStage(stageId, ctx, spec, executor);
+      const executionSpec = stageId === "FINAL_STORYBOARD"
+        ? getVideosBatchTextStageSpec(stageId, ctx.workflow)
+        : spec;
+      const generated = await executeStructuredStage(stageId, ctx, executionSpec, executor);
       return { artifact: generated.artifact, attempts: generated.attempts, provider: generated.provider, model: generated.model, attemptLog: generated.attemptLog } as any;
     },
     validate(artifact, ctx) { return validationFor(stageId, artifact, ctx); },

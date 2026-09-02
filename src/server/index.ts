@@ -723,7 +723,9 @@ app.post("/api/gallery/:galleryId/copy", async (req, res) => {
 });
 
 app.use(ownedResourceGuard);
-registerVideosBatchWorkflowApi(app, store, createVideosBatchRuntimeStageRegistry());
+registerVideosBatchWorkflowApi(app, store, createVideosBatchRuntimeStageRegistry(), {
+  authorizeSession: (session, req) => ownsSession(session) || isAdminRequest(req) || localSessionReviewEnabledForRequest(req)
+});
 
 function resolveAssetPromptOverride(asset: Asset, explicitOverride?: string) {
   const rawPrompt = (asset.prompt || asset.description || asset.name || "").toString().trim();
@@ -2535,10 +2537,11 @@ app.post("/api/shots/:shotId/sketches", async (req, res) => {
           reviewNote: reviewed.reviewNote,
           reviewAttempts: reviewed.reviewAttempts,
           reviewModel: reviewed.reviewModel,
-          generationModel: assetImageModelFromActual(reviewed.payload?.actualModelId, model),
-          generationModelActual: reviewed.payload?.actualModelId,
-          generationCredentialSource: reviewed.payload?.credentialSource,
-          imageReviewStatus: reviewed.imageReview ? "ready" : undefined,
+           generationModel: assetImageModelFromActual(reviewed.payload?.actualModelId, model),
+           generationModelActual: reviewed.payload?.actualModelId,
+           generationCredentialSource: reviewed.payload?.credentialSource,
+           generationPromptAdaptation: reviewed.payload?.promptAdaptation,
+           imageReviewStatus: reviewed.imageReview ? "ready" : undefined,
           imageReview: reviewed.imageReview,
           imageReviewError: undefined,
           imageReviewUpdatedAt: reviewed.imageReview?.reviewedAt,
@@ -2977,11 +2980,12 @@ app.post("/api/assets/:assetId/generate", async (req, res) => {
         reviewNote: reviewed.reviewNote,
         reviewAttempts: reviewed.reviewAttempts,
         reviewModel: reviewed.reviewModel,
-        generationModel: assetImageModelFromActual(reviewed.payload?.actualModelId, reviewed.payload?.model || model),
-        seedreamSize: seedreamSize,
-        generationModelActual: reviewed.payload?.actualModelId,
-        generationCredentialSource: reviewed.payload?.credentialSource,
-        referenceImageUrls,
+         generationModel: assetImageModelFromActual(reviewed.payload?.actualModelId, reviewed.payload?.model || model),
+         seedreamSize: seedreamSize,
+         generationModelActual: reviewed.payload?.actualModelId,
+         generationCredentialSource: reviewed.payload?.credentialSource,
+         generationPromptAdaptation: reviewed.payload?.promptAdaptation,
+         referenceImageUrls,
         referenceAssetIds,
         imageReviewStatus: reviewed.imageReview ? "ready" : undefined,
         imageReview: reviewed.imageReview,

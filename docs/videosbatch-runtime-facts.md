@@ -1,12 +1,12 @@
 # VideosBatch 运行事实
 
-更新时间：2026-08-31
-适用范围：本机 `E:\desktop\AI\05-Third-party-repos\VideosBatch` 的 Guided Studio 验收配置。
+更新时间：2026-09-02
+适用范围：本机 `E:\desktop\AI\11_Products\lab\VideosBatch` 的 Guided Studio 验收配置。
 
 ## 当前 Git 现场
 
-- 分支：`feature/videosbatch-newapi-h3`
-- HEAD：`134719527bfd63788b040530e8cdc4bd9ab4db67`
+- 分支：`master`
+- HEAD：`d2f61ed85011987e097d4d3f9ae0283f070a5715`
 - 该工作区存在既有未提交改动；本记录不代表这些改动已经提交或推送。
 
 ## 本机配置事实
@@ -24,6 +24,9 @@
 | 文本备用模型 | `deepseek-v4-flash` | 主模型有限重试耗尽后才切换 |
 | 备用输出/推理 | `json_schema` / `none` | 避免 reasoning 混入结构化结果 |
 | 文本重试 | `3` 次 | 等待 `2000,5000,10000 ms` |
+| `ASSET_PLAN` 推理 | `none`（默认） | 资产拆解默认关闭思考；可用 `VIDEOSBATCH_ASSET_PLAN_REASONING` 显式覆盖 |
+| `ASSET_PLAN` 超时 | `180000 ms`（阶段专用） | 长资产提示词不占用普通文本阶段的 120 秒预算 |
+| 合同修复预算 | `2` 次 | 独立于首轮 Provider 三次预算，携带校验错误和受影响字段 |
 | 图片路由 | `lyaiapp` | 当前因 `MEDIA_MODE=fake` 不会调用 |
 | 视频路由 | `newapi-h3` | 当前因 `MEDIA_MODE=fake` 不会调用 |
 
@@ -66,7 +69,7 @@
 
 ## 2026-08-31 修复后真实复验
 
-- 合同修复现在分为两层：主文本供应商最多 3 次（首请求 + 2 次精准修复）；每次修复都带上一版 JSON 与逐条校验错误。主供应商耗尽后通过 `providerRoute=fallback-only` 直达 `deepseek-v4-flash`，不会再次调用主供应商。
+- 合同修复现在与首轮 Provider 预算分离：首轮网络/主备提交最多 3 次；业务合同失败后另启最多 2 次的独立修复预算。每次修复携带精确校验错误和受影响字段，不把完整原始 JSON 塞回提示词；预算类别、尝试次数和提示词字符统计写入请求元数据。
 - H3 提交成功后先将 `taskId` 写回 native Shot；恢复执行优先轮询该 taskId，成功后将 taskId 与开始时间保留在 ShotRender 审计字段。无任务号的 409 幂等冲突会进入 `H3_SUBMISSION_STATE_UNKNOWN`，停止盲目重提。
 - H3 参考图按 `sourceImageUrl -> referenceImageUrl -> imageUrl -> mediaUrl` 依次尝试；远程 404 时可回退到受限的 `data/media` 本地缓存，仍执行 PNG/JPEG/WebP 与 20MB 限制。
 - 真实授权续跑复用了前 2 个已有视频，并新生成第 3–9 个视频。第 9 个在停止竞态中已先提交，随后只恢复轮询原 taskId 并收尾；第 10–12 个镜头未调用。最终使用 9 个 ready 镜头独立拼接成功：`data/media/final-videosbatch-nine-shot-stitch-0596ddcf59b5-1788129874052.mp4`。
@@ -75,3 +78,17 @@
 ## 使用边界
 
 保持 `fake/fake` 才是本机浏览器验收默认状态。只有明确进入真实链路验收时，才在本机临时环境中切换执行器，并继续遵守密钥不入 Git、不入日志、不入截图的约束。
+
+## 2026-09-02 本地测试数据清理
+
+- 已删除本轮失败 Smoke 会话 `ses_612c6b81`、`ses_b37bfbd2`、`ses_3b05e403`；删除前后会话数为 6 → 3，镜头数保持 24，资产数保持 5。
+- 三条会话均无关联镜头；现有资产属于已保留的验收会话，未做误删。`data/cinema-store.json` 为本地忽略数据文件，不纳入 Git 版本。
+- 清理前遗留的两组 VideosBatch 开发服务进程已停止；当前未运行项目服务。本次清理未调用真实 Provider，`.env` 和产品代码未修改。
+
+## 2026-09-02 真实链路复验与修复证据
+
+- 真实文本探针通过：`gpt-5.6-terra` 使用 `json_schema` 单次返回；真实工作流的 `COURSE_INTRO_CANDIDATES`、`STORY_SCRIPT` 可通过并正确停在人工门禁。
+- 真实工作流在 `ASSET_PLAN` 仍受外部 Provider 波动阻塞：本次记录为 `gpt-5.6-terra` 两次 `NETWORK_ERROR`，随后 `deepseek-v4-flash` 一次 180 秒 `TIMEOUT`；阶段已保存三次尝试日志，未继续生成媒体。
+- 独立媒体链路已验证：LyAIApp `gpt-image-2-1k` 生成并缓存两张 16:9 图片；同一幂等键恢复的 NewAPI H3 任务生成 `1376x768`、实测 `10.13` 秒 MP4；本地拼接产物实测 `10.17` 秒。探针文件已移至本机隔离证据目录，不纳入项目 `data/`。
+- 继续恢复真实工作流时，LyAIApp 对一个包含“9 岁小学生”细节的角色提示返回 `400 content_policy_violation`；其余 6/7 资产成功。该错误现在标记为不可重试，需人工修改提示或选择兼容供应商，不能自动重复扣费。
+- 本轮修复包含资产类别显式 `omitted` 门禁、资产计划 180 秒阶段超时、合同修复多项字段合并、Provider 尝试证据、工作流单飞/归属校验、投影失败产物保留和 H3 超时任务号保留。完整 13 阶段真实链路仍需外部 `ASSET_PLAN` 稳定返回后再验收。

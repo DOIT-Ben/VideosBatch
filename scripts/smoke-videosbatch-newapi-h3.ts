@@ -6,7 +6,8 @@ import os from "node:os";
 import path from "node:path";
 import {
   generateShotVideoViaNewApiH3,
-  NewApiH3SubmissionStateUnknownError
+  NewApiH3SubmissionStateUnknownError,
+  NewApiH3ProviderError
 } from "../src/server/videosBatchWorkflow/newApiH3Video";
 
 const old = {
@@ -40,6 +41,7 @@ try {
   let postRequests = 0;
   let contentRequests = 0;
   let conflict = false;
+  let timeoutMode = false;
   const provider = http.createServer(async (req, res) => {
     if (req.url === "/a1.png" || req.url === "/a2.png") {
       res.setHeader("content-type", "image/png");
@@ -48,10 +50,12 @@ try {
     }
     if (req.method === "POST" && req.url === "/v1/videos") {
       postRequests += 1;
-      assert.match(String(req.headers["idempotency-key"]), /^videosbatch-shot_h3_smoke-/);
+      assert.match(String(req.headers["idempotency-key"]), /^videosbatch-shot_h3_/);
       for await (const _chunk of req) { /* consume multipart body */ }
       res.setHeader("content-type", "application/json");
-      if (conflict) {
+      if (timeoutMode) {
+        res.end(JSON.stringify({ task_id: "h3-timeout-task" }));
+      } else if (conflict) {
         res.statusCode = 409;
         res.end(JSON.stringify({ detail: "idempotency_key 与其他请求冲突" }));
       } else {
@@ -69,6 +73,12 @@ try {
         res.setHeader("content-type", "video/mp4");
         res.end(Buffer.from("fake-mp4-for-contract-smoke"));
       }
+      return;
+    }
+    if (req.method === "GET" && req.url === "/v1/videos/h3-timeout-task/content") {
+      res.statusCode = 202;
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify({ status: "processing" }));
       return;
     }
     res.statusCode = 404;
@@ -150,6 +160,19 @@ try {
       );
       assert.match(resumedAfterCheckpoint, /^\/media\/videosbatch-h3-/);
       assert.equal(postRequests, 2, "checkpoint recovery must poll the known task without a second POST");
+
+      timeoutMode = true;
+      process.env.VIDEOSBATCH_H3_TIMEOUT_MS = "500";
+      await assert.rejects(
+        () => generateShotVideoViaNewApiH3(
+          { ...shot, generationStartedAt: "2026-08-31T00:00:03.000Z" },
+          httpsOnlyAssets
+        ),
+        (error: unknown) => error instanceof NewApiH3ProviderError
+          && error.code === "H3_POLL_TIMEOUT"
+          && error.taskId === "h3-timeout-task"
+      );
+      timeoutMode = false;
 
       conflict = true;
       await assert.rejects(

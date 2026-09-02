@@ -41,13 +41,16 @@ export class NewApiH3ProviderError extends Error {
   readonly code: string;
   readonly retryable: boolean;
   readonly status?: number;
+  /** Known provider task id, retained so a poll timeout can be resumed safely. */
+  readonly taskId?: string;
 
-  constructor(message: string, code: string, retryable: boolean, status?: number) {
+  constructor(message: string, code: string, retryable: boolean, status?: number, taskId?: string) {
     super(message);
     this.name = "NewApiH3ProviderError";
     this.code = code;
     this.retryable = retryable;
     this.status = status;
+    this.taskId = taskId?.trim() || undefined;
   }
 }
 
@@ -229,11 +232,13 @@ export async function generateShotVideoViaNewApiH3(
           signal: controller.signal
         });
       } catch (error) {
-        if (controller.signal.aborted) throw new NewApiH3ProviderError("NewAPI H3 视频生成超时", "H3_POLL_TIMEOUT", true);
+        if (controller.signal.aborted) throw new NewApiH3ProviderError("NewAPI H3 视频生成超时", "H3_POLL_TIMEOUT", true, undefined, taskId);
         throw new NewApiH3ProviderError(
           `NewAPI H3 查询失败：${error instanceof Error ? error.message : String(error)}`,
           "H3_POLL_FAILED",
-          true
+          true,
+          undefined,
+          taskId
         );
       }
       const contentType = (contentResponse.headers.get("content-type") || "").toLowerCase();
@@ -249,12 +254,12 @@ export async function generateShotVideoViaNewApiH3(
       if (contentResponse.status === 400 || contentResponse.status === 409) {
         const message = await responseMessage(contentResponse);
         if (/IN_PROGRESS|not completed|处理中|processing/i.test(message)) continue;
-        throw new NewApiH3ProviderError(`NewAPI H3 任务失败：${message}`, "H3_TASK_FAILED", false, contentResponse.status);
+        throw new NewApiH3ProviderError(`NewAPI H3 任务失败：${message}`, "H3_TASK_FAILED", false, contentResponse.status, taskId);
       }
       if (contentResponse.status === 202 || contentResponse.status === 404) continue;
-      throw new NewApiH3ProviderError(`NewAPI H3 查询失败：HTTP ${contentResponse.status}`, "H3_POLL_FAILED", contentResponse.status >= 500, contentResponse.status);
+      throw new NewApiH3ProviderError(`NewAPI H3 查询失败：HTTP ${contentResponse.status}`, "H3_POLL_FAILED", contentResponse.status >= 500, contentResponse.status, taskId);
     }
-    throw new NewApiH3ProviderError("NewAPI H3 视频生成超时", "H3_POLL_TIMEOUT", true);
+    throw new NewApiH3ProviderError("NewAPI H3 视频生成超时", "H3_POLL_TIMEOUT", true, undefined, taskId);
   } finally {
     clearTimeout(timer);
   }

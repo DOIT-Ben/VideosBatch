@@ -61,6 +61,9 @@ let manifest: {
     archivePath: string;
     bytes: number;
     sha256: string;
+    sourceBytes?: number;
+    sourceSha256?: string;
+    archiveNormalization?: string;
     sourceStatus?: string;
   }>;
 };
@@ -88,6 +91,9 @@ const expectedOriginals = new Set([
   "docs/superpowers/specs/2026-08-29-videosbatch-visual-consolidation-design.md",
   ".agents/skills/videosbatch-lesson-workflow/SKILL.md"
 ]);
+const upstreamOriginal = "docs/视频制作工作流完整步骤.md";
+const upstreamSourceBytes = 60400;
+const upstreamSourceSha256 = "8A794F875E117A9301150EBDEAF7E9B614EA2BDE18514652F8FEB729001E24B4";
 
 for (const entry of entries) {
   const original = normalize(entry.originalPath);
@@ -106,6 +112,23 @@ for (const entry of entries) {
   const actualHash = sha256(archivedFile);
   if (actualBytes !== entry.bytes) fail(`${archive}: byte count mismatch for ${archive}`);
   if (actualHash !== entry.sha256.toUpperCase()) fail(`${archive}: SHA-256 mismatch`);
+
+  const hasSourceEvidence = entry.sourceBytes !== undefined || entry.sourceSha256 !== undefined;
+  if (hasSourceEvidence) {
+    if (!Number.isInteger(entry.sourceBytes) || (entry.sourceBytes as number) <= 0) {
+      fail(`${archive}: sourceBytes must be a positive integer`);
+    }
+    if (!entry.sourceSha256 || !/^[0-9A-F]{64}$/i.test(entry.sourceSha256)) {
+      fail(`${archive}: sourceSha256 must be a 64-character hexadecimal digest`);
+    }
+    if (entry.sourceBytes !== entry.bytes && !entry.archiveNormalization) {
+      fail(`${archive}: archiveNormalization is required when source and archive byte counts differ`);
+    }
+  }
+  if (original === upstreamOriginal) {
+    if (entry.sourceBytes !== upstreamSourceBytes) fail(`${archive}: upstream sourceBytes evidence changed`);
+    if (entry.sourceSha256?.toUpperCase() !== upstreamSourceSha256) fail(`${archive}: upstream sourceSha256 evidence changed`);
+  }
 
   const sourceFile = absolute(entry.originalPath);
   if (entry.sourceStatus === "replaced-by-derived-entry") {

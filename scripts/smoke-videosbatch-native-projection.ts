@@ -137,6 +137,22 @@ try {
   assert.ok(resolvedShots[0].rawPrompt.includes("小宇在数学社团教室观察黑布窗口"), "execution projection must retain canonical FINAL_STORYBOARD visual content");
   assert.ok(!resolvedShots[0].rawPrompt.includes("P001-A001"), "execution projection must not use COPYABLE_PROMPT stable markers");
 
+  const foreign = await store.upsertAsset({
+    ownerUserId: "different-user",
+    name: "不属于当前会话的资产",
+    type: "prop",
+    mediaKind: "image",
+    imageUrl: "https://mock.invalid/foreign.png"
+  } as any);
+  assert.ok(foreign);
+  const foreignConfirmation = structuredClone(confirmation);
+  foreignConfirmation.items[0].selectedAssetId = foreign!.id;
+  await assert.rejects(
+    () => projection.applyConfirmedReferencesToNativeShots(store, sessionId, storyboard, foreignConfirmation),
+    /No confirmed native asset/,
+    "execution projection must reject a global asset owned by another user"
+  );
+
   const session = store.getSession(sessionId)!;
   const graph = buildSessionGraph(snapshot, session);
   for (const asset of nativeAssets) {

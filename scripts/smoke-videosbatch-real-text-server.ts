@@ -23,19 +23,30 @@ const provider = http.createServer(async (req, res) => {
   assert.equal(body.text.format.name, "videosbatch_course_intro_candidates");
 
   const ids = ["A-01", "A-02", "A-03", "B-01", "B-02", "B-03", "C-01", "C-02", "C-03"];
+  const directions = [
+    "原始问题与知识产生",
+    "可靠史实与时代背景",
+    "方法工具演变",
+    "古代真实需求",
+    "古今对照",
+    "现代工程科技应用",
+    "生活冲突与错误现场",
+    "推理游戏挑战",
+    "科技或自然异常"
+  ];
   const artifact = {
     candidates: ids.map((id, index) => ({
       id,
       name: `导入${id}`,
-      creativeType: index < 3 ? "数学史与知识由来" : index < 6 ? "历史需求与古今应用" : "创意故事与现代情境",
-      body: "学生从一个熟悉却容易误判的现象出发，通过观察、比较和讨论逐渐发现原先的直觉并不可靠。新的证据不断出现，推动大家寻找更严谨的数学方法。本段只建立问题、冲突与必要背景，不提前给出本课最终结论。".repeat(3).slice(0, 230),
+      creativeType: directions[index],
+      body: `${id}围绕${directions[index]}展开：${"学生从一个熟悉却容易误判的现象出发，通过观察、比较和讨论逐渐发现原先的直觉并不可靠。新的证据不断出现，推动大家寻找更严谨的数学方法。本段只建立问题、冲突与必要背景，不提前给出本课最终结论。".repeat(2)}`.slice(0, 230),
       endingQuestion: "怎样才能作出更可靠的判断？",
       truthfulnessCategory: "完全虚构的故事化情境",
       truthfulnessNote: "本测试只验证真实 Provider 接线，不代表正式生成内容。"
     })),
     recommendations: [
       { id: "A-01", reason: "知识联系自然，问题明确，适合课堂和视频表达。" },
-      { id: "B-01", reason: "情境有真实需求，容易建立数学学习动机。" },
+      { id: "B-01", reason: "课堂情境有真实需求，容易建立数学学习动机。" },
       { id: "C-01", reason: "认知冲突直观，学生代入感和视觉可行性较高。" }
     ]
   };
@@ -102,7 +113,11 @@ try {
       VIDEOSBATCH_LLM_API_KEY: "integration-test-key",
       VIDEOSBATCH_LLM_BASE_URL: `http://127.0.0.1:${providerAddress.port}/v1`,
       VIDEOSBATCH_LLM_MODEL: "integration-test-model",
-      VIDEOSBATCH_LLM_TIMEOUT_MS: "5000"
+      VIDEOSBATCH_LLM_TIMEOUT_MS: "5000",
+      // The workstation proxy is enabled globally; local test providers must
+      // stay on loopback so the request cannot be redirected or rewritten.
+      NO_PROXY: [process.env.NO_PROXY, "127.0.0.1", "localhost"].filter(Boolean).join(","),
+      no_proxy: [process.env.no_proxy, "127.0.0.1", "localhost"].filter(Boolean).join(",")
     },
     detached: process.platform !== "win32",
     // Windows resolves npm via npm.cmd; shell:true keeps spawn portable across platforms.

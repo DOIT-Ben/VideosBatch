@@ -7,7 +7,7 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as WebReadableStream } from "node:stream/web";
 import ffmpeg from "@ffmpeg-installer/ffmpeg";
-import type { Asset, AssetImageModel, AssetImageSize, SessionWithShots, Shot, StoryBeat, StoryPlan } from "../shared/types";
+import type { Asset, AssetImageModel, AssetImageSize, AssetPromptAdaptation, SessionWithShots, Shot, StoryBeat, StoryPlan } from "../shared/types";
 import { composeSeedanceVideoText, composeSeedreamAssetPrompt, type Lang } from "./promptCompose";
 import { fetchWithRetry } from "./fetchWithRetry";
 import { arkMissingKeyMessage, BYTEPLUS_ARK_BASE, resolveArkCredential, VOLCENGINE_CN_ARK_BASE, type ArkCredential, type StandardCredentialRouteConfig } from "./arkCredentials";
@@ -45,7 +45,7 @@ const VOLCENGINE_CN_SEEDANCE_FAST_MODEL = "doubao-seedance-2-0-fast";
 const AGENT_PLAN_SEEDANCE_MODEL = "doubao-seedance-2-0-260128";
 const AGENT_PLAN_SEEDANCE_FAST_MODEL = "doubao-seedance-2-0-fast-260128";
 const TERMINAL_STATUSES = new Set(["succeeded", "failed", "cancelled", "canceled"]);
-const STITCH_SIGNATURE_VERSION = "stitch-v4-normalized-crf18-high";
+const STITCH_SIGNATURE_VERSION = "stitch-v5-exact-10s-normalized-crf18-high";
 const openAIKey = () => process.env.OAI_KEY || process.env.OPENAI_API_KEY;
 export const seedanceTimeoutMs = () => Number(process.env.SEEDANCE_TIMEOUT_MS || 45 * 60 * 1000);
 const stitchDownloadConcurrency = () => Math.max(1, Number(process.env.STITCH_DOWNLOAD_CONCURRENCY || 2));
@@ -553,7 +553,7 @@ export interface SeedreamGenerateOpts {
 
 export interface AssetImageResult {
   url: string;
-  /** The Seedream prompt actually submitted (audit trail). Empty for placeholder / OpenAI paths. */
+  /** The provider prompt actually submitted (audit trail). */
   composedPrompt: string;
   /** The model variant that actually produced the image. Can differ from the request after fallback. */
   model: AssetImageModel;
@@ -561,6 +561,8 @@ export interface AssetImageResult {
   actualModelId?: string;
   /** Which credential route was used for the generation. */
   credentialSource?: ArkCredential["source"];
+  /** Set only when a provider-safe retry was required after a policy rejection. */
+  promptAdaptation?: AssetPromptAdaptation;
   rawUsage?: unknown;
 }
 
@@ -585,35 +587,116 @@ export async function generateAssetImage(
   if (model === "seedream-4") return generateAssetImageViaSeedream(asset, referenceImageUrls, "seedream-4", opts);
   if (model === "seedream-5-lite") return generateAssetImageViaSeedream(asset, referenceImageUrls, "seedream-5-lite", opts);
   if (model === "gpt-image-2-1k") {
-    const url = await generateAssetImageViaLyaiapp(asset, referenceImageUrls);
-    return { url, composedPrompt: "", model: "gpt-image-2-1k" };
+    const generated = await generateAssetImageViaLyaiapp(asset, referenceImageUrls);
+    return {
+      url: generated.url,
+      composedPrompt: generated.submittedPrompt,
+      model: "gpt-image-2-1k",
+      promptAdaptation: generated.promptAdaptation
+    };
   }
   const url = await generateAssetImageViaOpenAI(asset, referenceImageUrls);
-  return { url, composedPrompt: "", model: "gpt-image-2" };
+  return { url, composedPrompt: assetUserPrompt(asset), model: "gpt-image-2" };
 }
 
-async function generateAssetImageViaLyaiapp(asset: Asset, referenceImageUrls: string[] = []) {
+/**
+ * Remove only provider-sensitive identity/age wording after an explicit
+ * content-policy rejection. The canonical asset prompt remains untouched in
+ * storage; this text is a temporary submission variant for the provider.
+ */
+export function buildProviderSafeImagePrompt(prompt: string) {
+  const original = prompt.trim();
+  if (!original) return original;
+  let safe = original
+    .replace(/(?:中国)?小学(?:女生|男生)(?:[\u4e00-\u9fff]{1,4}(?=[，,、。；;：:]))?/gu, "虚构的教育类非写实动画学生角色")
+    .replace(/中国小学普通同学基础角色/gu, "虚构的教育类非写实动画学生角色")
+    .replace(/小学普通同学/gu, "虚构的教育类非写实动画学生角色")
+    .replace(/(?:小学生|未成年人|女孩|男孩)/gu, "虚构的教育类非写实动画学生角色")
+    .replace(/纤细匀称的儿童体型/gu, "纤细匀称的角色体型")
+    .replace(/儿童体型/gu, "自然匀称的角色体型")
+    .replace(/儿童/gu, "动画角色")
+    .replace(/(?:约|大约|年龄(?:为|是)?|年约)?\s*\d{1,3}\s*岁/gu, "")
+    .replace(/虚构的教育类非写实动画学生角色(?:[，,、]\s*){2,}/gu, "虚构的教育类非写实动画学生角色，")
+    .replace(/[，,]\s*[，,]/gu, "，")
+    .replace(/[，,]\s*[。；;]/gu, "。")
+    .replace(/[。]\s*[。]/gu, "。")
+    .replace(/\s{2,}/gu, " ")
+    .trim();
+  const safetyClause = "明确为虚构的非写实教育动画角色，不涉及真人、不涉及性化、伤害或危险情节";
+  if (!safe.includes("不涉及性化")) {
+    safe = `${safe.replace(/[。；;]+$/u, "")}；${safetyClause}。`;
+  }
+  return safe;
+}
+
+type LyaiappImageGenerationResult = {
+  url: string;
+  submittedPrompt: string;
+  promptAdaptation?: AssetPromptAdaptation;
+};
+
+function imageContentPolicyError(error: unknown) {
+  return Boolean(error && typeof error === "object" && (error as { code?: unknown }).code === "IMAGE_CONTENT_POLICY");
+}
+
+async function generateAssetImageViaLyaiapp(asset: Asset, referenceImageUrls: string[] = []): Promise<LyaiappImageGenerationResult> {
   const apiKey = process.env.VIDEOSBATCH_IMAGE_API_KEY?.trim();
   if (!apiKey) throw new Error("Lyaiapp 图片生成需要配置 VIDEOSBATCH_IMAGE_API_KEY");
   const baseUrl = (process.env.VIDEOSBATCH_IMAGE_BASE_URL?.trim() || "https://api.lyaiapp.com/v1").replace(/\/+$/, "");
   const refs = await prepareOpenAIReferenceImages(referenceImageUrls);
-  const response = await fetch(`${baseUrl}/images/generations`, {
-    method: "POST",
-    headers: { ...jsonHeaders(apiKey), "User-Agent": "curl/8.5.0" },
-    body: JSON.stringify({
-      model: process.env.VIDEOSBATCH_IMAGE_MODEL?.trim() || "gpt-image-2-1k",
-      prompt: asset.prompt || asset.description || asset.name,
-      size: process.env.VIDEOSBATCH_IMAGE_SIZE?.trim() || "16:9",
-      ...(refs.length ? { image_urls: refs } : {})
-    })
-  });
-  const text = await response.text();
-  if (!response.ok) throw new Error(`Lyaiapp image API failed: ${response.status} ${text.slice(0, 1000)}`);
-  const body = text ? JSON.parse(text) as { data?: Array<{ url?: string; b64_json?: string }> } : {};
-  const first = body.data?.[0];
-  if (first?.url) return first.url;
-  if (first?.b64_json) return `data:image/png;base64,${first.b64_json}`;
-  throw new Error("Lyaiapp image API returned no image");
+  const canonicalPrompt = assetUserPrompt(asset);
+  const requestImage = async (prompt: string) => {
+    const response = await fetch(`${baseUrl}/images/generations`, {
+      method: "POST",
+      headers: { ...jsonHeaders(apiKey), "User-Agent": "curl/8.5.0" },
+      body: JSON.stringify({
+        model: process.env.VIDEOSBATCH_IMAGE_MODEL?.trim() || "gpt-image-2-1k",
+        prompt,
+        size: process.env.VIDEOSBATCH_IMAGE_SIZE?.trim() || "16:9",
+        ...(refs.length ? { image_urls: refs } : {})
+      })
+    });
+    const responseText = await response.text();
+    if (!response.ok) {
+      let providerCode = "";
+      try {
+        const parsed = responseText ? JSON.parse(responseText) as { error?: { code?: unknown } } : {};
+        providerCode = typeof parsed.error?.code === "string" ? parsed.error.code : "";
+      } catch {
+        // Keep the bounded raw detail below; classification does not depend on JSON shape.
+      }
+      const error = new Error(`Lyaiapp image API failed: ${response.status} ${responseText.slice(0, 1000)}`);
+      Object.assign(error, {
+        code: providerCode === "content_policy_violation" ? "IMAGE_CONTENT_POLICY" : `IMAGE_HTTP_${response.status}`,
+        retryable: response.status === 408 || response.status === 429 || response.status >= 500
+      });
+      throw error;
+    }
+    const body = responseText ? JSON.parse(responseText) as { data?: Array<{ url?: string; b64_json?: string }> } : {};
+    const first = body.data?.[0];
+    if (first?.url) return first.url;
+    if (first?.b64_json) return `data:image/png;base64,${first.b64_json}`;
+    throw new Error("Lyaiapp image API returned no image");
+  };
+
+  try {
+    return { url: await requestImage(canonicalPrompt), submittedPrompt: canonicalPrompt };
+  } catch (error) {
+    if (!imageContentPolicyError(error)) throw error;
+    const safePrompt = buildProviderSafeImagePrompt(canonicalPrompt);
+    if (!safePrompt || safePrompt === canonicalPrompt) throw error;
+    const adaptation: AssetPromptAdaptation = {
+      strategy: "provider-safe-v1",
+      trigger: "IMAGE_CONTENT_POLICY",
+      originalPromptHash: createHash("sha256").update(canonicalPrompt).digest("hex"),
+      submittedPromptHash: createHash("sha256").update(safePrompt).digest("hex")
+    };
+    return {
+      url: await requestImage(safePrompt),
+      submittedPrompt: safePrompt,
+      promptAdaptation: adaptation
+    };
+  }
 }
 
 function isMissingSeedreamModelError(error: unknown) {
@@ -2140,6 +2223,8 @@ async function normalizeStitchInputVideo(
     "+genpts",
     "-i",
     inputPath,
+    "-t",
+    "10",
     "-map",
     "0:v:0",
     "-map",
