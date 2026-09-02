@@ -1,10 +1,13 @@
 import { strict as assert } from "node:assert";
+import { createHash } from "node:crypto";
 import http from "node:http";
 import { once } from "node:events";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {
+  buildNewApiH3ReferencePlan,
+  compileNewApiH3Prompt,
   generateShotVideoViaNewApiH3,
   NewApiH3SubmissionStateUnknownError,
   NewApiH3ProviderError
@@ -95,6 +98,101 @@ try {
     process.env.VIDEOSBATCH_H3_BASE_URL = `http://127.0.0.1:${address.port}/v1`;
     process.env.VIDEOSBATCH_H3_POLL_MS = "1";
     process.env.VIDEOSBATCH_H3_TIMEOUT_MS = "5000";
+    const bindingShot = {
+      ...shot,
+      rawPrompt: "乐乐走进展厅，镜头保持人物与场景关系。",
+      assetIds: ["a2", "a1"],
+      videosBatchReferenceBindings: [
+        { referenceId: "CHARACTER-LELE", ordinal: 1, assetKey: "CHARACTER-LELE", assetId: "a2", semanticLabel: "乐乐" },
+        { referenceId: "SCENE-MUSEUM", ordinal: 2, assetKey: "SCENE-MUSEUM", assetId: "a1", semanticLabel: "展厅" }
+      ]
+    } as any;
+    const bindingAssets = [
+      { id: "a1", name: "展厅", sourceImageUrl: "https://binding.test/scene.png" },
+      { id: "a2", name: "乐乐", sourceImageUrl: "https://binding.test/character.png" }
+    ] as any;
+    const referencePlan = buildNewApiH3ReferencePlan(bindingShot, bindingAssets);
+    assert.deepEqual(referencePlan.map((entry: any) => entry.asset.id), ["a2", "a1"], "H3 plan must honor persisted ordinal order over caller asset order");
+    assert.equal(
+      compileNewApiH3Prompt(bindingShot.rawPrompt, referencePlan.map((entry: any) => entry.binding)),
+      "乐乐走进展厅，镜头保持人物与场景关系。\n\nReference image bindings (strict):\nImage 1 = 乐乐\nImage 2 = 展厅\nStrictly follow the Image N mapping above. Do not swap characters, scenes, props, or any reference images.\n严格按 Image N 对应图片，不得交换人物、场景和道具。"
+    );
+    assert.match(
+      compileNewApiH3Prompt("基础提示", [{ ...referencePlan[0].binding, semanticLabel: "【人物：乐乐】" }]),
+      /Image 1 = 乐乐/u,
+      "H3 aliases must use the semantic name without the canonical label wrapper"
+    );
+    assert.throws(
+      () => compileNewApiH3Prompt("基础提示 P001-A001", referencePlan.map((entry: any) => entry.binding)),
+      /不得包含稳定公开资产编号/u,
+      "H3 prompt must reject stable public asset ids"
+    );
+    const bindingOldBase = process.env.VIDEOSBATCH_H3_BASE_URL;
+    const bindingOldPoll = process.env.VIDEOSBATCH_H3_POLL_MS;
+    const bindingOldTimeout = process.env.VIDEOSBATCH_H3_TIMEOUT_MS;
+    const bindingOriginalFetch = globalThis.fetch;
+    let bindingPrompt = "";
+    let bindingNames: string[] = [];
+    let bindingHashes: string[] = [];
+    let preparedBindings: any[] = [];
+    let preparedPrompt = "";
+    const bindingEvents: string[] = [];
+    process.env.VIDEOSBATCH_H3_BASE_URL = "https://binding.test/v1";
+    process.env.VIDEOSBATCH_H3_POLL_MS = "1";
+    process.env.VIDEOSBATCH_H3_TIMEOUT_MS = "5000";
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "https://binding.test/character.png" || url === "https://binding.test/scene.png") {
+        return new Response(url.endsWith("character.png") ? new Uint8Array([2, 2, 2]) : new Uint8Array([1, 1, 1]), {
+          status: 200,
+          headers: { "content-type": "image/png" }
+        });
+      }
+      if (url === "https://binding.test/v1/videos") {
+        bindingEvents.push("post");
+        const form = init?.body as FormData;
+        bindingPrompt = String(form.get("prompt") || "");
+        const files = form.getAll("images") as File[];
+        bindingNames = files.map((file) => file.name);
+        bindingHashes = await Promise.all(files.map(async (file) => createHash("sha256").update(Buffer.from(await file.arrayBuffer())).digest("hex")));
+        return new Response(JSON.stringify({ task_id: "binding-task" }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      if (url === "https://binding.test/v1/videos/binding-task/content") {
+        return new Response(Buffer.from("fake-binding-mp4"), { status: 200, headers: { "content-type": "video/mp4" } });
+      }
+      throw new Error(`unexpected H3 binding test URL: ${url}`);
+    }) as typeof fetch;
+    try {
+      const bindingUrl = await generateShotVideoViaNewApiH3(bindingShot, bindingAssets, {
+        onReferenceBindingsPrepared: (bindings) => {
+          bindingEvents.push("prepared");
+          preparedBindings = bindings;
+        },
+        onPromptPrepared: (prompt) => {
+          preparedPrompt = prompt;
+        }
+      });
+      assert.match(bindingUrl, /^\/media\/videosbatch-h3-/);
+      assert.deepEqual(bindingEvents, ["prepared", "post"], "binding snapshot must be prepared before H3 POST");
+      assert.match(bindingPrompt, /Image 1 = 乐乐\nImage 2 = 展厅/u);
+      assert.equal(preparedPrompt, bindingPrompt, "the persisted provider prompt must equal the prompt sent in FormData");
+      assert.doesNotMatch(bindingPrompt, /P\d{3,}-A\d{3,}/u, "stable public ids must stay out of H3 prompt");
+      assert.deepEqual(bindingNames, ["reference-1.png", "reference-2.png"]);
+      assert.deepEqual(bindingHashes, [
+        createHash("sha256").update(Buffer.from([2, 2, 2])).digest("hex"),
+        createHash("sha256").update(Buffer.from([1, 1, 1])).digest("hex")
+      ], "multipart files must follow the same ordinal list as the prompt");
+      assert.deepEqual(preparedBindings.map((binding) => binding.ordinal), [1, 2]);
+      assert.ok(preparedBindings.every((binding) => /^[a-f0-9]{64}$/u.test(binding.imageUrlHash || "")));
+    } finally {
+      globalThis.fetch = bindingOriginalFetch;
+      if (bindingOldBase === undefined) delete process.env.VIDEOSBATCH_H3_BASE_URL;
+      else process.env.VIDEOSBATCH_H3_BASE_URL = bindingOldBase;
+      if (bindingOldPoll === undefined) delete process.env.VIDEOSBATCH_H3_POLL_MS;
+      else process.env.VIDEOSBATCH_H3_POLL_MS = bindingOldPoll;
+      if (bindingOldTimeout === undefined) delete process.env.VIDEOSBATCH_H3_TIMEOUT_MS;
+      else process.env.VIDEOSBATCH_H3_TIMEOUT_MS = bindingOldTimeout;
+    }
     const localAssets = [
       { id: "a1", sourceImageUrl: `https://invalid.example/a1.png`, imageUrl: "/media/a1.png" },
       { id: "a2", sourceImageUrl: `https://invalid.example/a2.png` }

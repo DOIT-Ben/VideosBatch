@@ -1,5 +1,6 @@
 import type { Asset, AssetType, Shot } from "../../shared/types";
 import "../../shared/videosBatchNativeProjection";
+import type { VideosBatchReferenceBinding } from "../../shared/videosBatchNativeProjection";
 import type { CinemaStore } from "../store";
 import {
   canonicalRoleField,
@@ -149,6 +150,14 @@ function canAdoptShotForBatch(shot: Shot, metadata: ReturnType<typeof projection
 
 function semanticLabelText(value: unknown) {
   return canonicalSemanticLabelText(value);
+}
+
+function semanticDisplayText(value: unknown) {
+  return String(value ?? "")
+    .replace(/^\s*【[^：:]+[：:]\s*/u, "")
+    .replace(/】\s*$/u, "")
+    .replace(/\s+/gu, " ")
+    .trim();
 }
 
 function uniqueText(values: unknown[]) {
@@ -340,6 +349,7 @@ export async function projectFinalStoryboardIntoSeeReel(
       camera,
       durationSec: 10,
       assetIds: [],
+      videosBatchReferenceBindings: undefined,
       rawPrompt: prompt,
       prompt,
       videosBatchBatchId: metadata.batchId,
@@ -378,8 +388,8 @@ export async function projectFinalStoryboardIntoSeeReel(
 
 /**
  * Resolve canonical public references to the user's confirmed native assets at
- * execution time. This updates native Shot.assetIds only; it never rewrites the
- * FINAL_STORYBOARD or derives execution truth from COPYABLE_PROMPT.
+ * execution time. This updates the ordered native asset ids and binding snapshot;
+ * it never rewrites FINAL_STORYBOARD or derives execution truth from COPYABLE_PROMPT.
  */
 export async function applyConfirmedReferencesToNativeShots(
   store: CinemaStore,
@@ -411,6 +421,8 @@ export async function applyConfirmedReferencesToNativeShots(
       return {
         stableId,
         selectedAssetId,
+        assetKey: String(item.assetKey || assetKeyFromNativeAsset(asset) || asset.name || stableId).trim(),
+        asset,
         labels: [item.assetKey, stableId, asset?.name, asset?.description, ...(asset?.tags || [])]
           .map(semanticLabelText)
           .filter(Boolean)
@@ -431,7 +443,12 @@ export async function applyConfirmedReferencesToNativeShots(
       : currentBatchShots[index];
     if (!nativeShot) throw new Error(`Native shot not found for final storyboard segment ${index + 1}`);
 
-    const resolved = (segment.references || []).map((reference) => {
+    const previousBindings = new Map(
+      (nativeShot.videosBatchReferenceBindings || []).map((binding) => [binding.assetId, binding])
+    );
+    const bindings: VideosBatchReferenceBinding[] = [];
+    const seenAssetIds = new Set<string>();
+    for (const [referenceIndex, reference] of (segment.references || []).entries()) {
       const referenceRecord = reference as Record<string, unknown>;
       const explicitStableId = String(referenceRecord.publicAssetId || referenceRecord.assetId || "").trim();
       const label = semanticLabelText(reference.label);
@@ -439,14 +456,27 @@ export async function applyConfirmedReferencesToNativeShots(
         ? selectedAssets.find((item) => item.stableId === explicitStableId)
         : selectedAssets.find((item) => item.labels.some((candidate) => candidate === label || candidate.includes(label) || label.includes(candidate)));
       if (!matched) throw new Error(`No confirmed native asset for semantic reference ${String(reference.label || explicitStableId || "<empty>")}`);
-      return matched.selectedAssetId;
-    });
-    if (!resolved.length) throw new Error(`Final storyboard segment ${index + 1} has no resolvable confirmed asset references`);
+      if (seenAssetIds.has(matched.selectedAssetId)) continue;
+      seenAssetIds.add(matched.selectedAssetId);
+      const semanticLabel = semanticDisplayText(reference.label) || matched.asset.name || matched.assetKey;
+      const referenceId = String(referenceRecord.referenceId || matched.assetKey || semanticLabel || `reference-${referenceIndex + 1}`).trim();
+      const previous = previousBindings.get(matched.selectedAssetId);
+      bindings.push({
+        referenceId,
+        ordinal: bindings.length + 1,
+        assetKey: matched.assetKey,
+        assetId: matched.selectedAssetId,
+        semanticLabel,
+        ...(previous?.imageUrlHash ? { imageUrlHash: previous.imageUrlHash } : {})
+      });
+    }
+    if (!bindings.length) throw new Error(`Final storyboard segment ${index + 1} has no resolvable confirmed asset references`);
 
     const prompt = canonicalPromptParts(segment, canonical.storyType).join("\n");
 
     const shot = await store.updateShot(nativeShot.id, {
-      assetIds: [...new Set(resolved)],
+      assetIds: bindings.map((binding) => binding.assetId),
+      videosBatchReferenceBindings: bindings,
       rawPrompt: prompt,
       prompt,
       videosBatchBatchId: metadata.batchId,

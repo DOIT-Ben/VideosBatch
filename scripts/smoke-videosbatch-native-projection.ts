@@ -59,6 +59,18 @@ try {
   assert.equal(nativeAssets.length, 2);
   assert.deepEqual(nativeAssets.map((asset: any) => asset.workflowReferenceId), ["P001-A001", "P001-A002"]);
   assert.ok(nativeAssets.every((asset: any) => asset.id.startsWith("asset_")));
+  const declaredOrderProbe = store.getAssetsForShot({
+    id: "shot_order_probe",
+    sessionId,
+    assetIds: [nativeAssets[1].id, nativeAssets[0].id],
+    prompt: "",
+    rawPrompt: ""
+  } as any);
+  assert.deepEqual(
+    declaredOrderProbe.map((asset: any) => asset.id),
+    [nativeAssets[1].id, nativeAssets[0].id],
+    "VideosBatch reference reads must follow Shot.assetIds, not global asset insertion order"
+  );
 
   const storyboard = {
     schemaVersion: "2",
@@ -134,6 +146,26 @@ try {
   const selectedByStable = new Map(confirmation.items.map((item: any) => [item.publicAssetId, item.selectedAssetId]));
   assert.deepEqual(resolvedShots[0].assetIds, [selectedByStable.get("P001-A001"), selectedByStable.get("P001-A002")]);
   assert.deepEqual(resolvedShots[1].assetIds, [selectedByStable.get("P001-A001"), selectedByStable.get("P001-A002")]);
+  assert.deepEqual(
+    resolvedShots[0].videosBatchReferenceBindings?.map((binding: any) => ({
+      ordinal: binding.ordinal,
+      assetKey: binding.assetKey,
+      assetId: binding.assetId,
+      semanticLabel: binding.semanticLabel
+    })),
+    [
+      { ordinal: 1, assetKey: "CHARACTER-HERO", assetId: selectedByStable.get("P001-A001"), semanticLabel: "小宇" },
+      { ordinal: 2, assetKey: "SCENE-MATH-CLUB", assetId: selectedByStable.get("P001-A002"), semanticLabel: "数学社团教室" }
+    ],
+    "native projection must persist semantic references in declared ordinal order"
+  );
+  const reloaded = new CinemaStore();
+  await reloaded.load();
+  assert.deepEqual(
+    reloaded.getShot(resolvedShots[0].id)?.videosBatchReferenceBindings?.map((binding: any) => binding.ordinal),
+    [1, 2],
+    "reference binding snapshot must survive store serialization"
+  );
   assert.ok(resolvedShots[0].rawPrompt.includes("小宇在数学社团教室观察黑布窗口"), "execution projection must retain canonical FINAL_STORYBOARD visual content");
   assert.ok(!resolvedShots[0].rawPrompt.includes("P001-A001"), "execution projection must not use COPYABLE_PROMPT stable markers");
 

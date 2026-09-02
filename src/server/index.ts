@@ -15,6 +15,7 @@ import type {
   AssetImageModel,
   StandardApiKeyRoute
 } from "../shared/types";
+import type { VideosBatchReferenceBinding } from "../shared/videosBatchNativeProjection";
 import {
   canUseBytePlusSeedance,
   type BuildSeedancePayloadOpts,
@@ -4966,6 +4967,7 @@ async function submitShotGeneration(shotId: string, body: Partial<Shot>): Promis
     return { status: 400, body: emptyShot || { error: "请输入 Prompt 后再运行" } };
   }
 
+  let pendingRenderId: string | undefined;
   try {
     const allAssets = store.snapshot().assets;
     const mentionedAssets = store.getAssetsForShot({ ...shot, rawPrompt: promptText, prompt: promptText });
@@ -5133,6 +5135,7 @@ async function submitShotGeneration(shotId: string, body: Partial<Shot>): Promis
       assetIds: mergeIds(shot.assetIds, assets.map((asset) => asset.id))
     };
     const pendingRender = createPendingShotRender(shot, assets);
+    pendingRenderId = pendingRender.id;
     pendingRender.reviewEnabled = resolveNodeReviewEnabled(
       shouldEnableReview((body as Record<string, unknown>)?.visionReview as boolean | undefined),
       shot.vlmReviewEnabled
@@ -5196,7 +5199,24 @@ async function submitShotGeneration(shotId: string, body: Partial<Shot>): Promis
     const seedanceOpts = {
       prebuiltText: finalComposedPrompt,
       lang: sessionLang,
-      ...(typeof requestedGenerateAudio === "boolean" ? { generateAudio: requestedGenerateAudio } : {})
+      ...(typeof requestedGenerateAudio === "boolean" ? { generateAudio: requestedGenerateAudio } : {}),
+      onProviderReferenceBindingsPrepared: async (bindings: VideosBatchReferenceBinding[]) => {
+        const persisted = await store.updateShot(shot.id, {
+          videosBatchReferenceBindings: structuredClone(bindings)
+        });
+        if (!persisted) throw new Error(`Failed to persist reference bindings for shot ${shot.id}`);
+        shot = persisted;
+        pendingRender.model = "minimax_h3";
+        pendingRender.videosBatchReferenceBindings = structuredClone(bindings);
+        await store.updateShotRender(shot.id, pendingRender.id, {
+          model: "minimax_h3",
+          videosBatchReferenceBindings: structuredClone(bindings)
+        });
+      },
+      onProviderPromptPrepared: async (prompt: string) => {
+        pendingRender.composedPrompt = prompt;
+        await store.updateShotRender(shot.id, pendingRender.id, { composedPrompt: prompt });
+      }
     };
     const seedanceCredentialForRequest = resolveSeedanceCredential();
     const seedanceOptsWithCredential = { ...seedanceOpts, credential: seedanceCredentialForRequest };
@@ -5238,7 +5258,28 @@ async function submitShotGeneration(shotId: string, body: Partial<Shot>): Promis
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Shot generation failed";
-    return { status: 500, body: await store.updateShot(shot.id, { status: "error", error: message }) };
+    const taskId = typeof (error as { taskId?: unknown })?.taskId === "string"
+      ? String((error as { taskId: string }).taskId).trim()
+      : "";
+    const current = store.getShot(shot.id);
+    const pending = pendingRenderId
+      ? current?.renders?.find((render) => render.id === pendingRenderId)
+      : undefined;
+    if (current && pending) {
+      await store.updateShotRender(shot.id, pendingRenderId!, {
+        status: taskId ? "generating" : "error",
+        generationTaskId: taskId || undefined,
+        generationStartedAt: taskId ? pending.generationStartedAt : undefined,
+        error: message
+      }).catch(() => undefined);
+    }
+    const updated = await store.updateShot(shot.id, {
+      status: taskId ? "generating" : (current?.videoUrl ? "ready" : "error"),
+      generationTaskId: taskId || undefined,
+      generationStartedAt: taskId ? pending?.generationStartedAt : undefined,
+      error: message
+    });
+    return { status: 500, body: updated || current || { error: message } };
   }
 }
 
@@ -5289,6 +5330,9 @@ function createPendingShotRender(shot: Shot, assets: Asset[]): ShotRender {
     durationSec: shot.durationSec,
     seedanceVariant: shot.seedanceVariant,
     assetIds: assets.map((asset) => asset.id),
+    videosBatchReferenceBindings: shot.videosBatchReferenceBindings
+      ? structuredClone(shot.videosBatchReferenceBindings)
+      : undefined,
     usePreviousShotClip: shot.usePreviousShotClip,
     previousShotClipSec: shot.previousShotClipSec,
     previousShotClipSecOverride: shot.previousShotClipSecOverride,

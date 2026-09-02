@@ -1,14 +1,14 @@
 # VideosBatch 工作流唯一规范
 
 Status: active
-Last Reviewed: 2026-08-31
+Last Reviewed: 2026-09-02
 Spec ID: `VIDEOSBATCH_WORKFLOW_CANONICAL`
-Canonical Version: `1.0.0`
+Canonical Version: `1.1.0`
 Owner: VideosBatch 产品与运行时
 
 > 本文件是 VideosBatch 课程视频工作流的唯一有效设计真源。所有阶段顺序、提示词材料、字段语义、输出格式、人工门禁、版本血缘、重试、资产和媒体规则均以本文件为准。
 >
-> 当前只完成文档治理第 1 阶段：只定稿规格，不归档旧文档、不修改业务代码、不修改 `.env`、不调用真实 Provider。阶段 2 的归档和引用迁移必须在本文件确认后单独执行。
+> 阶段 1 的文档治理和阶段 2 的归档已经完成；本次 1.1.0 只增加参考图绑定合同，代码实施和真实 Provider 验收按 `docs/videosbatch-reference-binding-repair.md` 的独立边界执行。
 >
 > JSON 只承担传输和持久化结构；它不能删减、替代或改写上游手册规定的字段语义和创作约束。模型输出是建议稿，服务端校验、用户确认和版本血缘才决定可继续的事实。
 
@@ -49,7 +49,7 @@ VideosBatch 面向小学课程视频制作人员，把一份教案按可审阅�
 - 上游文件提交：`85252a19e6033c94b4b82699dd6e9fdc9f2f2fbf`（该文件最近一次变更）；上游检出 HEAD：`aa15bb5d57022ffc43298ba60e617fd91b1a0766`。
 - 原始文件 SHA-256：`8A794F875E117A9301150EBDEAF7E9B614EA2BDE18514652F8FEB729001E24B4`（60400 bytes，1014 行）。
 - 归档清单 [`docs/archive/videosbatch-design/manifest.json`](../docs/archive/videosbatch-design/manifest.json) 的 `bytes/sha256` 校验仓库内归档字节；由于仓库统一 `eol=lf`，上游手册归档为 59386 bytes、SHA-256 `888A49FB0E430D52795621C05345E48893B740485C5E3F5FA8BCEF01EC0757C8`，同时以 `sourceBytes/sourceSha256` 保留上述 60400 bytes 原始指纹。
-- VideosBatch 本地适配版本：`VIDEOSBATCH_WORKFLOW_CANONICAL@1.0.0`，定稿日期 `2026-08-31`。
+- VideosBatch 本地适配版本：`VIDEOSBATCH_WORKFLOW_CANONICAL@1.1.0`，定稿日期 `2026-09-02`。
 - 适配原则：保留上游第 1–5 节完整提示词语义；将机器阶段扩展为本地 13 阶段；最终分镜只使用语义对象标签，稳定公开资产编号只在垫图副本阶段注入。
 
 ## Phase 1 Governance Plan（阶段 1 规划与治理）
@@ -2385,6 +2385,17 @@ P001-A004：黄色小花（道具）
 - 正式分镜、剧本或资产计划版本变化后副本立即 stale；报价必须重新从当前全祖先 hash 和资产顺序生成。
 - 执行按一对一十秒片段映射，不自动合并或拆分；拼接只读取 ready 片段和独立音频时间线，不能把视觉 prompt 当旁白或把旁白重复拼入视频。
 
+### 7.7 H3 参考图绑定
+
+- `FINAL_STORYBOARD.references` 的声明顺序是当前镜头的唯一参考图顺序；`Shot.assetIds` 必须按该顺序保存，资产全局表顺序不得参与重排。
+- H3 适配器在提交前建立 1-based `ordinal`，并由同一个有序列表同时生成 `Image N = 资产名称` 映射、multipart `images` 顺序和脱敏审计记录。稳定公开资产 ID不得进入 H3 prompt。
+- VideosBatch 原生执行入口和直接 `/api/shots/:shotId/generate` 入口必须使用同一绑定回调；旧入口不得绕过快照或使用另一套参考图排序。
+- H3 prompt 必须明确“严格按 Image N 对应图片，不得交换人物、场景和道具”；资产名称只作为语义别名，换行和控制字符须被规整。
+- 绑定快照至少保存 `referenceId`、`ordinal`、`assetKey`、native `assetId`、语义名称和实际提交 URL 的 `imageUrlHash`。快照在付费 POST 前持久化；已提交任务的恢复只轮询原 task，不重新解析或上传参考图。
+- 请求日志只能记录 `{ordinal, assetKey, assetId, imageUrlHash}` 等脱敏字段，不记录签名 URL、密钥或 Token。
+- 旧 Shot 没有绑定快照时可从已按声明顺序读取的资产生成兼容快照；超过 H3 2–9 张限制、ordinal 重复/断号、资产缺失或图片不可读时必须在提交前失败，不得静默丢图或重排。
+- `COPYABLE_PROMPT.referenceAssetIds` 必须按当前 `FINAL_STORYBOARD.references` 解析顺序完整返回。稳定 ID 已解析但语义文字未出现在任何画面效果子镜头时，将标记插入第一个画面效果子镜头开头；去除标记后正文必须保持不变，不得仅因位置未命中把整条镜头标为 `PARTIAL`。
+
 ## 8. Provider、重试与失败隔离
 
 ### 8.1 文本 Provider
@@ -2424,7 +2435,7 @@ P001-A004：黄色小花（道具）
 
 ## 9. Testing Strategy
 
-离线合同验证至少覆盖手册来源、阶段顺序和九步映射；六个文本阶段的提示词边界、专用 Schema、禁止项和字段顺序；九套导入、600–800 字故事、四类资产、目标时长集合和三类分镜 canonical `oneOf` 语义（以及 provider wire Schema 不使用 `oneOf` 的适配）；错误类型/章节、漏场次、缺标签、稳定 ID 混入、旁白超句、音效超长、提前给答案、版本过期、资产归属错误、重复旁白和非 10 秒片段；重试预算、主备切换、幂等键、未知提交对账、失败隔离、断点恢复和拼接门禁。
+离线合同验证至少覆盖手册来源、阶段顺序和九步映射；六个文本阶段的提示词边界、专用 Schema、禁止项和字段顺序；九套导入、600–800 字故事、四类资产、目标时长集合和三类分镜 canonical `oneOf` 语义（以及 provider wire Schema 不使用 `oneOf` 的适配）；错误类型/章节、漏场次、缺标签、稳定 ID 混入、旁白超句、音效超长、提前给答案、版本过期、资产归属错误、重复旁白和非 10 秒片段；参考图声明顺序、ordinal、H3 `Image N` 映射、multipart 同源顺序、脱敏哈希快照、旧任务恢复和 `COPYABLE_PROMPT` 首个画面子镜头回退；重试预算、主备切换、幂等键、未知提交对账、失败隔离、断点恢复和拼接门禁。
 
 ## Verification
 
@@ -2446,6 +2457,7 @@ git diff --check
 - [ ] 课程导入九套、故事 600–800 字、四类资产、正式剧本和三类最终分镜合同逐项可校验。
 - [ ] `STORY`、`SCIENCE`、`KNOWLEDGE` 字段互斥且固定顺序；正式分镜只用语义标签，稳定 ID 只在垫图副本出现。
 - [ ] 版本血缘、stale、资产归属/验证、首轮三次重试预算与独立合同修复预算、主备切换、统一错误和独立媒体流均有明确规则。
+- [x] 每个 H3 镜头的 `assetIds`、`Image N` 映射、multipart 顺序和执行快照保持同源且可审计；`COPYABLE_PROMPT` 引用集合与正式分镜一致。
 - [ ] 阶段 1 不修改业务代码、`.env` 或旧文件，不调用真实 Provider；现有脏工作树保持不变。
 
 ## Change Policy

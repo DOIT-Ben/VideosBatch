@@ -185,6 +185,9 @@ export class CinemaStore {
       debugNote: "",
       seedanceVariant: partial?.seedanceVariant || "standard",
       usePreviousShotClip: false,
+      videosBatchReferenceBindings: partial?.videosBatchReferenceBindings
+        ? structuredClone(partial.videosBatchReferenceBindings)
+        : undefined,
       renders: [],
       status: "draft",
       createdAt: ts,
@@ -456,6 +459,10 @@ export class CinemaStore {
         id: shotIdMap.get(shot.id)!,
         sessionId: newSessionId,
         assetIds: mapAssetIds(shot.assetIds),
+        videosBatchReferenceBindings: shot.videosBatchReferenceBindings?.map((binding) => ({
+          ...binding,
+          assetId: mapAssetId(binding.assetId) || binding.assetId
+        })),
         firstFrameAssetId: mapAssetId(shot.firstFrameAssetId),
         lastFrameAssetId: mapAssetId(shot.lastFrameAssetId),
         subShotStoryboardAssetId: mapAssetId(shot.subShotStoryboardAssetId),
@@ -471,6 +478,10 @@ export class CinemaStore {
           ...render,
           id: id("render"),
           assetIds: mapAssetIds(render.assetIds),
+          videosBatchReferenceBindings: render.videosBatchReferenceBindings?.map((binding) => ({
+            ...binding,
+            assetId: mapAssetId(binding.assetId) || binding.assetId
+          })),
           firstFrameAssetId: mapAssetId(render.firstFrameAssetId),
           lastFrameAssetId: mapAssetId(render.lastFrameAssetId),
           subShotStoryboardAssetId: mapAssetId(render.subShotStoryboardAssetId),
@@ -603,6 +614,10 @@ export class CinemaStore {
       id: shotIdMap.get(shot.id)!,
       sessionId: newSessionId,
       assetIds: mapAssetIds(shot.assetIds),
+      videosBatchReferenceBindings: shot.videosBatchReferenceBindings?.map((binding) => ({
+        ...binding,
+        assetId: mapAssetId(binding.assetId) || binding.assetId
+      })),
       firstFrameAssetId: mapAssetId(shot.firstFrameAssetId),
       lastFrameAssetId: mapAssetId(shot.lastFrameAssetId),
       subShotStoryboardAssetId: mapAssetId(shot.subShotStoryboardAssetId),
@@ -618,6 +633,10 @@ export class CinemaStore {
         ...render,
         id: id("render"),
         assetIds: mapAssetIds(render.assetIds),
+        videosBatchReferenceBindings: render.videosBatchReferenceBindings?.map((binding) => ({
+          ...binding,
+          assetId: mapAssetId(binding.assetId) || binding.assetId
+        })),
         firstFrameAssetId: mapAssetId(render.firstFrameAssetId),
         lastFrameAssetId: mapAssetId(render.lastFrameAssetId),
         subShotStoryboardAssetId: mapAssetId(render.subShotStoryboardAssetId),
@@ -832,6 +851,7 @@ export class CinemaStore {
     this.data.assets = this.data.assets.filter((asset) => asset.id !== assetId);
     this.data.shots.forEach((shot) => {
       shot.assetIds = (shot.assetIds || []).filter((id) => id !== assetId);
+      shot.videosBatchReferenceBindings = shot.videosBatchReferenceBindings?.filter((binding) => binding.assetId !== assetId);
       shot.subShotStoryboardAssetIds = (shot.subShotStoryboardAssetIds || []).filter((id) => id !== assetId);
       if (shot.subShotStoryboardAssetId === assetId) shot.subShotStoryboardAssetId = undefined;
       if (shot.referenceVideoAssetId === assetId) {
@@ -846,6 +866,7 @@ export class CinemaStore {
       shot.renders = (shot.renders || []).map((render) => ({
         ...render,
         assetIds: (render.assetIds || []).filter((id) => id !== assetId),
+        videosBatchReferenceBindings: render.videosBatchReferenceBindings?.filter((binding) => binding.assetId !== assetId),
         subShotStoryboardAssetId: render.subShotStoryboardAssetId === assetId ? undefined : render.subShotStoryboardAssetId,
         subShotStoryboardAssetIds: (render.subShotStoryboardAssetIds || []).filter((id) => id !== assetId),
         referenceVideoAssetId: render.referenceVideoAssetId === assetId ? undefined : render.referenceVideoAssetId,
@@ -936,6 +957,7 @@ export class CinemaStore {
       }));
       if (!deletedAssetIds.size) return;
       survivor.assetIds = (survivor.assetIds || []).filter((id) => !deletedAssetIds.has(id));
+      survivor.videosBatchReferenceBindings = survivor.videosBatchReferenceBindings?.filter((binding) => !deletedAssetIds.has(binding.assetId));
       survivor.subShotStoryboardAssetIds = (survivor.subShotStoryboardAssetIds || []).filter((id) => !deletedAssetIds.has(id));
       if (survivor.subShotStoryboardAssetId && deletedAssetIds.has(survivor.subShotStoryboardAssetId)) {
         survivor.subShotStoryboardAssetId = survivor.subShotStoryboardAssetIds?.[0];
@@ -952,6 +974,7 @@ export class CinemaStore {
       survivor.renders = (survivor.renders || []).map((render) => ({
         ...render,
         assetIds: (render.assetIds || []).filter((id) => !deletedAssetIds.has(id)),
+        videosBatchReferenceBindings: render.videosBatchReferenceBindings?.filter((binding) => !deletedAssetIds.has(binding.assetId)),
         subShotStoryboardAssetId: render.subShotStoryboardAssetId && deletedAssetIds.has(render.subShotStoryboardAssetId)
           ? undefined
           : render.subShotStoryboardAssetId,
@@ -1065,13 +1088,16 @@ export class CinemaStore {
     };
 
     const byId = new Map(this.data.assets.map((asset) => [asset.id, asset]));
-    const wanted = new Set<string>();
+    const ordered: Asset[] = [];
+    const added = new Set<string>();
     const addIfVisible = (assetId: string | undefined) => {
       if (!assetId) return;
-      const asset = this.data.assets.find((item) => item.id === assetId);
+      const asset = byId.get(assetId);
       if (!asset) return;
       if (!isVisible(asset)) return;
-      wanted.add(assetId);
+      if (added.has(asset.id)) return;
+      added.add(asset.id);
+      ordered.push(asset);
     };
     (shot.assetIds ?? []).forEach(addIfVisible);
 
@@ -1092,9 +1118,11 @@ export class CinemaStore {
       const aliases = [asset.name, ...(asset.tags ?? [])]
         .map((value) => normalizeMentionText(value))
         .filter(Boolean);
-      if (aliases.some((alias) => prompt.includes(`@${alias}`))) wanted.add(asset.id);
+      if (aliases.some((alias) => prompt.includes(`@${alias}`))) addIfVisible(asset.id);
     }
-    return structuredClone(this.data.assets.filter((asset) => wanted.has(asset.id)));
+    // The caller-declared Shot.assetIds sequence is the only stable reference
+    // order. Never rebuild it by filtering the global asset array.
+    return structuredClone(ordered);
   }
 }
 
@@ -1215,8 +1243,10 @@ function collectShotAssetIds(shot: Shot) {
   add(shot.subShotStoryboardAssetId);
   (shot.subShotStoryboardAssetIds || []).forEach(add);
   add(shot.referenceVideoAssetId);
+  (shot.videosBatchReferenceBindings || []).forEach((binding) => add(binding.assetId));
   (shot.renders || []).forEach((render) => {
     (render.assetIds || []).forEach(add);
+    (render.videosBatchReferenceBindings || []).forEach((binding) => add(binding.assetId));
     add(render.firstFrameAssetId);
     add(render.lastFrameAssetId);
     add(render.subShotStoryboardAssetId);
@@ -1236,6 +1266,7 @@ function shotPatchFromRender(render: ShotRender): Partial<Shot> {
     durationSec: render.durationSec,
     seedanceVariant: render.seedanceVariant,
     assetIds: render.assetIds,
+    videosBatchReferenceBindings: render.videosBatchReferenceBindings,
     rawPrompt: render.editedRawPrompt || render.rawPrompt,
     prompt: render.editedPrompt || render.editedRawPrompt || render.prompt,
     debugNote: render.note || "",

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Asset, AssetImageModel, AssetPromptAdaptation, Shot, ShotRender } from "../../shared/types";
+import type { VideosBatchReferenceBinding } from "../../shared/videosBatchNativeProjection";
 import type {
   VideosBatchAudioEvent,
   VideosBatchAudioTimeline,
@@ -111,6 +112,10 @@ export interface VideosBatchNativeMediaDeps {
       /** Resume an already accepted provider task instead of submitting again. */
       taskId?: string | null;
       onProviderTaskSubmitted?(taskId: string): Promise<void> | void;
+      /** Persist the exact ordered reference list before a provider POST. */
+      onProviderReferenceBindingsPrepared?(bindings: VideosBatchReferenceBinding[]): Promise<void> | void;
+      /** Capture the exact compiled provider prompt before a provider POST. */
+      onProviderPromptPrepared?(prompt: string): Promise<void> | void;
     }
   ): Promise<string>;
   cacheGeneratedVideo(url: string, renderId: string): Promise<NativeCachedVideoResult>;
@@ -129,7 +134,9 @@ export const defaultVideosBatchNativeMediaDeps: VideosBatchNativeMediaDeps = {
   cacheGeneratedImage,
   generateShotVideo: async (shot, assets, options) => generateShotVideo(shot, assets, {
     taskId: options?.taskId,
-    onProviderTaskSubmitted: options?.onProviderTaskSubmitted
+    onProviderTaskSubmitted: options?.onProviderTaskSubmitted,
+    onProviderReferenceBindingsPrepared: options?.onProviderReferenceBindingsPrepared,
+    onProviderPromptPrepared: options?.onProviderPromptPrepared
   }),
   cacheGeneratedVideo,
   probeVideoDuration: async (url) => {
@@ -858,9 +865,20 @@ export function createVideosBatchNativeMediaStageRegistry(
           current = generating;
 
           const activeAssets = store.getAssetsForShot(current);
+          let submittedPrompt: string | undefined;
           const remoteUrl = assertRealMediaUrl(
             await deps.generateShotVideo(current, activeAssets, {
               taskId: current.generationTaskId,
+              onProviderReferenceBindingsPrepared: async (bindings) => {
+                const persisted = await store.updateShot(current.id, {
+                  videosBatchReferenceBindings: structuredClone(bindings)
+                });
+                if (!persisted) throw new Error(`Failed to persist reference bindings for native shot ${current.id}`);
+                current = persisted;
+              },
+              onProviderPromptPrepared: (prompt) => {
+                submittedPrompt = prompt;
+              },
               onProviderTaskSubmitted: async (taskId) => {
                 const persisted = await store.updateShot(current.id, {
                   generationTaskId: taskId,
@@ -894,6 +912,10 @@ export function createVideosBatchNativeMediaStageRegistry(
             videoDurationVerified: true,
             seedanceVariant: current.seedanceVariant,
             assetIds: [...(current.assetIds || [])],
+            videosBatchReferenceBindings: current.videosBatchReferenceBindings
+              ? structuredClone(current.videosBatchReferenceBindings)
+              : undefined,
+            composedPrompt: submittedPrompt || current.rawPrompt || current.prompt,
             generationTaskId: current.generationTaskId,
             generationStartedAt,
             videosBatchBatchId: batch.batchId,

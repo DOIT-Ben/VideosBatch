@@ -1,13 +1,13 @@
 # VideosBatch 运行事实
 
 更新时间：2026-09-02
-适用范围：本机 `E:\desktop\AI\11_Products\lab\VideosBatch` 的 Guided Studio 验收配置。
+适用范围：本机 `E:\desktop\AI\11_Products\lab\VideosBatch` 的 Guided Studio 验收配置与参考图绑定专项证据。
 
 ## 当前 Git 现场
 
-- 分支：`master`
-- HEAD：`d2f61ed85011987e097d4d3f9ae0283f070a5715`
-- 该工作区存在既有未提交改动；本记录不代表这些改动已经提交或推送。
+- 分支：`feature/videosbatch-reference-binding`
+- HEAD：`b83ef6d77b989d896f2dd05f76bb28c737c4ad3f`（修复工作仍未提交）
+- 工作区保留本专项代码/文档未提交改动；本记录不代表这些改动已经推送。
 
 ## 本机配置事实
 
@@ -78,6 +78,14 @@
 ## 使用边界
 
 保持 `fake/fake` 才是本机浏览器验收默认状态。只有明确进入真实链路验收时，才在本机临时环境中切换执行器，并继续遵守密钥不入 Git、不入日志、不入截图的约束。
+
+## 2026-09-02 参考图绑定专项
+
+- 详细契约、改动边界和验收命令见 `docs/videosbatch-reference-binding-repair.md`；本次不改音频、UI、文本生成逻辑（仅修复 `COPYABLE_PROMPT` 派生完整性）或 Provider 配置。
+- 临时进程覆盖 `VIDEOSBATCH_MEDIA_MODE=native`、`VIDEOSBATCH_VIDEO_PROVIDER=newapi-h3`、文本执行器仍为 `fake`；仓库 `.env` 保持 `fake/fake`，未写回。
+- 在既有会话 `ses_5e3ff36a` 只重新生成 3 条 10 秒镜头：第 1/2/3 条分别提交 2/3/5 张参考图。三条均返回 ready，实测 1376x768、约 10.125 秒，并保留 H.264/AAC。
+- 三条 Render 均保存 ordered binding、64 位 `imageUrlHash` 和 H3 编译 prompt；`Image N` 映射检查通过，prompt 未含 `Pxxx-Axxx` 稳定公开编号。未执行 stitch，也未生成第 4 条。
+- 首次第 1 条提交曾得到 HTTP 502 且无 taskId；该历史 Render 保留为 `error`，当前没有孤儿 `generating` Render。完整 StoryPlan 未持久化在该旧会话，因此这里只声明参考绑定专项通过，不声明完整画布终审通过。
 
 ## 2026-09-02 本地测试数据清理
 

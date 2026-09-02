@@ -14,6 +14,7 @@ import { arkMissingKeyMessage, BYTEPLUS_ARK_BASE, resolveArkCredential, VOLCENGI
 import { seedreamWebSearchPayload } from "./seedreamOptions";
 import { generateShotVideoViaNewApiH3 } from "./videosBatchWorkflow/newApiH3Video";
 import type { VideosBatchAudioTimeline } from "../shared/videosBatchWorkflow";
+import type { VideosBatchReferenceBinding } from "../shared/videosBatchNativeProjection";
 
 export interface BuildSeedancePayloadOpts {
   /** Override the assembled text content. Used when the user audited & edited the dryRun preview. */
@@ -31,6 +32,10 @@ export interface BuildSeedancePayloadOpts {
   credential?: ArkCredential;
   /** VideosBatch NewAPI H3 hook: persist the upstream task id before polling starts. */
   onProviderTaskSubmitted?(taskId: string): Promise<void> | void;
+  /** VideosBatch NewAPI H3 hook: persist ordered references before the paid POST. */
+  onProviderReferenceBindingsPrepared?(bindings: VideosBatchReferenceBinding[]): Promise<void> | void;
+  /** VideosBatch NewAPI H3 hook: capture the exact compiled prompt before the paid POST. */
+  onProviderPromptPrepared?(prompt: string): Promise<void> | void;
   /** Resume an already-submitted NewAPI H3 task without issuing another POST. */
   taskId?: string | null;
 }
@@ -1062,7 +1067,9 @@ export async function generateShotVideo(shot: Shot, assets: Asset[], opts: Build
   if ((process.env.VIDEOSBATCH_VIDEO_PROVIDER || "").trim().toLowerCase() === "newapi-h3") {
     return generateShotVideoViaNewApiH3(shot, assets, {
       taskId: opts.taskId ?? shot.generationTaskId,
-      onTaskSubmitted: opts.onProviderTaskSubmitted
+      onTaskSubmitted: opts.onProviderTaskSubmitted,
+      onReferenceBindingsPrepared: opts.onProviderReferenceBindingsPrepared,
+      onPromptPrepared: opts.onProviderPromptPrepared
     });
   }
   if (process.env.SEEDANCE_API_URL && process.env.SEEDANCE_API_KEY) {

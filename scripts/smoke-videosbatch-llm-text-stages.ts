@@ -470,6 +470,16 @@ assert.equal(registry.COPYABLE_PROMPT!.validate(copyResult.artifact, ctx).ok, tr
 assert.match(copyResult.artifact.segments[0].text, /0-2秒：.*【P001-A001】【人物：小宇】/u);
 assert.match(copyResult.artifact.segments[0].text, /6-10秒：.*【P001-A002】【场景：课堂观察区】/u);
 assert.doesNotMatch(copyResult.artifact.segments[0].text.slice(0, copyResult.artifact.segments[0].text.indexOf("画面效果：")), /P001-A/u, "stable markers must not be placed in handbook fields before 画面效果");
+const fallbackStoryboard = structuredClone(finalStoryboardArtifact);
+fallbackStoryboard.segments[0].visualEffects.forEach((effect: any) => { effect.visual = "镜头展示连续变化"; });
+const fallbackWorkflow = structuredClone(workflow);
+fallbackWorkflow.stages.FINAL_STORYBOARD = { status: "ready", revision: 1, artifact: fallbackStoryboard };
+const fallbackContext = context(fallbackWorkflow);
+const fallbackCopy = deriveCopyablePrompt(fallbackContext);
+assert.equal(fallbackCopy.status, "READY", "unmatched semantic positions should use the first visual subshot fallback");
+assert.deepEqual(fallbackCopy.segments[0].referenceAssetIds, ["P001-A001", "P001-A002"], "copyable references must remain complete and ordered");
+assert.match(fallbackCopy.segments[0].text, /画面效果：\n0-2秒：【P001-A001】【P001-A002】镜头展示连续变化/u);
+assert.equal(registry.COPYABLE_PROMPT!.validate(fallbackCopy, fallbackContext).ok, true);
 const repeatedStoryboard = structuredClone(finalStoryboardArtifact);
 repeatedStoryboard.segments[0].visualEffects[1].visual = "【人物：小宇】再次观察【道具：观察尺】";
 const repeatedWorkflow = structuredClone(workflow);
@@ -484,5 +494,8 @@ const markerOutsideVisual = structuredClone(copyResult.artifact);
 markerOutsideVisual.segments[0].text = markerOutsideVisual.segments[0].text.replace("旁白/台词：", "【P001-A003】旁白/台词：");
 markerOutsideVisual.segments[0].referenceAssetIds = ["P001-A003"];
 assert.equal(registry.COPYABLE_PROMPT!.validate(markerOutsideVisual, ctx).ok, false, "stable markers must stay inside 画面效果");
+const wrongReferenceOrder = structuredClone(copyResult.artifact);
+wrongReferenceOrder.segments[0].referenceAssetIds = ["P001-A002", "P001-A001"];
+assert.equal(registry.COPYABLE_PROMPT!.validate(wrongReferenceOrder, ctx).ok, false, "copyable references must preserve FINAL_STORYBOARD declaration order");
 
 console.log("VideosBatch canonical LLM text-stage adapter smoke passed");

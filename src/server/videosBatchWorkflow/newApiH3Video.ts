@@ -2,11 +2,13 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Asset, Shot } from "../../shared/types";
+import type { VideosBatchReferenceBinding } from "../../shared/videosBatchNativeProjection";
 
 const H3_MODEL = "minimax_h3";
 const MAX_REFERENCE_IMAGES = 9;
 const MIN_REFERENCE_IMAGES = 2;
 const MAX_REFERENCE_BYTES = 20 * 1024 * 1024;
+const STABLE_PUBLIC_ASSET_ID_PATTERN = /\bP\d{3,}-A\d{3,}\b/u;
 const SIZE_BY_RATIO: Record<string, string> = {
   "16:9": "1376x768",
   "9:16": "768x1376",
@@ -22,7 +24,19 @@ export interface NewApiH3GenerationOptions {
   taskId?: string | null;
   idempotencyKey?: string;
   onTaskSubmitted?(taskId: string): Promise<void> | void;
+  /** Called after the exact reference URLs are resolved, before the paid POST. */
+  onReferenceBindingsPrepared?(bindings: VideosBatchReferenceBinding[]): Promise<void> | void;
+  /** Called with the exact H3 prompt text, before the paid POST. */
+  onPromptPrepared?(prompt: string): Promise<void> | void;
 }
+
+type H3ReferenceEntry = {
+  asset: Asset;
+  binding: VideosBatchReferenceBinding;
+  candidates: string[];
+  file?: File;
+  submittedUrl?: string;
+};
 
 export class NewApiH3SubmissionStateUnknownError extends Error {
   readonly code = "H3_SUBMISSION_STATE_UNKNOWN";
@@ -70,6 +84,136 @@ function referenceCandidates(asset: Asset) {
     .filter((value): value is string => typeof value === "string" && (/^https:\/\//i.test(value) || value.startsWith("/media/")))
     .map((value) => value.trim())
     .filter((value, index, values) => values.indexOf(value) === index);
+}
+
+function assetKeyFor(asset: Asset, binding?: Partial<VideosBatchReferenceBinding>) {
+  return String(
+    binding?.assetKey
+      || (asset as Asset & { videosBatchAssetKey?: unknown }).videosBatchAssetKey
+      || asset.workflowReferenceId
+      || asset.name
+      || asset.id
+  ).trim();
+}
+
+function safeSemanticLabel(value: unknown, fallback: string) {
+  const cleaned = String(value ?? "")
+    .replace(/^\s*【[^：:]+[：:]\s*/u, "")
+    .replace(/】\s*$/u, "")
+    .replace(/\bP\d{3,}-A\d{3,}\b/gu, "")
+    .replace(/[\r\n\t]+/gu, " ")
+    .replace(/\s+/gu, " ")
+    .trim()
+    .slice(0, 160);
+  const safeFallback = String(fallback)
+    .replace(/\bP\d{3,}-A\d{3,}\b/gu, "")
+    .replace(/[\r\n\t]+/gu, " ")
+    .replace(/\s+/gu, " ")
+    .trim()
+    .slice(0, 160);
+  return cleaned || safeFallback || "参考图";
+}
+
+function referenceIdFor(asset: Asset, index: number, binding?: Partial<VideosBatchReferenceBinding>) {
+  return String(binding?.referenceId || assetKeyFor(asset, binding) || `reference-${index + 1}`).trim();
+}
+
+/**
+ * Build the one ordered list shared by prompt compilation, file resolution and
+ * the audit snapshot. Existing snapshots take precedence over caller array
+ * order so a retry cannot silently follow the mutable global asset table.
+ */
+export function buildNewApiH3ReferencePlan(shot: Shot, assets: Asset[]): H3ReferenceEntry[] {
+  const byId = new Map(assets.map((asset) => [asset.id, asset]));
+  const snapshot = Array.isArray(shot.videosBatchReferenceBindings)
+    ? [...shot.videosBatchReferenceBindings].sort((left, right) => left.ordinal - right.ordinal)
+    : [];
+  const entries: H3ReferenceEntry[] = [];
+
+  if (snapshot.length) {
+    const declaredAssetIds = new Set(shot.assetIds || []);
+    const seenOrdinals = new Set<number>();
+    const seenAssetIds = new Set<string>();
+    for (const [index, binding] of snapshot.entries()) {
+      const expectedOrdinal = index + 1;
+      if (binding.ordinal !== expectedOrdinal || seenOrdinals.has(binding.ordinal)) {
+        throw new Error("VideosBatch H3 参考图 ordinal 必须从 1 连续编号");
+      }
+      if (seenAssetIds.has(binding.assetId)) throw new Error("VideosBatch H3 参考图不能重复绑定同一资产");
+      if (declaredAssetIds.size && !declaredAssetIds.has(binding.assetId)) {
+        throw new Error(`VideosBatch H3 绑定资产不在 Shot.assetIds 声明中：${binding.assetId}`);
+      }
+      const asset = byId.get(binding.assetId);
+      if (!asset) throw new Error(`VideosBatch H3 绑定资产不可读取：${binding.assetId}`);
+      seenOrdinals.add(binding.ordinal);
+      seenAssetIds.add(binding.assetId);
+      entries.push({
+        asset,
+        binding: {
+          ...binding,
+          referenceId: referenceIdFor(asset, index, binding),
+          assetKey: assetKeyFor(asset, binding),
+          semanticLabel: safeSemanticLabel(binding.semanticLabel, asset.name || `参考图 ${expectedOrdinal}`)
+        },
+        candidates: referenceCandidates(asset)
+      });
+    }
+  } else {
+    for (const [index, asset] of assets.entries()) {
+      const ordinal = index + 1;
+      entries.push({
+        asset,
+        binding: {
+          referenceId: referenceIdFor(asset, index),
+          ordinal,
+          assetKey: assetKeyFor(asset),
+          assetId: asset.id,
+          semanticLabel: safeSemanticLabel(asset.name, `参考图 ${ordinal}`)
+        },
+        candidates: referenceCandidates(asset)
+      });
+    }
+  }
+
+  if (entries.length > MAX_REFERENCE_IMAGES) {
+    throw new Error(`NewAPI H3 最多支持 ${MAX_REFERENCE_IMAGES} 张参考图，当前绑定 ${entries.length} 张`);
+  }
+  if (entries.length < MIN_REFERENCE_IMAGES) {
+    throw new Error(`NewAPI H3 多参考图模式需要 2-${MAX_REFERENCE_IMAGES} 张参考图，当前只有 ${entries.length} 张`);
+  }
+  if (entries.some((entry) => entry.candidates.length === 0)) {
+    const missing = entries.findIndex((entry) => entry.candidates.length === 0) + 1;
+    throw new Error(`NewAPI H3 第 ${missing} 张绑定参考图没有可用的 HTTPS 或本地图片 URL`);
+  }
+  return entries;
+}
+
+export function compileNewApiH3Prompt(basePrompt: string, bindings: readonly VideosBatchReferenceBinding[]) {
+  const body = basePrompt.trim();
+  if (STABLE_PUBLIC_ASSET_ID_PATTERN.test(body)) {
+    throw new Error("NewAPI H3 prompt 不得包含稳定公开资产编号，请使用语义资产名称");
+  }
+  const lines = bindings.map((binding) => `Image ${binding.ordinal} = ${safeSemanticLabel(binding.semanticLabel, `参考图 ${binding.ordinal}`)}`);
+  const mapping = [
+    "Reference image bindings (strict):",
+    ...lines,
+    "Strictly follow the Image N mapping above. Do not swap characters, scenes, props, or any reference images.",
+    "严格按 Image N 对应图片，不得交换人物、场景和道具。"
+  ].join("\n");
+  return [body, mapping].filter(Boolean).join("\n\n").trim();
+}
+
+function imageUrlHash(value: string) {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function auditBindings(entries: readonly H3ReferenceEntry[]) {
+  return entries.map((entry) => ({
+    ordinal: entry.binding.ordinal,
+    assetKey: entry.binding.assetKey,
+    assetId: entry.binding.assetId,
+    imageUrlHash: imageUrlHash(entry.submittedUrl || entry.candidates[0] || "")
+  }));
 }
 
 async function imageFile(url: string, index: number, signal: AbortSignal) {
@@ -147,30 +291,46 @@ export async function generateShotVideoViaNewApiH3(
   try {
     let taskId = String(options.taskId || "").trim();
     if (!taskId) {
-      const referenceSets = assets.map(referenceCandidates).filter((candidates) => candidates.length).slice(0, MAX_REFERENCE_IMAGES);
-      if (referenceSets.length < MIN_REFERENCE_IMAGES) {
-        throw new Error(`NewAPI H3 多参考图模式需要 2-${MAX_REFERENCE_IMAGES} 张参考图，当前只有 ${referenceSets.length} 张`);
-      }
-      const form = new FormData();
-      form.set("model", H3_MODEL);
-      form.set("prompt", (shot.rawPrompt || shot.prompt || "").trim());
-      form.set("seconds", String(Math.min(15, Math.max(4, Math.round(shot.durationSec || 10)))));
-      form.set("workflow_id", "multi-reference");
-      form.set("size", size);
-      form.set("prompt_enhance", "false");
-      for (const [index, candidates] of referenceSets.entries()) {
+      const references = buildNewApiH3ReferencePlan(shot, assets);
+      for (const [index, reference] of references.entries()) {
         let file: File | undefined;
+        let submittedUrl = "";
         let lastError: unknown;
-        for (const candidate of candidates) {
+        for (const candidate of reference.candidates) {
           try {
             file = await imageFile(candidate, index + 1, controller.signal);
+            submittedUrl = candidate;
             break;
           } catch (error) {
             lastError = error;
           }
         }
         if (!file) throw lastError instanceof Error ? lastError : new Error(`NewAPI H3 第 ${index + 1} 张参考图不可读取`);
-        form.append("images", file);
+        const submittedHash = imageUrlHash(submittedUrl);
+        if (reference.binding.imageUrlHash && reference.binding.imageUrlHash !== submittedHash) {
+          throw new Error(`NewAPI H3 第 ${index + 1} 张参考图与已保存快照不一致，请重新确认资产后再试`);
+        }
+        reference.file = file;
+        reference.submittedUrl = submittedUrl;
+      }
+      const preparedBindings = references.map((reference) => ({
+        ...reference.binding,
+        imageUrlHash: imageUrlHash(reference.submittedUrl || reference.candidates[0] || "")
+      }));
+      await options.onReferenceBindingsPrepared?.(preparedBindings);
+      console.info(`[videosbatch-h3] reference bindings ${JSON.stringify(auditBindings(references))}`);
+      const compiledPrompt = compileNewApiH3Prompt(shot.rawPrompt || shot.prompt || "", preparedBindings);
+      await options.onPromptPrepared?.(compiledPrompt);
+      const form = new FormData();
+      form.set("model", H3_MODEL);
+      form.set("prompt", compiledPrompt);
+      form.set("seconds", String(Math.min(15, Math.max(4, Math.round(shot.durationSec || 10)))));
+      form.set("workflow_id", "multi-reference");
+      form.set("size", size);
+      form.set("prompt_enhance", "false");
+      for (const reference of references) {
+        if (!reference.file) throw new Error(`NewAPI H3 第 ${reference.binding.ordinal} 张参考图未准备完成`);
+        form.append("images", reference.file, reference.file.name);
       }
 
       let createResponse: Response;

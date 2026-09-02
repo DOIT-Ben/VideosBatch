@@ -509,12 +509,14 @@ function markerIds(textValue: string): string[] { return [...textValue.matchAll(
 function validateCopyablePrompt(artifact: unknown, ctx: StageExecutionContext): ValidationResult {
   const value = record(artifact);
   const errors: string[] = [];
-  const storyboard = record(ctx.workflow.stages.FINAL_STORYBOARD?.artifact);
-  const storyboardSegments = Array.isArray(storyboard.segments) ? storyboard.segments : [];
+  const storyboardRaw = record(ctx.workflow.stages.FINAL_STORYBOARD?.artifact);
+  const normalizedStoryboard = normalizeStoryboardArtifact(ctx.workflow.stages.FINAL_STORYBOARD?.artifact, ctx.workflow.stages.SCREENPLAY?.artifact);
+  const storyboardSegments = normalizedStoryboard?.segments || (Array.isArray(storyboardRaw.segments) ? storyboardRaw.segments : []);
   const segments = Array.isArray(value.segments) ? value.segments : [];
   const status = text(value.status);
   if (!["READY", "PARTIAL", "FAILED"].includes(status)) errors.push("COPYABLE_PROMPT status must be READY, PARTIAL, or FAILED");
   if (segments.length > storyboardSegments.length) errors.push("COPYABLE_PROMPT cannot contain segments absent from FINAL_STORYBOARD");
+  if (status === "READY" && segments.length !== storyboardSegments.length) errors.push("COPYABLE_PROMPT READY must cover every FINAL_STORYBOARD segment");
   const confirmed = confirmedPublicAssetIds(ctx);
   const failed = new Set((Array.isArray(value.failedSegments) ? value.failedSegments : []).map((item: any) => Number(item)));
   segments.forEach((segment: any, index: number) => {
@@ -524,6 +526,20 @@ function validateCopyablePrompt(artifact: unknown, ctx: StageExecutionContext): 
     if (Number(segment?.sequence) !== sequence) errors.push(`COPYABLE_PROMPT segment sequence must be continuous; expected ${sequence}`);
     if (refs.length > 7) errors.push(`COPYABLE_PROMPT segment ${sequence} exceeds 7 references`);
     if (new Set(refs).size !== refs.length) errors.push(`COPYABLE_PROMPT segment ${sequence} referenceAssetIds must be unique`);
+    const sourceSegment = storyboardSegments[index] as Record<string, unknown> | undefined;
+    const sourceReferences = Array.isArray(sourceSegment?.references) ? sourceSegment.references : [];
+    if (sourceReferences.length && !failed.has(sequence)) {
+      const expectedReferences = resolveSemanticReferences(ctx, sourceReferences);
+      if (expectedReferences.some((reference) => !reference.id)) {
+        errors.push(`COPYABLE_PROMPT segment ${sequence} contains an unresolved FINAL_STORYBOARD reference`);
+      }
+      const expected = expectedReferences
+        .map((reference) => reference.id)
+        .filter((id): id is string => Boolean(id));
+      if (JSON.stringify(refs) !== JSON.stringify(expected)) {
+        errors.push(`COPYABLE_PROMPT segment ${sequence} referenceAssetIds must exactly follow FINAL_STORYBOARD.references`);
+      }
+    }
     for (const id of refs) {
       if (!/^P\d{3,}-A\d{3,}$/.test(id)) errors.push(`COPYABLE_PROMPT segment ${sequence} invalid stable id ${id}`);
       if (!confirmed.has(id)) errors.push(`COPYABLE_PROMPT segment ${sequence} references unconfirmed asset ${id}`);
@@ -834,6 +850,16 @@ function firstSemanticOccurrence(value: string, reference: ResolvedSemanticRefer
   return -1;
 }
 
+function insertMarkerAtFirstVisual(effects: any[], id: string) {
+  const target = effects.find((effect) => text(effect?.visual)) || effects[0];
+  if (!target) return false;
+  const visual = text(target.visual);
+  if (!visual) return false;
+  const leadingMarkers = visual.match(/^(?:【P\d{3,}-A\d{3,}】)+/u)?.[0] || "";
+  target.visual = `${leadingMarkers}【${id}】${visual.slice(leadingMarkers.length)}`;
+  return true;
+}
+
 export function deriveCopyablePrompt(ctx: StageExecutionContext) {
   const storyboard = normalizeStoryboardArtifact(ctx.workflow.stages.FINAL_STORYBOARD?.artifact, ctx.workflow.stages.SCREENPLAY?.artifact);
   if (!storyboard) throw new Error("FINAL_STORYBOARD must be canonical before COPYABLE_PROMPT");
@@ -858,7 +884,10 @@ export function deriveCopyablePrompt(ctx: StageExecutionContext) {
         placed = true;
         break;
       }
-      if (!placed && !failedSegments.includes(segment.sequence)) failedSegments.push(segment.sequence);
+      if (!placed && !insertMarkerAtFirstVisual(effects, reference.id)) {
+        if (!failedSegments.includes(segment.sequence)) failedSegments.push(segment.sequence);
+      }
+      if (!placed && !failedSegments.includes(segment.sequence) && ids[ids.length - 1] !== reference.id) ids.push(reference.id);
     }
     // Markers are inserted into the first matching visual subshot only. The
     // rendered copy therefore remains byte-identical to FINAL_STORYBOARD once

@@ -44,8 +44,16 @@ try {
       };
     },
     cacheGeneratedImage: async (url: string) => ({ imageUrl: url }),
-    generateShotVideo: async (shot: any, _assets: any[], options?: { onProviderTaskSubmitted?(taskId: string): Promise<void> | void }) => {
+    generateShotVideo: async (shot: any, _assets: any[], options?: {
+      onProviderTaskSubmitted?(taskId: string): Promise<void> | void;
+      onProviderReferenceBindingsPrepared?(bindings: any[]): Promise<void> | void;
+      onProviderPromptPrepared?(prompt: string): Promise<void> | void;
+    }) => {
       videoCalls.push(shot.id);
+      await options?.onProviderReferenceBindingsPrepared?.(
+        (shot.videosBatchReferenceBindings || []).map((binding: any) => ({ ...binding, imageUrlHash: "a".repeat(64) }))
+      );
+      await options?.onProviderPromptPrepared?.(`compiled H3 prompt for ${shot.id}`);
       const taskId = `provider-${shot.id}`;
       await options?.onProviderTaskSubmitted?.(taskId);
       assert.equal(store.getSession(sessionId)?.shots.find((candidate: any) => candidate.id === shot.id)?.generationTaskId, taskId);
@@ -205,6 +213,24 @@ try {
   assert.ok(renderedSession.shots.slice(1).every((shot: any) => shot.renders?.[0]?.generationTaskId === `provider-${shot.id}`));
   assert.ok(renderedSession.shots.slice(1).every((shot: any) => shot.renders?.[0]?.generationStartedAt));
   assert.ok(renderedSession.shots[0].assetIds.length === 2, "EXECUTION must resolve confirmed stable references into native Shot.assetIds");
+  assert.deepEqual(
+    renderedSession.shots[1].renders?.[0]?.videosBatchReferenceBindings?.map((binding: any) => ({
+      ordinal: binding.ordinal,
+      assetId: binding.assetId,
+      imageUrlHash: binding.imageUrlHash
+    })),
+    renderedSession.shots[1].videosBatchReferenceBindings?.map((binding: any) => ({
+      ordinal: binding.ordinal,
+      assetId: binding.assetId,
+      imageUrlHash: "a".repeat(64)
+    })),
+    "ShotRender must retain the exact ordered binding snapshot used for submission"
+  );
+  assert.equal(
+    renderedSession.shots[1].renders?.[0]?.composedPrompt,
+    `compiled H3 prompt for ${renderedSession.shots[1].id}`,
+    "ShotRender must retain the provider-compiled prompt used for submission"
+  );
 
   workflow = await runnerModule.runNext(makeCtx(workflow), registry);
   assert.equal(workflow.completed, true);
