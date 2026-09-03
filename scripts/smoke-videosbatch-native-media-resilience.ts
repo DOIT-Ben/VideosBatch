@@ -21,6 +21,28 @@ try {
   await store.load();
 
   const hash = (value: unknown) => canonicalModule.contentHash(value);
+  const completeAudioTimeline = (executionArtifact: any) => {
+    const timeline = executionArtifact.audioTimeline;
+    timeline.streams.tts = [
+      ...timeline.streams.narration,
+      ...timeline.streams.dialogue
+    ].map((event: any) => ({
+      ...event,
+      id: `tts-${event.id}`,
+      audioUrl: `https://mock.invalid/tts/${event.id}.mp3`,
+      source: "TTS"
+    }));
+    timeline.streams.soundEffects = timeline.streams.soundEffects.map((event: any) => ({
+      ...event,
+      audioUrl: `https://mock.invalid/sfx/${event.id}.mp3`
+    }));
+    timeline.streams.mix = {
+      status: "ready",
+      audioUrl: "https://mock.invalid/mix.mp3",
+      generatedAt: new Date().toISOString()
+    };
+    return executionArtifact;
+  };
   const ready = (artifact: unknown, revision = 1) => ({
     status: "ready" as const,
     revision,
@@ -284,11 +306,49 @@ try {
     }
   });
 
-  const validStitch = await stitchRegistry.STITCH!.execute(context(executionFixture.sessionId, secondExecutionRun));
+  const audioReadyExecution = structuredClone(secondExecutionRun);
+  completeAudioTimeline(audioReadyExecution.stages.EXECUTION!.artifact as any);
+
+  const validStitch = await stitchRegistry.STITCH!.execute(context(executionFixture.sessionId, audioReadyExecution));
   assert.equal((validStitch.artifact as any).status, "READY");
   assert.equal(stitchCalls.length, 1);
   assert.equal(stitchCalls[0].audioTimeline.durationSec, 20);
   assert.equal(stitchCalls[0].audioTimeline.streams.dialogue.length, 4);
+
+  const forgedReady = structuredClone(validStitch.artifact);
+  const forgedValidation = stitchRegistry.STITCH!.validate(forgedReady, context(executionFixture.sessionId, secondExecutionRun));
+  assert.equal(forgedValidation.ok, false, "a forged STITCH READY artifact must not bypass the delivery audio gate");
+  assert.ok(forgedValidation.errors.some((message: string) => message.startsWith("AUDIO_TIMELINE_NOT_READY:")));
+
+  const pendingMixWorkflow = structuredClone(audioReadyExecution);
+  (pendingMixWorkflow.stages.EXECUTION!.artifact as any).audioTimeline.streams.mix = { status: "pending" };
+  await assert.rejects(
+    () => stitchRegistry.STITCH!.execute(context(executionFixture.sessionId, pendingMixWorkflow)),
+    /AUDIO_TIMELINE_NOT_READY|mix.status/,
+    "pending mix must block STITCH before creating a provider call"
+  );
+  assert.equal(stitchCalls.length, 1, "pending mix must not call the stitch provider");
+
+  const emptyTtsWorkflow = structuredClone(audioReadyExecution);
+  (emptyTtsWorkflow.stages.EXECUTION!.artifact as any).audioTimeline.streams.tts = [];
+  await assert.rejects(
+    () => stitchRegistry.STITCH!.execute(context(executionFixture.sessionId, emptyTtsWorkflow)),
+    /AUDIO_TIMELINE_NOT_READY|TTS/,
+    "voice events without TTS audio must block STITCH"
+  );
+  assert.equal(stitchCalls.length, 1, "empty TTS must not call the stitch provider");
+
+  const blockedStageWorkflow = structuredClone(secondExecutionRun);
+  blockedStageWorkflow.currentStage = "STITCH";
+  const blockedStageRun = await runnerModule.runNext(
+    context(executionFixture.sessionId, blockedStageWorkflow),
+    stitchRegistry
+  );
+  assert.equal(blockedStageRun.stages.STITCH?.status, "failed", "audio-incomplete STITCH must fail the workflow stage");
+  assert.equal(blockedStageRun.stages.STITCH?.errorInfo?.code, "AUDIO_TIMELINE_NOT_READY");
+  assert.equal(blockedStageRun.stages.STITCH?.errorInfo?.retryable, true);
+  assert.equal(blockedStageRun.completed, false);
+  assert.equal(stitchCalls.length, 1, "blocked STITCH stage must not create a provider call");
 
   const durationShot = store.getShot(initialShots[1].id)!;
   probedDuration = 9;
@@ -472,6 +532,7 @@ try {
   const batchExecutionArtifact = batchExecution.stages.EXECUTION?.artifact as any;
   assert.ok(batchExecutionArtifact.items.every((item: any) => item.videoUrl !== oldRender.videoUrl));
   assert.deepEqual(batchExecutionArtifact.items.map((item: any) => item.sequence), [1, 2], "execution sequence must be batch-local");
+  completeAudioTimeline(batchExecutionArtifact);
 
   const isolatedStitch = await batchRegistry.STITCH!.execute(context(batchSession.id, batchExecution));
   assert.equal((isolatedStitch.artifact as any).status, "READY", "a current batch must pass stitch after old-batch renders exist");

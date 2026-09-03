@@ -5,6 +5,10 @@ import type { CinemaStore } from "../store";
 export interface ValidationResult {
   ok: boolean;
   errors: string[];
+  /** Optional stable machine code for a failed contract gate. */
+  code?: string;
+  /** Whether the caller may retry after preserving the failed artifact. */
+  retryable?: boolean;
 }
 
 export interface StageExecutionContext {

@@ -11,13 +11,14 @@ const tmp = await mkdtemp(path.join(os.tmpdir(), "videosbatch-api-retry-"));
 process.chdir(tmp);
 
 try {
-  const [{ CinemaStore }, workflowModule, runnerModule, stageModule, apiModule, textStages] = await Promise.all([
+  const [{ CinemaStore }, workflowModule, runnerModule, stageModule, apiModule, textStages, canonicalModule] = await Promise.all([
     import("../src/server/store"),
     import("../src/shared/videosBatchWorkflow"),
     import("../src/server/videosBatchWorkflow/runner"),
     import("../src/server/videosBatchWorkflow/stages"),
     import("../src/server/videosBatchWorkflow/api"),
-    import("../src/server/videosBatchWorkflow/llmTextStages")
+    import("../src/server/videosBatchWorkflow/llmTextStages"),
+    import("../src/server/videosBatchWorkflow/canonicalStoryboard")
   ]);
 
   const store = new CinemaStore();
@@ -261,6 +262,68 @@ try {
     assert.equal(telemetryResult.stages.COURSE_INTRO_CANDIDATES.status, "failed");
     assert.equal(telemetryResult.stages.COURSE_INTRO_CANDIDATES.attempts, 3);
     assert.equal(telemetryResult.stages.COURSE_INTRO_CANDIDATES.attemptLog.length, 3);
+
+    const partialSession = await store.createSession({ title: "COPYABLE_PROMPT partial retry", logline: "partial", style: "test", targetDurationSec: 90, shotCount: 0 });
+    const partialFinalStoryboard = { schemaVersion: "2", kind: "VIDEO_STORYBOARD", title: "partial storyboard" };
+    const partialConfirmation = { confirmed: true, items: [{ assetKey: "CHARACTER-HERO", publicAssetId: "P001-A001", candidateAssetIds: ["asset-1"], selectedAssetId: "asset-1" }] };
+    const partialArtifact = { schemaVersion: "1", fullText: "partial", status: "PARTIAL", failedSegments: [1], segments: [] };
+    const partialFinalHash = canonicalModule.contentHash(partialFinalStoryboard);
+    const partialConfirmationHash = canonicalModule.contentHash(partialConfirmation);
+    const partialWorkflow = workflowModule.createVideosBatchWorkflow({ projectId: "P001", lessonText: "partial retry" });
+    partialWorkflow.currentStage = "QUOTE";
+    partialWorkflow.stages.FINAL_STORYBOARD = {
+      status: "ready",
+      revision: 1,
+      artifact: partialFinalStoryboard,
+      contentHash: partialFinalHash,
+      updatedAt: new Date().toISOString()
+    };
+    partialWorkflow.stages.ASSET_CONFIRMATION = {
+      status: "ready",
+      revision: 1,
+      artifact: partialConfirmation,
+      contentHash: partialConfirmationHash,
+      updatedAt: new Date().toISOString()
+    };
+    partialWorkflow.stages.COPYABLE_PROMPT = {
+      status: "ready",
+      revision: 1,
+      artifact: partialArtifact,
+      contentHash: canonicalModule.contentHash(partialArtifact),
+      sourceStageId: "FINAL_STORYBOARD",
+      sourceRevision: 1,
+      sourceHash: partialFinalHash,
+      sourceHashes: { FINAL_STORYBOARD: partialFinalHash, ASSET_CONFIRMATION: partialConfirmationHash },
+      sourceRevisions: { FINAL_STORYBOARD: 1, ASSET_CONFIRMATION: 1 },
+      updatedAt: new Date().toISOString()
+    };
+    await store.updateSession(partialSession.id, { videosBatchWorkflow: partialWorkflow });
+    let partialAttempts = 0;
+    registry.COPYABLE_PROMPT = {
+      id: "COPYABLE_PROMPT",
+      async execute() {
+        partialAttempts += 1;
+        return { artifact: { schemaVersion: "1", fullText: "ready", status: "READY", failedSegments: [], segments: [] } };
+      },
+      validate() { return { ok: true, errors: [] }; }
+    };
+    const reconciledResponse = await request<any>(`/api/sessions/${partialSession.id}/videosbatch`);
+    assert.equal(reconciledResponse.response.status, 200);
+    assert.equal(reconciledResponse.body.stages.COPYABLE_PROMPT.status, "failed", "legacy partial stage must be reconciled before API reads");
+    assert.equal(reconciledResponse.body.currentStage, "COPYABLE_PROMPT");
+    const partialStage = reconciledResponse.body.stages.COPYABLE_PROMPT;
+    const partialRetry = await request<any>(`/api/sessions/${partialSession.id}/videosbatch/retry/COPYABLE_PROMPT`, {
+      method: "POST",
+      body: JSON.stringify({
+        sourceRevision: partialStage.sourceRevision,
+        sourceHash: partialStage.sourceHash,
+        sourceHashes: partialStage.sourceHashes
+      })
+    });
+    assert.equal(partialRetry.response.status, 200);
+    assert.equal(partialRetry.body.stages.COPYABLE_PROMPT.status, "ready");
+    assert.equal(partialRetry.body.stages.COPYABLE_PROMPT.artifact.status, "READY");
+    assert.equal(partialAttempts, 1, "partial retry must execute the derived stage once");
   } finally {
     server.close();
     await once(server, "close");

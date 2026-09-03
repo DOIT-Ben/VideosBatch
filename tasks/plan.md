@@ -30,3 +30,14 @@
 - C2：纯函数/本地 mock 证明顺序和映射一致。
 - C3：离线门禁全部通过后才启动真实 Provider。
 - C4：真实镜头逐条核对并记录脱敏证据。
+
+## 后续修复：音频就绪门禁与 PARTIAL 重试
+
+规范依据：`specs/videosbatch-workflow-canonical.md@1.2.0`
+落地文档：`docs/videosbatch-audio-readiness-gate-repair.md`
+执行指令：`tasks/videosbatch-audio-readiness-gate.md`
+
+- [x] `COPYABLE_PROMPT` PARTIAL/FAILED 状态失败化并保留 artifact。
+- [x] legacy `ready + PARTIAL` 懒迁移、游标回拨和 lineage retry。
+- [x] STITCH delivery audio gate 与 `AUDIO_TIMELINE_NOT_READY`。
+- [x] 定向 smoke、规范、秘密扫描和构建。

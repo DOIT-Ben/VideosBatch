@@ -276,8 +276,68 @@ function mediaArtifactFailure(stageId: VideosBatchStageId, artifact: any): Video
   };
 }
 
+function stageArtifactFailure(stageId: VideosBatchStageId, artifact: any): VideosBatchStageError | undefined {
+  if (stageId === "COPYABLE_PROMPT") {
+    const artifactStatus = String(artifact?.status || "");
+    if (artifactStatus !== "PARTIAL" && artifactStatus !== "FAILED") return undefined;
+    const failedSegments = Array.isArray(artifact?.failedSegments)
+      ? artifact.failedSegments.map((value: unknown) => Number(value)).filter(Number.isFinite)
+      : [];
+    const suffix = failedSegments.length ? `（失败分镜：${failedSegments.join(",")}）` : "";
+    return {
+      code: artifactStatus === "PARTIAL" ? "COPYABLE_PROMPT_PARTIAL" : "COPYABLE_PROMPT_FAILED",
+      message: `COPYABLE_PROMPT ${artifactStatus}${suffix}`,
+      retryable: true,
+      attempt: Number(artifact?.attempt || artifact?.attempts || 0),
+      provider: null
+    };
+  }
+  return mediaArtifactFailure(stageId, artifact);
+}
+
+function legacyReadinessIssue(workflow: VideosBatchWorkflowState) {
+  for (const stageId of VIDEOS_BATCH_STAGE_ORDER) {
+    const stage = workflow.stages[stageId];
+    if (!stage || stage.status !== "ready" || stage.artifact === undefined) continue;
+    const failure = stageArtifactFailure(stageId, stage.artifact);
+    if (failure) return { stageId, failure };
+  }
+  return undefined;
+}
+
+/**
+ * Repair persisted workflows written before artifact readiness was enforced.
+ * The original artifact and lineage remain inspectable; only the stage state
+ * and current cursor are corrected so a downstream stage cannot be continued.
+ */
+export function reconcileVideosBatchReadiness(source: VideosBatchWorkflowState): VideosBatchWorkflowState {
+  const issue = legacyReadinessIssue(source);
+  if (!issue) return source;
+  const workflow = cloneWorkflow(source);
+  hydrateArtifactHashes(workflow);
+  const current = workflow.stages[issue.stageId];
+  if (!current) return source;
+  workflow.stages[issue.stageId] = {
+    ...current,
+    status: "failed",
+    error: issue.failure.message,
+    errorInfo: issue.failure,
+    staleReason: undefined,
+    updatedAt: nowIso()
+  };
+  markDescendantsStale(workflow, issue.stageId, `上游 ${issue.stageId} 产物未就绪`);
+  workflow.currentStage = issue.stageId;
+  workflow.completed = false;
+  workflow.updatedAt = nowIso();
+  return workflow;
+}
+
 export async function runNext(ctx: StageExecutionContext, registry: StageRegistry): Promise<VideosBatchWorkflowState> {
-  const workflow = cloneWorkflow(ctx.workflow);
+  const reconciled = reconcileVideosBatchReadiness(ctx.workflow);
+  // A legacy readiness repair is a state correction, not an implicit retry.
+  // Return it for persistence and let the operator explicitly retry.
+  if (reconciled !== ctx.workflow) return reconciled;
+  const workflow = cloneWorkflow(reconciled);
   hydrateArtifactHashes(workflow);
   if (workflow.completed) return workflow;
   const stageId = workflow.currentStage;
@@ -346,13 +406,13 @@ export async function runNext(ctx: StageExecutionContext, registry: StageRegistr
     const validation = definition.validate(stageResult.artifact, runningCtx);
     const withMeta = stateWithResultMeta({ ...current, artifact: stageResult.artifact }, stageResult);
     failedResultState = withMeta;
-    const mediaFailure = validation.ok ? mediaArtifactFailure(stageId, stageResult.artifact) : undefined;
-    if (!validation.ok || mediaFailure) {
+    const artifactFailure = validation.ok ? stageArtifactFailure(stageId, stageResult.artifact) : undefined;
+    if (!validation.ok || artifactFailure) {
       const updatedAt = nowIso();
-      const info = mediaFailure || {
-        code: "CONTRACT_VALIDATION_FAILED",
+      const info = artifactFailure || {
+        code: validation.code || "CONTRACT_VALIDATION_FAILED",
         message: validation.errors.join("\n"),
-        retryable: true,
+        retryable: validation.retryable ?? true,
         attempt: stageResult.attempts || 0,
         provider: stageResult.provider || null,
         ...(stageResult.model ? { model: stageResult.model } : {})
@@ -468,7 +528,15 @@ export function replaceStageArtifact(
   registry?: StageRegistry,
   context?: StageExecutionContext
 ): VideosBatchWorkflowState {
-  const workflow = cloneWorkflow(source);
+  const reconciledSource = reconcileVideosBatchReadiness(source);
+  const repairedStageIndex = reconciledSource === source
+    ? -1
+    : VIDEOS_BATCH_STAGE_ORDER.indexOf(reconciledSource.currentStage);
+  const targetStageIndex = VIDEOS_BATCH_STAGE_ORDER.indexOf(stageId);
+  if (repairedStageIndex >= 0 && targetStageIndex > repairedStageIndex) {
+    throw new Error(`UPSTREAM_NOT_CURRENT: ${stageId} cannot be saved while ${reconciledSource.currentStage} is unresolved`);
+  }
+  const workflow = cloneWorkflow(reconciledSource);
   hydrateArtifactHashes(workflow);
   const previousCurrentStage = source.currentStage;
   const previousCompleted = source.completed;
@@ -487,18 +555,28 @@ export function replaceStageArtifact(
     if (!validation.ok) throw new Error(`CONTRACT_VALIDATION_FAILED: ${validation.errors.join("\n")}`);
   }
 
+  const readinessFailure = stageArtifactFailure(stageId, artifact);
+
   workflow.stages[stageId] = {
     ...current,
-    status: "ready",
+    status: readinessFailure ? "failed" : "ready",
     revision: current.revision + 1,
     artifact,
     contentHash: artifactHash(artifact),
     ...dependencySnapshot(workflow, stageId),
-    error: undefined,
-    errorInfo: undefined,
+    error: readinessFailure?.message,
+    errorInfo: readinessFailure,
     staleReason: undefined,
     updatedAt
   };
+
+  if (readinessFailure) {
+    markDescendantsStale(workflow, stageId, `上游 ${stageId} 产物未就绪`);
+    workflow.currentStage = stageId;
+    workflow.completed = false;
+    workflow.updatedAt = updatedAt;
+    return workflow;
+  }
 
   if (stageId === "COURSE_INTRO_SELECTION") {
     workflow.selectedIntroId = String(artifact.selectedIntroId).trim();
@@ -529,7 +607,14 @@ export function replaceStageArtifact(
 }
 
 export function restartFrom(source: VideosBatchWorkflowState, stageId: VideosBatchStageId, updatedAt = nowIso()): VideosBatchWorkflowState {
-  const workflow = cloneWorkflow(source);
+  const reconciledSource = reconcileVideosBatchReadiness(source);
+  const repairedStageIndex = reconciledSource === source
+    ? -1
+    : VIDEOS_BATCH_STAGE_ORDER.indexOf(reconciledSource.currentStage);
+  if (repairedStageIndex >= 0 && VIDEOS_BATCH_STAGE_ORDER.indexOf(stageId) > repairedStageIndex) {
+    return reconciledSource;
+  }
+  const workflow = cloneWorkflow(reconciledSource);
   hydrateArtifactHashes(workflow);
   const current = workflow.stages[stageId] || { status: "pending" as const, revision: 0 };
   workflow.currentStage = stageId;
@@ -547,7 +632,8 @@ export function retryLineageIssues(
   input: { sourceRevision?: unknown; sourceHash?: unknown; sourceHashes?: unknown } = {}
 ): string[] {
   const issues: string[] = [];
-  const stage = workflow.stages[stageId];
+  const normalized = reconcileVideosBatchReadiness(workflow);
+  const stage = normalized.stages[stageId];
   const dependencies = VIDEOS_BATCH_STAGE_DEPENDENCIES[stageId] || [];
   if (!stage) return [`Unknown stage ${stageId}`];
   if (stage.status !== "failed") issues.push(`${stageId} is not currently failed`);
@@ -555,7 +641,7 @@ export function retryLineageIssues(
   const suppliedHashes = input.sourceHashes && typeof input.sourceHashes === "object" ? input.sourceHashes as Record<string, unknown> : {};
   for (let index = 0; index < dependencies.length; index += 1) {
     const dependency = dependencies[index];
-    const source = workflow.stages[dependency];
+    const source = normalized.stages[dependency];
     if (!source || source.status !== "ready" || source.artifact === undefined) {
       issues.push(`${stageId} requires current ready stage ${dependency}`);
       continue;

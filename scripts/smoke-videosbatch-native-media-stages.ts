@@ -232,6 +232,26 @@ try {
     "ShotRender must retain the provider-compiled prompt used for submission"
   );
 
+  const executionAudio = (workflow.stages.EXECUTION!.artifact as any).audioTimeline;
+  executionAudio.streams.tts = [
+    ...executionAudio.streams.narration,
+    ...executionAudio.streams.dialogue
+  ].map((event: any) => ({
+    ...event,
+    id: `tts-${event.id}`,
+    audioUrl: `https://mock.invalid/tts/${event.id}.mp3`,
+    source: "TTS"
+  }));
+  executionAudio.streams.soundEffects = executionAudio.streams.soundEffects.map((event: any) => ({
+    ...event,
+    audioUrl: `https://mock.invalid/sfx/${event.id}.mp3`
+  }));
+  executionAudio.streams.mix = {
+    status: "ready",
+    audioUrl: "https://mock.invalid/mix.mp3",
+    generatedAt: new Date().toISOString()
+  };
+
   workflow = await runnerModule.runNext(makeCtx(workflow), registry);
   assert.equal(workflow.completed, true);
   assert.equal(workflow.stages.STITCH?.status, "ready");

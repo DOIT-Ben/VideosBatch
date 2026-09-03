@@ -1,12 +1,12 @@
 # VideosBatch 运行事实
 
-更新时间：2026-09-02
-适用范围：本机 `E:\desktop\AI\11_Products\lab\VideosBatch` 的 Guided Studio 验收配置与参考图绑定专项证据。
+更新时间：2026-09-03
+适用范围：本机 `E:\desktop\AI\11_Products\lab\VideosBatch` 的 Guided Studio 验收配置、参考图绑定和音频就绪门禁专项证据。
 
 ## 当前 Git 现场
 
-- 分支：`feature/videosbatch-reference-binding`
-- HEAD：`b83ef6d77b989d896f2dd05f76bb28c737c4ad3f`（修复工作仍未提交）
+- 分支：`feature/videosbatch-audio-readiness-gate`
+- HEAD：`ce52a59b8e6a7a21163e5f1fedeb761001c08436`（音频门禁修复仍未提交）
 - 工作区保留本专项代码/文档未提交改动；本记录不代表这些改动已经推送。
 
 ## 本机配置事实
@@ -100,3 +100,11 @@
 - 独立媒体链路已验证：LyAIApp `gpt-image-2-1k` 生成并缓存两张 16:9 图片；同一幂等键恢复的 NewAPI H3 任务生成 `1376x768`、实测 `10.13` 秒 MP4；本地拼接产物实测 `10.17` 秒。探针文件已移至本机隔离证据目录，不纳入项目 `data/`。
 - 继续恢复真实工作流时，LyAIApp 对一个包含“9 岁小学生”细节的角色提示返回 `400 content_policy_violation`；其余 6/7 资产成功。该错误现在标记为不可重试，需人工修改提示或选择兼容供应商，不能自动重复扣费。
 - 本轮修复包含资产类别显式 `omitted` 门禁、资产计划 180 秒阶段超时、合同修复多项字段合并、Provider 尝试证据、工作流单飞/归属校验、投影失败产物保留和 H3 超时任务号保留。完整 13 阶段真实链路仍需外部 `ASSET_PLAN` 稳定返回后再验收。
+
+## 2026-09-03 音频就绪门禁专项
+
+- `COPYABLE_PROMPT` 的 `PARTIAL/FAILED` 已进入 failed stage；artifact、failedSegments 和来源 revision/hash 保留。
+- 旧会话 `ses_5e3ff36a` 通过 API 读取后自动收敛为 `COPYABLE_PROMPT=failed + PARTIAL`，`currentStage` 回拨，QUOTE/EXECUTION/STITCH 标记 stale；未直接修改 `data/cinema-store.json`。
+- retry API 已用当前 lineage 验证成功；缺失或过期 lineage 仍返回 `RETRY_LINEAGE_CONFLICT`。
+- native `STITCH` 已拒绝待播语音无 TTS、音效无 audioUrl、`mix.status=pending` 或 mix URL 缺失，并在创建 StitchJob 前返回 `AUDIO_TIMELINE_NOT_READY`。
+- 本轮完整 `npm run verify:offline` 通过；构建仅有既有 bundle 体积提示。未调用真实 TTS、音效或视频 Provider。

@@ -23,6 +23,13 @@ import {
   type VideosBatchProductStepId
 } from "./stageModel";
 
+function retryableStageForStep(workflow: VideosBatchWorkflowState, step: ReturnType<typeof productStepById>) {
+  return step.stages.find((stageId) => {
+    const stage = workflow.stages[stageId];
+    return stage?.status === "failed" && stage.errorInfo?.retryable !== false;
+  });
+}
+
 type StartVideosBatchWithSource = (
   sessionId: string,
   payload: { projectId: string; lessonText: string; source?: VideosBatchLessonSource }
@@ -144,6 +151,7 @@ export function VideosBatchStudio({
   const currentStep = productStepById(currentStepId);
   const debugStageId = debugStageForStep(workflow, selectedStepId);
   const debugArtifact = workflow?.stages[debugStageId]?.artifact;
+  const retryStageId = workflow ? retryableStageForStep(workflow, selectedStep) : undefined;
   const selectedIndex = VIDEOS_BATCH_PRODUCT_STEPS.findIndex((step) => step.id === selectedStepId);
   const isAtCurrentStep = selectedStepId === currentStepId;
   const manualGate = workflow?.currentStage === "COURSE_INTRO_SELECTION" || workflow?.currentStage === "ASSET_CONFIRMATION";
@@ -240,6 +248,23 @@ export function VideosBatchStudio({
     if (next) setSelectedStepId(selectedStepId);
   }
 
+  async function retrySelected() {
+    if (!workflow || !retryStageId) return;
+    const stage = workflow.stages[retryStageId];
+    const sourceRevision = Number(stage?.sourceRevision);
+    const sourceHash = String(stage?.sourceHash || "").trim();
+    if (!Number.isFinite(sourceRevision) || sourceRevision <= 0 || !sourceHash) {
+      setError("当前阶段缺少有效的来源版本，无法安全重试。");
+      return;
+    }
+    const next = await perform("retry", () => api.retryVideosBatchStage(sessionId, retryStageId, {
+      sourceRevision,
+      sourceHash,
+      ...(stage?.sourceHashes ? { sourceHashes: stage.sourceHashes } : {})
+    }));
+    if (next) setSelectedStepId(deriveCurrentProductStep(next));
+  }
+
   const primaryLabel = !workflow
     ? "等待确认教案"
     : !isAtCurrentStep
@@ -291,8 +316,10 @@ export function VideosBatchStudio({
           completed={Boolean(workflow.completed)}
           busy={Boolean(busy)}
           canDebug={debugArtifact !== undefined}
+          canRetry={Boolean(retryStageId)}
           onRunAll={() => void runAll()}
           onRestart={() => void restartSelected()}
+          onRetry={() => void retrySelected()}
           onDebug={() => setDebugOpen(true)}
         />
       ) : null}

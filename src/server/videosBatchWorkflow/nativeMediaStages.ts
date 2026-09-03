@@ -395,42 +395,96 @@ function buildAudioTimeline(workflow: any, storyboard: any): VideosBatchAudioTim
   };
 }
 
+type AudioTimelineValidationMode = "structural" | "delivery";
+
+function isUsableAudioUrl(value: unknown) {
+  const url = text(value);
+  return /^https?:\/\//iu.test(url) || /^\/media\//u.test(url);
+}
+
+function sameAudioRange(left: any, right: any) {
+  return Math.abs(Number(left?.startSec) - Number(right?.startSec)) <= DURATION_TOLERANCE_SEC
+    && Math.abs(Number(left?.endSec) - Number(right?.endSec)) <= DURATION_TOLERANCE_SEC;
+}
+
 function validateAudioTimeline(
   timeline: any,
   expectedDuration: number,
   source: { revision: number; hash: string },
-  errors: string[]
+  errors: string[],
+  mode: AudioTimelineValidationMode = "structural"
 ) {
+  const pushTimelineError = (message: string) => {
+    errors.push(mode === "delivery" ? `AUDIO_TIMELINE_NOT_READY: ${message}` : message);
+  };
   if (!timeline || typeof timeline !== "object") {
-    errors.push("STITCH requires an independent audio timeline");
+    pushTimelineError("STITCH requires an independent audio timeline");
     return;
   }
-  if (timeline.schemaVersion !== "1") errors.push("audioTimeline schemaVersion must be 1");
-  if (Math.abs(Number(timeline.durationSec) - expectedDuration) > DURATION_TOLERANCE_SEC) errors.push("audioTimeline duration must match storyboard target duration");
-  if (timeline.sourceStageId !== "FINAL_STORYBOARD") errors.push("audioTimeline must be sourced from FINAL_STORYBOARD");
-  if (Number(timeline.sourceRevision) !== source.revision) errors.push("audioTimeline source revision is stale");
-  if (text(timeline.sourceHash) !== source.hash) errors.push("audioTimeline source hash is stale");
+  if (timeline.schemaVersion !== "1") pushTimelineError("audioTimeline schemaVersion must be 1");
+  if (Math.abs(Number(timeline.durationSec) - expectedDuration) > DURATION_TOLERANCE_SEC) pushTimelineError("audioTimeline duration must match storyboard target duration");
+  if (timeline.sourceStageId !== "FINAL_STORYBOARD") pushTimelineError("audioTimeline must be sourced from FINAL_STORYBOARD");
+  if (Number(timeline.sourceRevision) !== source.revision) pushTimelineError("audioTimeline source revision is stale");
+  if (text(timeline.sourceHash) !== source.hash) pushTimelineError("audioTimeline source hash is stale");
   const streams = timeline.streams;
   if (!streams || typeof streams !== "object") {
-    errors.push("audioTimeline streams are required");
+    pushTimelineError("audioTimeline streams are required");
     return;
   }
   for (const streamName of ["narration", "dialogue", "soundEffects", "tts"] as const) {
     if (!Array.isArray(streams[streamName])) {
-      errors.push(`audioTimeline ${streamName} stream must be an array`);
+      pushTimelineError(`audioTimeline ${streamName} stream must be an array`);
       continue;
     }
     for (const event of streams[streamName]) {
       const start = finiteNumber(event?.startSec);
       const end = finiteNumber(event?.endSec);
       if (start === undefined || end === undefined || start < 0 || end <= start || end > expectedDuration + DURATION_TOLERANCE_SEC) {
-        errors.push(`audioTimeline ${streamName} contains an invalid time range`);
+        pushTimelineError(`audioTimeline ${streamName} contains an invalid time range`);
       }
-      if (!text(event?.id)) errors.push(`audioTimeline ${streamName} event requires id`);
-      if (!text(event?.text) && !text(event?.audioUrl)) errors.push(`audioTimeline ${streamName} event requires text or audioUrl`);
+      if (!text(event?.id)) pushTimelineError(`audioTimeline ${streamName} event requires id`);
+      if (!text(event?.text) && !text(event?.audioUrl)) pushTimelineError(`audioTimeline ${streamName} event requires text or audioUrl`);
     }
   }
-  if (!streams.mix || !["pending", "ready"].includes(streams.mix.status)) errors.push("audioTimeline mix status must be pending or ready");
+  if (!streams.mix || !["pending", "ready"].includes(streams.mix.status)) pushTimelineError("audioTimeline mix status must be pending or ready");
+
+  if (mode !== "delivery") return;
+
+  const voiceEvents = [
+    ...(Array.isArray(streams.narration) ? streams.narration : []),
+    ...(Array.isArray(streams.dialogue) ? streams.dialogue : [])
+  ];
+  const ttsEvents = Array.isArray(streams.tts) ? streams.tts : [];
+  const usedTts = new Set<number>();
+  for (const voiceEvent of voiceEvents) {
+    const matchIndex = ttsEvents.findIndex((candidate: any, index: number) => {
+      if (usedTts.has(index)) return false;
+      const sameId = text(candidate?.id) === text(voiceEvent?.id)
+        || text(candidate?.id) === `tts-${text(voiceEvent?.id)}`;
+      const sameTextAndRange = text(candidate?.text) === text(voiceEvent?.text) && sameAudioRange(candidate, voiceEvent);
+      return sameId || sameTextAndRange;
+    });
+    if (matchIndex < 0) {
+      pushTimelineError(`缺少语音事件 ${text(voiceEvent?.id) || "<empty>"} 的 TTS 音频`);
+      continue;
+    }
+    usedTts.add(matchIndex);
+    if (!isUsableAudioUrl(ttsEvents[matchIndex]?.audioUrl)) {
+      pushTimelineError(`TTS 事件 ${text(voiceEvent?.id) || "<empty>"} 缺少可读取 audioUrl`);
+    }
+  }
+
+  for (const soundEvent of (Array.isArray(streams.soundEffects) ? streams.soundEffects : [])) {
+    if (!isUsableAudioUrl(soundEvent?.audioUrl)) {
+      pushTimelineError(`音效事件 ${text(soundEvent?.id) || "<empty>"} 缺少可读取 audioUrl`);
+    }
+  }
+
+  if (streams.mix?.status !== "ready") {
+    pushTimelineError("audioTimeline mix.status 必须为 ready");
+  } else if (!isUsableAudioUrl(streams.mix?.audioUrl)) {
+    pushTimelineError("audioTimeline mix.audioUrl 缺失或不可读取");
+  }
 }
 
 function validateAssetCandidates(artifact: any) {
@@ -643,7 +697,7 @@ async function stitchGateErrors(
   const confirmedOrder = Array.isArray(confirmation?.items) ? confirmation.items.map((item: any) => text(item?.publicAssetId)).filter(Boolean) : [];
   if (!Array.isArray(quote?.assetOrder) || quote.assetOrder.map(text).join("|") !== confirmedOrder.join("|")) errors.push("STITCH QUOTE asset order is stale or inconsistent");
 
-  validateAudioTimeline(execution?.audioTimeline, expectedDuration, stageSource(ctx.workflow, "FINAL_STORYBOARD"), errors);
+  validateAudioTimeline(execution?.audioTimeline, expectedDuration, stageSource(ctx.workflow, "FINAL_STORYBOARD"), errors, "delivery");
   return errors;
 }
 
@@ -1103,7 +1157,11 @@ export function createVideosBatchNativeMediaStageRegistry(
       if (!session) throw new Error(`Session not found: ${ctx.session.id}`);
       const gateErrors = await stitchGateErrors(ctx, deps, session);
       if (gateErrors.length) {
-        const error = Object.assign(new Error(gateErrors.join("\n")), { code: "STITCH_INPUT_INVALID", retryable: false });
+        const audioNotReady = gateErrors.some((message) => message.startsWith("AUDIO_TIMELINE_NOT_READY:"));
+        const error = Object.assign(new Error(gateErrors.join("\n")), {
+          code: audioNotReady ? "AUDIO_TIMELINE_NOT_READY" : "STITCH_INPUT_INVALID",
+          retryable: audioNotReady
+        });
         throw error;
       }
       const storyboard = ctx.workflow.stages.FINAL_STORYBOARD?.artifact as any;
@@ -1203,7 +1261,15 @@ export function createVideosBatchNativeMediaStageRegistry(
       const execution = ctx.workflow.stages.EXECUTION?.artifact as Partial<NativeExecutionArtifact>;
       if (text(execution?.batchId) !== text(artifact?.batchId)) errors.push("STITCH artifact batchId does not match EXECUTION batchId");
       if (text(artifact?.audioTimelineHash) !== contentHash(execution?.audioTimeline)) errors.push("STITCH artifact audio timeline hash is stale or missing");
-      return { ok: errors.length === 0, errors };
+      const audioErrorStart = errors.length;
+      const expectedDuration = Number(storyboard?.targetDuration) || Number(execution?.audioTimeline?.durationSec) || 0;
+      validateAudioTimeline(execution?.audioTimeline, expectedDuration, stageSource(ctx.workflow, "FINAL_STORYBOARD"), errors, "delivery");
+      const audioNotReady = errors.slice(audioErrorStart).some((message) => message.startsWith("AUDIO_TIMELINE_NOT_READY:"));
+      return {
+        ok: errors.length === 0,
+        errors,
+        ...(audioNotReady ? { code: "AUDIO_TIMELINE_NOT_READY", retryable: true } : {})
+      };
     }
   };
 

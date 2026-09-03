@@ -110,6 +110,102 @@ export interface VideosBatchAudioTimeline {
   };
 }
 
+/**
+ * Frozen, server-auditable input shared by the prompt and media stages for a
+ * single ten-second FINAL_STORYBOARD shot.  Provider-facing prompt text is a
+ * later projection of this package; it is deliberately not stored here.
+ */
+export const SHOT_EXECUTION_PACKAGE_SCHEMA_VERSION = "1" as const;
+export const SHOT_EXECUTION_STORY_TYPES = ["STORY", "SCIENCE", "KNOWLEDGE"] as const;
+export type ShotExecutionStoryType = (typeof SHOT_EXECUTION_STORY_TYPES)[number];
+
+export type ShotExecutionEvidence = {
+  source: string;
+  quote: string;
+};
+
+export type ShotExecutionEffect = {
+  sequence: number;
+  timeRange: string;
+  duration: number;
+  visual: string;
+  action: string;
+  camera: string;
+};
+
+export type ShotExecutionAudioIntentEvent = {
+  id: string;
+  text: string;
+  startSec: number;
+  endSec: number;
+};
+
+export type ShotExecutionReference = {
+  referenceId: string;
+  ordinal: number;
+  assetKey: string;
+  semanticLabel: string;
+  /** Native/internal asset identity, retained only for server audit. */
+  assetId: string;
+  /** SHA-256 of the submitted image URL; the URL itself is never in the package. */
+  imageUrlHash?: string;
+};
+
+export interface ShotExecutionPackage {
+  schemaVersion: typeof SHOT_EXECUTION_PACKAGE_SCHEMA_VERSION;
+  sourceStageId: "FINAL_STORYBOARD";
+  sourceRevision: number;
+  sourceHash: string;
+  /** SHA-256 of this package with the contentHash field omitted. */
+  contentHash: string;
+  shot: {
+    sequence: number;
+    chapter: string | null;
+    screenplaySceneSequence: number;
+    durationSec: 10;
+    storyType: ShotExecutionStoryType;
+  };
+  teaching: {
+    goal: string;
+    knowledgeFocus: string;
+    evidence: ShotExecutionEvidence[];
+  };
+  visual: {
+    scene: string;
+    roleLabel: "人物" | "主体" | "核心意象";
+    role: string;
+    supportLabel: "道具" | "辅助元素";
+    support: string;
+    effects: ShotExecutionEffect[];
+    globalContinuity: string;
+  };
+  audioIntent: {
+    voices: ShotExecutionAudioIntentEvent[];
+    sounds: ShotExecutionAudioIntentEvent[];
+  };
+  references: ShotExecutionReference[];
+}
+
+export type ShotExecutionPackageDraft = Omit<ShotExecutionPackage, "contentHash"> & {
+  contentHash?: string;
+};
+
+/** The current FINAL_STORYBOARD lineage expected by a validator. */
+export interface ShotExecutionPackageLineage {
+  sourceRevision?: number;
+  sourceHash?: string;
+  /** Friendly aliases accepted by local contract tests and migration callers. */
+  revision?: number;
+  hash?: string;
+}
+
+export interface ShotExecutionPackageValidationResult {
+  ok: boolean;
+  errors: string[];
+  code?: string;
+  retryable?: boolean;
+}
+
 export type VideosBatchIntroSelectionMode =
   | "user_selected"
   | "system_recommended"

@@ -1,14 +1,14 @@
 # VideosBatch 工作流唯一规范
 
 Status: active
-Last Reviewed: 2026-09-02
+Last Reviewed: 2026-09-03
 Spec ID: `VIDEOSBATCH_WORKFLOW_CANONICAL`
-Canonical Version: `1.1.0`
+Canonical Version: `1.2.0`
 Owner: VideosBatch 产品与运行时
 
 > 本文件是 VideosBatch 课程视频工作流的唯一有效设计真源。所有阶段顺序、提示词材料、字段语义、输出格式、人工门禁、版本血缘、重试、资产和媒体规则均以本文件为准。
 >
-> 阶段 1 的文档治理和阶段 2 的归档已经完成；本次 1.1.0 只增加参考图绑定合同，代码实施和真实 Provider 验收按 `docs/videosbatch-reference-binding-repair.md` 的独立边界执行。
+> 阶段 1 的文档治理和阶段 2 的归档已经完成；1.1.0 增加参考图绑定合同，1.2.0 增加音频就绪门禁与 PARTIAL 重试合同，分别按对应落地文档执行。
 >
 > JSON 只承担传输和持久化结构；它不能删减、替代或改写上游手册规定的字段语义和创作约束。模型输出是建议稿，服务端校验、用户确认和版本血缘才决定可继续的事实。
 
@@ -49,7 +49,7 @@ VideosBatch 面向小学课程视频制作人员，把一份教案按可审阅�
 - 上游文件提交：`85252a19e6033c94b4b82699dd6e9fdc9f2f2fbf`（该文件最近一次变更）；上游检出 HEAD：`aa15bb5d57022ffc43298ba60e617fd91b1a0766`。
 - 原始文件 SHA-256：`8A794F875E117A9301150EBDEAF7E9B614EA2BDE18514652F8FEB729001E24B4`（60400 bytes，1014 行）。
 - 归档清单 [`docs/archive/videosbatch-design/manifest.json`](../docs/archive/videosbatch-design/manifest.json) 的 `bytes/sha256` 校验仓库内归档字节；由于仓库统一 `eol=lf`，上游手册归档为 59386 bytes、SHA-256 `888A49FB0E430D52795621C05345E48893B740485C5E3F5FA8BCEF01EC0757C8`，同时以 `sourceBytes/sourceSha256` 保留上述 60400 bytes 原始指纹。
-- VideosBatch 本地适配版本：`VIDEOSBATCH_WORKFLOW_CANONICAL@1.1.0`，定稿日期 `2026-09-02`。
+- VideosBatch 本地适配版本：`VIDEOSBATCH_WORKFLOW_CANONICAL@1.2.0`，定稿日期 `2026-09-03`。
 - 适配原则：保留上游第 1–5 节完整提示词语义；将机器阶段扩展为本地 13 阶段；最终分镜只使用语义对象标签，稳定公开资产编号只在垫图副本阶段注入。
 
 ## Phase 1 Governance Plan（阶段 1 规划与治理）
@@ -2396,6 +2396,14 @@ P001-A004：黄色小花（道具）
 - 旧 Shot 没有绑定快照时可从已按声明顺序读取的资产生成兼容快照；超过 H3 2–9 张限制、ordinal 重复/断号、资产缺失或图片不可读时必须在提交前失败，不得静默丢图或重排。
 - `COPYABLE_PROMPT.referenceAssetIds` 必须按当前 `FINAL_STORYBOARD.references` 解析顺序完整返回。稳定 ID 已解析但语义文字未出现在任何画面效果子镜头时，将标记插入第一个画面效果子镜头开头；去除标记后正文必须保持不变，不得仅因位置未命中把整条镜头标为 `PARTIAL`。
 
+### 7.8 音频就绪与派生阶段状态
+
+- `COPYABLE_PROMPT` artifact 为 `READY` 时所属 stage 才能为 `ready`；artifact 为 `PARTIAL` 或 `FAILED` 时所属 stage 必须为 `failed`，并保留 artifact、失败分段和来源血缘。
+- 旧会话若出现 `stage=ready + artifact.status=PARTIAL/FAILED`，API 读取、运行或重试前必须自动收敛为失败状态；不得让 `currentStage` 越过该阶段，后继阶段标记 `stale`。
+- `EXECUTION` 的视频片段完成与 `STITCH` 的最终交付是两个门禁。`EXECUTION` 可记录结构完整但尚未混音的 audio timeline；`STITCH` 只能使用交付就绪的独立音频。
+- `STITCH` 交付校验要求：存在 narration/dialogue 时每个语音事件都有 TTS `audioUrl`；存在 soundEffects 时每个音效事件都有 `audioUrl`；`mix.status=ready` 且 `mix.audioUrl` 可读取。`tts=[]` 或 `mix.status=pending` 不得让 STITCH ready（无待播语音事件时空 tts 可合法，但 mix 仍必须 ready）。
+- 音频门禁失败使用稳定错误码 `AUDIO_TIMELINE_NOT_READY`，不得创建成功 StitchJob；可修复的状态失败必须保留错误证据并允许携带当前 lineage 的显式重试。
+
 ## 8. Provider、重试与失败隔离
 
 ### 8.1 文本 Provider
@@ -2430,12 +2438,12 @@ P001-A004：黄色小花（道具）
 - 视觉 prompt、语义资产标签、已确认参考图片、旁白/对白、TTS 音频、环境/动作音效和最终混音是独立数据流。
 - H3 视频 Provider 只接收视觉描述和允许的参考资产 URL/绑定，不接收音频或把稳定资产 ID 当作图片位置；音频在本地/原生媒体链路按时间线混入。
 - 本地 `/media/...` 只用于预览；需要外部视频 Provider 时必须使用公开或签名的 `http(s)` 参考 URL。生成失败、未知提交和轮询失败分别记录并支持单片段对账/重试。
-- `STITCH` 前必须验证每个片段的 10 秒时长、顺序、版本和音频轨；缺失或 stale 片段禁止拼接。
+- `STITCH` 前必须验证每个片段的 10 秒时长、顺序、版本和交付就绪的独立音频时间线；缺失、stale 或 `AUDIO_TIMELINE_NOT_READY` 禁止拼接。
 - 图片供应商若在提交前返回明确的 `content_policy_violation`，可针对当前资产最多进行一次 `provider-safe-v1` 重试：原始教案提示词和内容哈希必须保留，临时提交文本只能去除供应商敏感的年龄/姓名表述并补充非写实教育场景安全约束；适配策略、原始哈希和提交哈希必须写入资产审计字段。第二次仍被拒绝时按不可重试的单项失败隔离，不得静默改写事实源或重复扣费。
 
 ## 9. Testing Strategy
 
-离线合同验证至少覆盖手册来源、阶段顺序和九步映射；六个文本阶段的提示词边界、专用 Schema、禁止项和字段顺序；九套导入、600–800 字故事、四类资产、目标时长集合和三类分镜 canonical `oneOf` 语义（以及 provider wire Schema 不使用 `oneOf` 的适配）；错误类型/章节、漏场次、缺标签、稳定 ID 混入、旁白超句、音效超长、提前给答案、版本过期、资产归属错误、重复旁白和非 10 秒片段；参考图声明顺序、ordinal、H3 `Image N` 映射、multipart 同源顺序、脱敏哈希快照、旧任务恢复和 `COPYABLE_PROMPT` 首个画面子镜头回退；重试预算、主备切换、幂等键、未知提交对账、失败隔离、断点恢复和拼接门禁。
+离线合同验证至少覆盖手册来源、阶段顺序和九步映射；六个文本阶段的提示词边界、专用 Schema、禁止项和字段顺序；九套导入、600–800 字故事、四类资产、目标时长集合和三类分镜 canonical `oneOf` 语义（以及 provider wire Schema 不使用 `oneOf` 的适配）；错误类型/章节、漏场次、缺标签、稳定 ID 混入、旁白超句、音效超长、提前给答案、版本过期、资产归属错误、重复旁白和非 10 秒片段；参考图声明顺序、ordinal、H3 `Image N` 映射、multipart 同源顺序、脱敏哈希快照、旧任务恢复和 `COPYABLE_PROMPT` 首个画面子镜头回退；派生 artifact PARTIAL 失败化、legacy 状态收敛、lineage 重试、音频 structural/delivery 门禁、`AUDIO_TIMELINE_NOT_READY` 和无音频 StitchJob 禁止创建；重试预算、主备切换、幂等键、未知提交对账、失败隔离、断点恢复和拼接门禁。
 
 ## Verification
 
@@ -2458,6 +2466,8 @@ git diff --check
 - [ ] `STORY`、`SCIENCE`、`KNOWLEDGE` 字段互斥且固定顺序；正式分镜只用语义标签，稳定 ID 只在垫图副本出现。
 - [ ] 版本血缘、stale、资产归属/验证、首轮三次重试预算与独立合同修复预算、主备切换、统一错误和独立媒体流均有明确规则。
 - [x] 每个 H3 镜头的 `assetIds`、`Image N` 映射、multipart 顺序和执行快照保持同源且可审计；`COPYABLE_PROMPT` 引用集合与正式分镜一致。
+- [x] `COPYABLE_PROMPT` 的 PARTIAL/FAILED 不会显示为 ready；legacy ready+partial 会在 API 入口自动收敛并可按 lineage 重试。
+- [x] `STITCH` 拒绝未完成的 TTS/音效/mix，且未通过音频交付门禁时不创建成功 StitchJob。
 - [ ] 阶段 1 不修改业务代码、`.env` 或旧文件，不调用真实 Provider；现有脏工作树保持不变。
 
 ## Change Policy

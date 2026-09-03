@@ -6,6 +6,7 @@ import { createVideosBatchLlmTextStageRegistry, deriveCopyablePrompt } from "../
 import type { StageExecutionContext } from "../src/server/videosBatchWorkflow/stageContracts";
 import { renderCanonicalSegmentText } from "../src/server/videosBatchWorkflow/canonicalStoryboard";
 import { PromptMaterialTooLargeError, renderPromptMaterial } from "../src/server/videosBatchWorkflow/promptMaterial";
+import { reconcileVideosBatchReadiness, replaceStageArtifact, restartFrom, runNext } from "../src/server/videosBatchWorkflow/runner";
 
 const calls: StructuredGenerationRequest[] = [];
 
@@ -497,5 +498,62 @@ assert.equal(registry.COPYABLE_PROMPT!.validate(markerOutsideVisual, ctx).ok, fa
 const wrongReferenceOrder = structuredClone(copyResult.artifact);
 wrongReferenceOrder.segments[0].referenceAssetIds = ["P001-A002", "P001-A001"];
 assert.equal(registry.COPYABLE_PROMPT!.validate(wrongReferenceOrder, ctx).ok, false, "copyable references must preserve FINAL_STORYBOARD declaration order");
+
+const partialCopyableArtifact = {
+  ...structuredClone(copyResult.artifact),
+  status: "PARTIAL",
+  failedSegments: [2]
+};
+let partialRunCalls = 0;
+const partialWorkflow = structuredClone(workflow);
+partialWorkflow.currentStage = "COPYABLE_PROMPT";
+partialWorkflow.stages.FINAL_STORYBOARD = { status: "ready", revision: 1, artifact: finalStoryboardArtifact };
+partialWorkflow.stages.ASSET_CONFIRMATION = { status: "ready", revision: 1, artifact: { confirmed: true } };
+const partialRegistry: any = {
+  COPYABLE_PROMPT: {
+    id: "COPYABLE_PROMPT",
+    async execute() {
+      partialRunCalls += 1;
+      return { artifact: partialRunCalls === 1 ? structuredClone(partialCopyableArtifact) : { ...structuredClone(copyResult.artifact), status: "READY", failedSegments: [] } };
+    },
+    validate() { return { ok: true, errors: [] }; }
+  }
+};
+const partialRun = await runNext(context(partialWorkflow), partialRegistry);
+assert.equal(partialRun.stages.COPYABLE_PROMPT?.status, "failed", "COPYABLE_PROMPT PARTIAL must fail the stage");
+assert.equal((partialRun.stages.COPYABLE_PROMPT?.artifact as any)?.status, "PARTIAL", "failed stage must retain the partial artifact");
+assert.equal(partialRun.stages.COPYABLE_PROMPT?.errorInfo?.code, "COPYABLE_PROMPT_PARTIAL");
+assert.equal(partialRun.stages.COPYABLE_PROMPT?.errorInfo?.retryable, true);
+
+const legacyPartial = structuredClone(partialRun);
+legacyPartial.stages.COPYABLE_PROMPT!.status = "ready";
+legacyPartial.currentStage = "QUOTE";
+legacyPartial.stages.QUOTE = { status: "ready", revision: 1, artifact: { quoteId: "legacy" } };
+const reconciledLegacy = reconcileVideosBatchReadiness(legacyPartial);
+assert.equal(reconciledLegacy.stages.COPYABLE_PROMPT?.status, "failed", "legacy ready+PARTIAL must reconcile to failed");
+assert.equal(reconciledLegacy.currentStage, "COPYABLE_PROMPT", "legacy readiness repair must rewind the workflow cursor");
+assert.equal(reconciledLegacy.stages.QUOTE?.status, "stale", "legacy readiness repair must stale descendants");
+const bypassRestart = restartFrom(legacyPartial, "QUOTE");
+assert.equal(bypassRestart.currentStage, "COPYABLE_PROMPT", "restart must not bypass a legacy unresolved stage");
+assert.throws(
+  () => replaceStageArtifact(legacyPartial, "QUOTE", { quoteId: "must-not-bypass" }),
+  /UPSTREAM_NOT_CURRENT/,
+  "manual downstream artifact saves must not bypass a legacy unresolved stage"
+);
+
+const retryWorkflow = restartFrom(partialRun, "COPYABLE_PROMPT");
+const retriedCopyable = await runNext(context(retryWorkflow), partialRegistry);
+assert.equal(retriedCopyable.stages.COPYABLE_PROMPT?.status, "ready", "a successful explicit retry may restore ready");
+assert.equal((retriedCopyable.stages.COPYABLE_PROMPT?.artifact as any)?.status, "READY");
+
+const manuallySavedPartial = replaceStageArtifact(
+  partialWorkflow,
+  "COPYABLE_PROMPT",
+  partialCopyableArtifact,
+  undefined,
+  partialRegistry,
+  context(partialWorkflow)
+);
+assert.equal(manuallySavedPartial.stages.COPYABLE_PROMPT?.status, "failed", "manual PARTIAL artifact saves must not advance as ready");
 
 console.log("VideosBatch canonical LLM text-stage adapter smoke passed");

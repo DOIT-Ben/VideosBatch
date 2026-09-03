@@ -1,4 +1,4 @@
-import { Code2, MoreHorizontal, Play, RotateCcw } from "lucide-react";
+import { Code2, MoreHorizontal, Play, RefreshCw, RotateCcw } from "lucide-react";
 import { DropdownMenu } from "radix-ui";
 import { StageStatus } from "./StageStatus";
 import type { VideosBatchProductStatus } from "../stageModel";
@@ -10,8 +10,10 @@ export function StudioStageToolbar({
   completed,
   busy,
   canDebug,
+  canRetry,
   onRunAll,
   onRestart,
+  onRetry,
   onDebug
 }: {
   stepLabel: string;
@@ -20,8 +22,10 @@ export function StudioStageToolbar({
   completed: boolean;
   busy: boolean;
   canDebug: boolean;
+  canRetry: boolean;
   onRunAll: () => void;
   onRestart: () => void;
+  onRetry: () => void;
   onDebug: () => void;
 }) {
   return (
@@ -50,6 +54,10 @@ export function StudioStageToolbar({
                 <DropdownMenu.Item className="vbs-v2-menu-item" disabled={busy} onSelect={onRestart}>
                   <RotateCcw size={14} />
                   重新生成本步骤
+                </DropdownMenu.Item>
+                <DropdownMenu.Item className="vbs-v2-menu-item" disabled={busy || !canRetry} onSelect={onRetry}>
+                  <RefreshCw size={14} />
+                  修复后重试本阶段
                 </DropdownMenu.Item>
                 <DropdownMenu.Item className="vbs-v2-menu-item" disabled={!canDebug} onSelect={onDebug}>
                   <Code2 size={14} />
