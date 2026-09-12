@@ -42,6 +42,7 @@ import {
   seedanceTimeoutMs,
   stitchShotVideos
 } from "./generators";
+import { loadPromptTemplate } from "./prompts/promptTemplates";
 import { normalizeAssetImageModel, normalizeSubStoryboardModel } from "../shared/imageModels";
 import { computeNarrationSignature, downloadRemoteAudio, generateVolcMusic, resolveEffectiveVoice, resolveVoiceIdFromVoicePrompt, runNarrationPipeline, synthesizeViaDoubao } from "./narration";
 import { computeAudioSeparationSignature, runAudioSeparationPipeline } from "./audioSeparation";
@@ -153,9 +154,8 @@ const serviceStartedAt = Date.now();
 const buildVersion = process.env.SEEREEL_VERSION || process.env.REELYAI_VERSION || process.env.npm_package_version || "dev";
 const buildCommit = process.env.SEEREEL_COMMIT_SHA || process.env.REELYAI_COMMIT_SHA || process.env.GITHUB_SHA || "";
 const FINAL_VIDEO_PUBLISH_TIMEOUT_MS = Math.max(1000, Number(process.env.FINAL_VIDEO_PUBLISH_TIMEOUT_MS || 15_000));
-/** 选角提取的系统提示词：集中定义，路由内只做材料注入。 */
-const SHORT_FILM_CASTING_SYSTEM_PROMPT =
-  "你是短片拍摄选角助手。请只返回 JSON，不要 Markdown。只识别故事的核心主角/主要人物，不要超过 6 个。";
+/** 选角提取的系统提示词：骨架存于 src/server/prompts/short-film-casting.md，路由内只做材料注入。 */
+const SHORT_FILM_CASTING_SYSTEM_PROMPT = loadPromptTemplate("short-film-casting");
 const shotGenerateSubmissions = new Map<string, Promise<{ status: number; body: unknown }>>();
 const ADMIN_COOKIE = "seereel_admin_session";
 const adminSessions = new Map<string, { createdAt: number }>();

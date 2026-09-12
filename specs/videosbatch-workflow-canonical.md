@@ -3,12 +3,12 @@
 Status: active
 Last Reviewed: 2026-09-12
 Spec ID: `VIDEOSBATCH_WORKFLOW_CANONICAL`
-Canonical Version: `1.4.0`
+Canonical Version: `1.4.1`
 Owner: VideosBatch 产品与运行时
 
 > 本文件是 VideosBatch 课程视频工作流的唯一有效设计真源。所有阶段顺序、提示词材料、字段语义、输出格式、人工门禁、版本血缘、重试、资产和媒体规则均以本文件为准。
 >
-> 阶段 1 的文档治理和阶段 2 的归档已经完成；1.1.0 增加参考图绑定合同，1.2.0 增加音频就绪门禁与 PARTIAL 重试合同，1.3.0 增加凭据卫生守卫，1.4.0 增加可插拔语音合成 Provider（MiniMax T2A v2），分别按对应落地文档执行。
+> 阶段 1 的文档治理和阶段 2 的归档已经完成；1.1.0 增加参考图绑定合同，1.2.0 增加音频就绪门禁与 PARTIAL 重试合同，1.3.0 增加凭据卫生守卫，1.4.0 增加可插拔语音合成 Provider（MiniMax T2A v2），1.4.1 将静态提示词骨架外置为 `src/server/prompts/*.md` 加载器注入，分别按对应落地文档执行。
 >
 > JSON 只承担传输和持久化结构；它不能删减、替代或改写上游手册规定的字段语义和创作约束。模型输出是建议稿，服务端校验、用户确认和版本血缘才决定可继续的事实。
 
@@ -2433,6 +2433,14 @@ P001-A004：黄色小花（道具）
 - 合成文件必须内容寻址写入 `MEDIA_DIR` 并返回可读取的 `/media/...` URL；相同文本、音色与参数重复运行必须复用既有文件而不重复计费。
 - 真实调用属于显式的付费变更，只在 `VIDEOSBATCH_TTS_PROVIDER=minimax` 时发生；离线合同验证必须能在无网络、无凭据的条件下覆盖请求形状、hex 解码、错误映射与依赖装配。
 
+### 7.11 提示词骨架外置（prompts 目录）
+
+- 六个文本阶段 systemPrompt（课程导入、故事文稿、资产计划、正式剧本、最终分镜、垫图副本）与短片大纲、短片选角两处系统骨架的单一事实源是 `src/server/prompts/*.md`；源码一律经 `loadPromptTemplate()` 绑定，不得回退为内嵌长文本。
+- 模板文件为 UTF-8、LF 行尾、单个结尾换行；加载器统一做 `\r\n → \n` 归一化并剥除结尾换行，返回与历史内嵌常量逐字节一致的字符串。进程内缓存一次；文件缺失或为空在模块加载时立即抛错（fail-fast），不存在运行中才暴露的坏模板。
+- 注册表 `PROMPT_TEMPLATE_NAMES` 与目录内容必须一一对应：新增模板必须同时登记注册表、接线消费者并纳入本节；目录中未被注册的 `.md` 视为违规。
+- 三类提示词明确不外置：`promptCompiler.ts`（确定性编译器，骨架与代码同源）、`promptCompose.ts`（逐资产动态组装）、`llmTextStages.ts` 的 `<contract_repair>`（错误清单与修复范围均为运行时字段）。
+- `smoke:videosbatch-prompt-templates` 在 `verify:offline` 中覆盖：注册表↔目录一致性、逐模板锚点短语、缓存稳定性、未知/畸形名抛错，以及六个文本阶段 spec 与 generators/index 的加载器接线。
+
 ### 7.9 凭据卫生
 
 - 真实 Provider 凭据只存在于被 git 忽略的本机 `.env`；本文件、README、UI 规格和代码注释都不得记录密钥值。
@@ -2497,7 +2505,7 @@ Skill 分发包携带本文件的指纹化快照和 manifest。仓库内以 `spe
 
 ## 9. Testing Strategy
 
-离线合同验证至少覆盖手册来源、阶段顺序和九步映射；六个文本阶段的提示词边界、专用 Schema、禁止项和字段顺序；九套导入、600–800 字故事、四类资产、目标时长集合和三类分镜 canonical `oneOf` 语义（以及 provider wire Schema 不使用 `oneOf` 的适配）；错误类型/章节、漏场次、缺标签、稳定 ID 混入、旁白超句、音效超长、提前给答案、版本过期、资产归属错误、重复旁白和非 10 秒片段；参考图声明顺序、ordinal、H3 `Image N` 映射、multipart 同源顺序、脱敏哈希快照、旧任务恢复和 `COPYABLE_PROMPT` 首个画面子镜头回退；派生 artifact PARTIAL 失败化、legacy 状态收敛、lineage 重试、音频 structural/delivery 门禁、`AUDIO_TIMELINE_NOT_READY` 和无音频 StitchJob 禁止创建；`AUDIO_DELIVERY` 逐事件 TTS/音效产出、混音前置条件、双来源血缘、缺 EXECUTION 时间线时失败关闭、幂等复用与 fake/native 产物同构；TTS Provider 开关解析与缺钥匙失败关闭、MiniMax 请求形状（`GroupId` 只走 query、正文无该字段）、hex 解码与畸形载荷拒绝、`base_resp.status_code` 到稳定错误码的映射、空 `data`/空音频判定、语速夹取到 `[0.5, 2]`、内容寻址复用不重复计费、以及音效/混音不被 TTS 开关改写；重试预算、主备切换、幂等键、未知提交对账、失败隔离、断点恢复和拼接门禁。
+离线合同验证至少覆盖手册来源、阶段顺序和九步映射；六个文本阶段的提示词边界、专用 Schema、禁止项和字段顺序；九套导入、600–800 字故事、四类资产、目标时长集合和三类分镜 canonical `oneOf` 语义（以及 provider wire Schema 不使用 `oneOf` 的适配）；错误类型/章节、漏场次、缺标签、稳定 ID 混入、旁白超句、音效超长、提前给答案、版本过期、资产归属错误、重复旁白和非 10 秒片段；参考图声明顺序、ordinal、H3 `Image N` 映射、multipart 同源顺序、脱敏哈希快照、旧任务恢复和 `COPYABLE_PROMPT` 首个画面子镜头回退；派生 artifact PARTIAL 失败化、legacy 状态收敛、lineage 重试、音频 structural/delivery 门禁、`AUDIO_TIMELINE_NOT_READY` 和无音频 StitchJob 禁止创建；`AUDIO_DELIVERY` 逐事件 TTS/音效产出、混音前置条件、双来源血缘、缺 EXECUTION 时间线时失败关闭、幂等复用与 fake/native 产物同构；TTS Provider 开关解析与缺钥匙失败关闭、MiniMax 请求形状（`GroupId` 只走 query、正文无该字段）、hex 解码与畸形载荷拒绝、`base_resp.status_code` 到稳定错误码的映射、空 `data`/空音频判定、语速夹取到 `[0.5, 2]`、内容寻址复用不重复计费、以及音效/混音不被 TTS 开关改写；提示词骨架目录的注册表↔文件一致性、逐模板锚点短语、缓存稳定性、未知名 fail-fast 与六个文本阶段及 generators/index 的加载器接线；重试预算、主备切换、幂等键、未知提交对账、失败隔离、断点恢复和拼接门禁。
 
 ## Verification
 
@@ -2530,6 +2538,7 @@ git diff --check
 - [x] `VIDEOSBATCH_TTS_PROVIDER` 可在 `fake`/`minimax` 间切换且独立于 `VIDEOSBATCH_MEDIA_MODE`；`minimax` 缺钥匙时失败关闭，`tts=minimax`+`media=fake` 时只覆盖 `AUDIO_DELIVERY`。
 - [x] MiniMax T2A v2 请求形状、`GroupId` 仅走 query、hex 解码、`status_code` 错误映射、空音频判定、语速夹取与内容寻址复用均被离线验证覆盖，且无网络无凭据即可通过。
 - [x] TTS 开关只替换语音合成；音效与混音仍为本地实现，`AUDIO_DELIVERY` 产物 `provider` 如实反映实际语音来源。
+- [x] 静态提示词骨架外置于 `src/server/prompts/*.md` 并经 `loadPromptTemplate()` 注入；注册表与目录一一对应，内容与历史常量逐字节一致，加载器 fail-fast 与消费者接线被离线 smoke 覆盖；`promptCompiler`/`promptCompose`/`<contract_repair>` 保持代码内。
 - [ ] 阶段 1 不修改业务代码、`.env` 或旧文件，不调用真实 Provider；现有脏工作树保持不变。
 
 ## Change Policy

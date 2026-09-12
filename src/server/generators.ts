@@ -12,6 +12,7 @@ import { composeSeedanceVideoText, composeSeedreamAssetPrompt, type Lang } from 
 import { fetchWithRetry } from "./fetchWithRetry";
 import { arkMissingKeyMessage, BYTEPLUS_ARK_BASE, resolveArkCredential, VOLCENGINE_CN_ARK_BASE, type ArkCredential, type StandardCredentialRouteConfig } from "./arkCredentials";
 import { seedreamWebSearchPayload } from "./seedreamOptions";
+import { loadPromptTemplate } from "./prompts/promptTemplates";
 import { generateShotVideoViaNewApiH3 } from "./videosBatchWorkflow/newApiH3Video";
 import type { VideosBatchAudioTimeline } from "../shared/videosBatchWorkflow";
 import type { VideosBatchReferenceBinding } from "../shared/videosBatchNativeProjection";
@@ -43,11 +44,11 @@ export interface BuildSeedancePayloadOpts {
 export const MEDIA_DIR = path.resolve(process.cwd(), "data", "media");
 
 /**
- * 集中提示词段落区：与媒体生成相关的系统/风格提示词文本一律提为具名常量，
+ * 集中提示词段落区：与媒体生成相关的系统/风格提示词骨架一律存放在
+ * src/server/prompts/*.md（loadPromptTemplate 启动加载、缺失即抛错），
  * 组装函数只做段落注入与变量插值，不再内嵌整句提示词。
  */
-const SHORT_FILM_OUTLINE_SYSTEM_PROMPT =
-  "你是电影短篇编剧和导演。只返回严格 JSON，不要 Markdown。生成短片大纲、人物弧线和节拍表，后续会直接派生分镜。";
+const SHORT_FILM_OUTLINE_SYSTEM_PROMPT = loadPromptTemplate("short-film-outline");
 
 const BYTEPLUS_SEEDANCE_BASE = BYTEPLUS_ARK_BASE;
 const BYTEPLUS_SEEDANCE_MODEL = "dreamina-seedance-2-0-260128";
