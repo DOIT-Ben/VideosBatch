@@ -106,6 +106,8 @@ Use the project-native specs in `specs/` for non-trivial product work. Do not de
 
 Never upload AK/SK, tokens, passwords, API keys, private keys, admin credentials, or provider secrets to GitHub, online APIs, frontend bundles, logs, dashboards, screenshots, or any public surface. Use protected runtime configuration and masked status displays. Run `npm run smoke:secrets` when touching credentials, diagnostics, metrics, deployment, or admin settings.
 
+`smoke:secrets` scans files git would ship and deliberately skips ignored ones, so it cannot see your local `.env`. Before relying on a configured environment, run `npm run smoke:env-hygiene` — it verifies `.env` is ignored, was never committed, that the tracked `*.example` templates carry no real values, and reports how many credentials are armed versus whether provider calls are actually enabled. It never prints a secret value. This check is local-only and intentionally excluded from `verify:offline`, because a fresh clone legitimately has no keys.
+
 ## Critical Media Rule
 
 Seedance workers need public or signed `http(s)` URLs. Local `/media/...` paths are only for app preview. Publish Codex/imported storyboards to TOS before sending them as `reference_image`.

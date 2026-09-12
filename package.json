@@ -106,7 +106,8 @@
     "cli:pack": "npm pack ./packages/seereel-cli",
     "install:skill": "node scripts/install_agent_skill.mjs",
     "postinstall": "node -e \"if(process.env.CI||process.env.SEEREEL_SKIP_SKILL_INSTALL==='1'||process.env.REELYAI_SKIP_SKILL_INSTALL==='1'){console.log('Skipping SeeReel skill installation during postinstall.');process.exit(0)}process.exit(1)\" || node scripts/install_agent_skill.mjs --postinstall || true",
-    "start": "NODE_ENV=production tsx src/server/index.ts"
+    "start": "NODE_ENV=production tsx src/server/index.ts",
+    "smoke:env-hygiene": "tsx scripts/smoke-env-hygiene.ts"
   },
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",

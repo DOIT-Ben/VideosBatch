@@ -2421,6 +2421,13 @@ P001-A004：黄色小花（道具）
 - `STITCH` 必须把交付就绪的混音真正混入最终成片，而不是仅把时间线 hash 纳入拼接签名。缺失时间线则不得拼接出无声成片。
 - canonical fake 链路必须与 native 链路产生同构的 `AUDIO_DELIVERY` 产物，使离线合同验证能够覆盖音频门禁；fake 产物使用 `fake://` URL 且仅在 fake 注册表内被接受，native 链路不得放行该 scheme。
 
+### 7.9 凭据卫生
+
+- 真实 Provider 凭据只存在于被 git 忽略的本机 `.env`；本文件、README、UI 规格和代码注释都不得记录密钥值。
+- `smoke:secrets` 只扫描进入版本控制的文件，天然看不到被忽略的 `.env`；`.env` 的卫生状态由独立的本地检查 `smoke:env-hygiene` 覆盖：`.env` 是否被忽略、是否曾进入历史、跟踪的 `*.example` 模板是否被误填、已配置凭据数量与实际 Provider 开关是否一致。
+- `smoke:env-hygiene` 只输出键名与布尔结论，不打印任何密钥值；它是本地检查，不纳入 `verify:offline`，因为全新检出本就没有凭据。
+- 模式开关（`VIDEOSBATCH_EXECUTOR_MODE`、`VIDEOSBATCH_MEDIA_MODE`）保持 `fake` 时不得产生真实 Provider 调用；把开关切到 `llm`/`native` 属于显式的付费变更，必须单独确认。
+
 ## 8. Provider、重试与失败隔离
 
 ### 8.1 文本 Provider
@@ -2499,6 +2506,7 @@ git diff --check
 - [x] `STITCH` 拒绝未完成的 TTS/音效/mix，且未通过音频交付门禁时不创建成功 StitchJob。
 - [x] `STITCH` 把交付就绪的混音真正混入最终成片，而不仅是用时间线 hash 参与拼接签名。
 - [x] canonical fake 链路产出与 native 同构的 `AUDIO_DELIVERY` 产物，离线合同验证可覆盖音频门禁；`fake://` URL 仅在 fake 注册表被接受。
+- [x] `smoke:env-hygiene` 验证 `.env` 被忽略且从未提交、跟踪模板无真实密钥，并只以键名和布尔结论报告凭据武装状态。
 - [ ] 阶段 1 不修改业务代码、`.env` 或旧文件，不调用真实 Provider；现有脏工作树保持不变。
 
 ## Change Policy
