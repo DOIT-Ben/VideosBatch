@@ -2,10 +2,13 @@ import { randomUUID } from "node:crypto";
 import type { Asset, AssetImageModel, AssetPromptAdaptation, Shot, ShotRender } from "../../shared/types";
 import type { VideosBatchReferenceBinding } from "../../shared/videosBatchNativeProjection";
 import type {
+  VideosBatchAudioDeliveryArtifact,
+  VideosBatchAudioDeliveryItem,
   VideosBatchAudioEvent,
   VideosBatchAudioTimeline,
   VideosBatchMediaError,
-  VideosBatchMediaItemStatus
+  VideosBatchMediaItemStatus,
+  VideosBatchStageId
 } from "../../shared/videosBatchWorkflow";
 import {
   cacheGeneratedImage,
@@ -29,6 +32,13 @@ import {
   applyConfirmedReferencesToNativeShots,
   projectAssetCandidatesIntoSeeReel
 } from "./nativeProjection";
+import {
+  VIDEOS_BATCH_FAKE_AUDIO_PROVIDER,
+  materializeFakeSoundEffect,
+  mixFakeAudioTimeline,
+  probeLocalAudioDuration,
+  synthesizeFakeSpeech
+} from "./audioDelivery";
 
 export interface NativeAssetImageResult {
   url: string;
@@ -126,6 +136,19 @@ export interface VideosBatchNativeMediaDeps {
     shots: Shot[],
     options?: { audioTimeline?: VideosBatchAudioTimeline }
   ): Promise<{ finalVideoUrl: string; signature: string }>;
+  /**
+   * AUDIO_DELIVERY dependencies. TTS and sound effects are synthesized per
+   * timeline event; the mix is the final deliverable track. The default deps
+   * are deterministic fakes so the offline gate can run without a provider.
+   */
+  synthesizeSpeech?(event: VideosBatchAudioEvent, sessionId: string): Promise<string>;
+  materializeSoundEffect?(event: VideosBatchAudioEvent, sessionId: string): Promise<string>;
+  mixAudioTimeline?(
+    timeline: VideosBatchAudioTimeline,
+    sessionId: string
+  ): Promise<{ mixAudioUrl: string; durationSec: number }>;
+  /** Local probe for a synthesized audio file; undefined means unmeasurable. */
+  probeAudioDuration?(url: string): Promise<number | undefined>;
 }
 
 export const defaultVideosBatchNativeMediaDeps: VideosBatchNativeMediaDeps = {
@@ -146,7 +169,11 @@ export const defaultVideosBatchNativeMediaDeps: VideosBatchNativeMediaDeps = {
   },
   stitchShotVideos: async (sessionId, shots, options) => stitchShotVideos(sessionId, shots, {
     audioTimeline: options?.audioTimeline
-  })
+  }),
+  synthesizeSpeech: synthesizeFakeSpeech,
+  materializeSoundEffect: materializeFakeSoundEffect,
+  mixAudioTimeline: mixFakeAudioTimeline,
+  probeAudioDuration: probeLocalAudioDuration
 };
 
 function requireStore(ctx: StageExecutionContext): CinemaStore {
@@ -402,6 +429,16 @@ function isUsableAudioUrl(value: unknown) {
   return /^https?:\/\//iu.test(url) || /^\/media\//u.test(url);
 }
 
+/**
+ * The canonical fake chain declares `fake://` audio so the delivery artifact
+ * stays inspectable without a media backend. Accept those only where the
+ * caller has opted in, and keep every other scheme rejected so a placeholder
+ * can never reach a real render.
+ */
+function isUsableFakeAudioUrl(value: unknown) {
+  return /^fake:\/\//iu.test(text(value));
+}
+
 function sameAudioRange(left: any, right: any) {
   return Math.abs(Number(left?.startSec) - Number(right?.startSec)) <= DURATION_TOLERANCE_SEC
     && Math.abs(Number(left?.endSec) - Number(right?.endSec)) <= DURATION_TOLERANCE_SEC;
@@ -412,8 +449,12 @@ function validateAudioTimeline(
   expectedDuration: number,
   source: { revision: number; hash: string },
   errors: string[],
-  mode: AudioTimelineValidationMode = "structural"
+  mode: AudioTimelineValidationMode = "structural",
+  options: { allowFakeAudio?: boolean } = {}
 ) {
+  const usableAudioUrl = options.allowFakeAudio
+    ? (value: unknown) => isUsableAudioUrl(value) || isUsableFakeAudioUrl(value)
+    : isUsableAudioUrl;
   const pushTimelineError = (message: string) => {
     errors.push(mode === "delivery" ? `AUDIO_TIMELINE_NOT_READY: ${message}` : message);
   };
@@ -469,22 +510,257 @@ function validateAudioTimeline(
       continue;
     }
     usedTts.add(matchIndex);
-    if (!isUsableAudioUrl(ttsEvents[matchIndex]?.audioUrl)) {
+    if (!usableAudioUrl(ttsEvents[matchIndex]?.audioUrl)) {
       pushTimelineError(`TTS 事件 ${text(voiceEvent?.id) || "<empty>"} 缺少可读取 audioUrl`);
     }
   }
 
   for (const soundEvent of (Array.isArray(streams.soundEffects) ? streams.soundEffects : [])) {
-    if (!isUsableAudioUrl(soundEvent?.audioUrl)) {
+    if (!usableAudioUrl(soundEvent?.audioUrl)) {
       pushTimelineError(`音效事件 ${text(soundEvent?.id) || "<empty>"} 缺少可读取 audioUrl`);
     }
   }
 
   if (streams.mix?.status !== "ready") {
     pushTimelineError("audioTimeline mix.status 必须为 ready");
-  } else if (!isUsableAudioUrl(streams.mix?.audioUrl)) {
+  } else if (!usableAudioUrl(streams.mix?.audioUrl)) {
     pushTimelineError("audioTimeline mix.audioUrl 缺失或不可读取");
   }
+}
+
+/**
+ * AUDIO_DELIVERY materializes the structural audio timeline that EXECUTION
+ * produced.  It synthesizes one audio file per declared voice/effect event,
+ * builds the independent TTS stream and finishes with a mixed deliverable
+ * track.  Only after this stage is the timeline acceptable to the STITCH
+ * delivery gate.
+ */
+interface AudioDeliveryBuildResult {
+  artifact: VideosBatchAudioDeliveryArtifact;
+  attempts: number;
+}
+
+async function buildAudioDelivery(
+  ctx: StageExecutionContext,
+  deps: VideosBatchNativeMediaDeps,
+  execution: NativeExecutionArtifact
+): Promise<AudioDeliveryBuildResult> {
+  const lineage = sourceLineage(ctx.workflow, ["EXECUTION", "FINAL_STORYBOARD"]);
+  const previous = ctx.workflow.stages.AUDIO_DELIVERY?.artifact as Partial<VideosBatchAudioDeliveryArtifact> | undefined;
+  const previousByEvent = new Map(
+    (Array.isArray(previous?.items) ? previous.items : []).map((item: any) => [text(item?.eventId), item])
+  );
+
+  const timeline = execution.audioTimeline;
+  if (!timeline || typeof timeline !== "object") {
+    throw Object.assign(new Error("AUDIO_DELIVERY requires the EXECUTION audio timeline"), {
+      code: "AUDIO_TIMELINE_MISSING",
+      retryable: false
+    });
+  }
+
+  const items: VideosBatchAudioDeliveryItem[] = [];
+  const failedItems: VideosBatchAudioDeliveryItem[] = [];
+  let maxAttempt = 0;
+
+  const synthesize = async (
+    event: VideosBatchAudioEvent,
+    stream: VideosBatchAudioDeliveryItem["stream"]
+  ): Promise<VideosBatchAudioDeliveryItem> => {
+    const previousItem = previousByEvent.get(text(event.id)) as any;
+    const attempt = Math.max(1, Number(previousItem?.attempt) || 0) + 1;
+    maxAttempt = Math.max(maxAttempt, attempt);
+    try {
+      const reused = stream === "soundEffects" || stream === "mix"
+        ? undefined
+        : previousItem?.status === "ready" && isUsableAudioUrl(previousItem?.audioUrl)
+          ? text(previousItem.audioUrl)
+          : undefined;
+      const audioUrl = reused || (stream === "narration" || stream === "dialogue"
+        ? await deps.synthesizeSpeech?.(event, ctx.session.id)
+        : await deps.materializeSoundEffect?.(event, ctx.session.id));
+      if (!isUsableAudioUrl(audioUrl)) throw new Error(`${stream} 事件 ${text(event.id)} 未返回可读取的音频 URL`);
+      const durationSec = await deps.probeAudioDuration?.(String(audioUrl));
+      return {
+        eventId: text(event.id),
+        stream,
+        status: "ready",
+        audioUrl: String(audioUrl),
+        ...(durationSec === undefined ? {} : { durationSec }),
+        attempt
+      };
+    } catch (error) {
+      const item: VideosBatchAudioDeliveryItem = {
+        eventId: text(event.id),
+        stream,
+        status: "failed",
+        attempt,
+        error: mediaError(error, "AUDIO_SYNTHESIS_FAILED", attempt)
+      };
+      failedItems.push(item);
+      return item;
+    }
+  };
+
+  const voiceEvents = [...timeline.streams.narration, ...timeline.streams.dialogue];
+  const voiceStreamByEventId = new Map<string, VideosBatchAudioDeliveryItem["stream"]>();
+  timeline.streams.narration.forEach((event) => voiceStreamByEventId.set(text(event.id), "narration"));
+  timeline.streams.dialogue.forEach((event) => voiceStreamByEventId.set(text(event.id), "dialogue"));
+
+  const nextTimeline: VideosBatchAudioTimeline = structuredClone(timeline);
+  nextTimeline.streams.tts = [];
+  nextTimeline.streams.soundEffects = [...timeline.streams.soundEffects];
+
+  // Synthesize speech: one TTS file per declared voice event, keyed to the
+  // source event id so the delivery gate can match them one-to-one.
+  for (const voiceEvent of voiceEvents) {
+    const item = await synthesize(voiceEvent, voiceStreamByEventId.get(text(voiceEvent.id)) || "dialogue");
+    items.push(item);
+    if (item.status !== "ready") continue;
+    nextTimeline.streams.tts.push({
+      id: `tts-${text(voiceEvent.id)}`,
+      startSec: Number(voiceEvent.startSec),
+      endSec: Number(voiceEvent.endSec),
+      text: text(voiceEvent.text),
+      audioUrl: item.audioUrl,
+      source: "TTS"
+    });
+  }
+
+  // Materialize sound effects in place so the timeline carries readable URLs.
+  for (const [index, soundEvent] of timeline.streams.soundEffects.entries()) {
+    const item = await synthesize(soundEvent, "soundEffects");
+    items.push(item);
+    if (item.status === "ready") nextTimeline.streams.soundEffects[index] = { ...soundEvent, audioUrl: item.audioUrl };
+  }
+
+  // Only mix when every required event produced audio; a partial mix would let
+  // the STITCH gate see `mix.status=ready` while speech is still missing.
+  const synthesisFailed = failedItems.length > 0;
+  if (synthesisFailed) {
+    nextTimeline.streams.mix = { status: "pending" };
+    const requiredFailed = failedItems.some((item) => item.stream !== "soundEffects");
+    const status: VideosBatchAudioDeliveryArtifact["status"] = requiredFailed
+      ? (items.some((item) => item.status === "ready") ? "PARTIAL" : "FAILED")
+      : "PARTIAL";
+    return {
+      artifact: {
+        schemaVersion: "1",
+        status,
+        provider: VIDEOS_BATCH_FAKE_AUDIO_PROVIDER,
+        audioTimeline: nextTimeline,
+        items,
+        failedItems,
+        ...lineage
+      },
+      attempts: maxAttempt
+    };
+  }
+
+  try {
+    const mixed = await deps.mixAudioTimeline?.(nextTimeline, ctx.session.id);
+    if (!mixed || !isUsableAudioUrl(mixed.mixAudioUrl)) {
+      throw Object.assign(new Error("混音未返回可读取的 audioUrl"), { code: "AUDIO_MIX_FAILED", retryable: true });
+    }
+    nextTimeline.streams.mix = {
+      status: "ready",
+      audioUrl: mixed.mixAudioUrl,
+      generatedAt: new Date().toISOString()
+    };
+    items.push({
+      eventId: "mix",
+      stream: "mix",
+      status: "ready",
+      audioUrl: mixed.mixAudioUrl,
+      durationSec: mixed.durationSec,
+      attempt: Math.max(1, Number((previousByEvent.get("mix") as any)?.attempt) || 0) + 1
+    });
+    return {
+      artifact: {
+        schemaVersion: "1",
+        status: "READY",
+        provider: VIDEOS_BATCH_FAKE_AUDIO_PROVIDER,
+        audioTimeline: nextTimeline,
+        items,
+        failedItems: [],
+        ...lineage
+      },
+      attempts: maxAttempt
+    };
+  } catch (error) {
+    const info = mediaError(error, "AUDIO_MIX_FAILED", Math.max(1, maxAttempt));
+    nextTimeline.streams.mix = { status: "pending" };
+    failedItems.push({ eventId: "mix", stream: "mix", status: "failed", attempt: info.attempt, error: info });
+    items.push({ eventId: "mix", stream: "mix", status: "failed", attempt: info.attempt, error: info });
+    return {
+      artifact: {
+        schemaVersion: "1",
+        status: "PARTIAL",
+        provider: VIDEOS_BATCH_FAKE_AUDIO_PROVIDER,
+        audioTimeline: nextTimeline,
+        items,
+        failedItems,
+        ...lineage
+      },
+      attempts: maxAttempt
+    };
+  }
+}
+
+/**
+ * Delivery-mode timeline gate, shared with the fake registry so that "is this
+ * audio ready to ship" has exactly one definition. Returns only the audio
+ * errors, already prefixed with the canonical code.
+ */
+export function validateAudioTimelineDeliverable(
+  timeline: any,
+  expectedDuration: number,
+  source: { revision: number; hash: string },
+  options: { allowFakeAudio?: boolean } = {}
+): string[] {
+  const errors: string[] = [];
+  validateAudioTimeline(timeline, expectedDuration, source, errors, "delivery", options);
+  return errors;
+}
+
+function validateAudioDelivery(artifact: any, ctx: StageExecutionContext) {
+  const errors: string[] = [];
+  if (!artifact || typeof artifact !== "object") {
+    errors.push("AUDIO_DELIVERY requires an artifact");
+    return { ok: false, errors, code: "AUDIO_TIMELINE_NOT_READY", retryable: true };
+  }
+  if (artifact.schemaVersion !== "1") errors.push("AUDIO_DELIVERY schemaVersion must be 1");
+  if (!["READY", "PARTIAL", "FAILED"].includes(String(artifact.status || ""))) errors.push("AUDIO_DELIVERY has an invalid status");
+  if (!text(artifact.provider)) errors.push("AUDIO_DELIVERY requires a provider id");
+
+  const source = stageSource(ctx.workflow, "EXECUTION");
+  if (Number(artifact.sourceRevision) !== source.revision) errors.push("AUDIO_DELIVERY source revision is stale");
+  if (text(artifact.sourceHash) !== source.hash) errors.push("AUDIO_DELIVERY source hash is stale");
+
+  const execution = ctx.workflow.stages.EXECUTION?.artifact as Partial<NativeExecutionArtifact> | undefined;
+  const expectedDuration = Number(execution?.audioTimeline?.durationSec)
+    || Number((ctx.workflow.stages.FINAL_STORYBOARD?.artifact as any)?.targetDuration)
+    || 0;
+  const audioErrorStart = errors.length;
+  validateAudioTimeline(artifact.audioTimeline, expectedDuration, stageSource(ctx.workflow, "FINAL_STORYBOARD"), errors, "delivery");
+  const audioNotReady = errors.slice(audioErrorStart).some((message) => message.startsWith("AUDIO_TIMELINE_NOT_READY:"));
+
+  if (artifact.status === "READY" && audioNotReady) {
+    errors.push("AUDIO_DELIVERY READY requires a delivery-ready audio timeline");
+  }
+  if (artifact.status !== "READY" && !Array.isArray(artifact.failedItems)) {
+    errors.push("AUDIO_DELIVERY non-ready status requires failedItems");
+  }
+  if (artifact.status === "READY" && Array.isArray(artifact.failedItems) && artifact.failedItems.length) {
+    errors.push("AUDIO_DELIVERY READY cannot carry failed items");
+  }
+
+  const ok = errors.length === 0;
+  return {
+    ok,
+    errors,
+    ...(ok ? {} : { code: audioNotReady ? "AUDIO_TIMELINE_NOT_READY" : "AUDIO_DELIVERY_INVALID", retryable: audioNotReady || artifact.status !== "READY" })
+  };
 }
 
 function validateAssetCandidates(artifact: any) {
@@ -592,11 +868,25 @@ async function adoptRenderForBatch(
   return { shot: updated, render: adopted };
 }
 
-function sourceLineage(workflow: any, stageIds: readonly string[]) {
+/**
+ * Build the full source lineage for a stage from its declared inputs.  The
+ * primary `sourceStageId` is the first entry, which callers rely on as a
+ * literal type, so the function stays generic over the id list.
+ */
+function sourceLineage<const T extends readonly VideosBatchStageId[]>(
+  workflow: any,
+  stageIds: T
+): {
+  sourceStageId: T[0];
+  sourceRevision: number;
+  sourceHash: string;
+  sourceHashes: Record<string, string>;
+  sourceRevisions: Record<string, number>;
+} {
   const sources = stageSources(workflow, stageIds);
   const first = stageIds[0] || "FINAL_STORYBOARD";
   return {
-    sourceStageId: first as "FINAL_STORYBOARD",
+    sourceStageId: first as T[0],
     sourceRevision: sources[first]?.revision || 0,
     sourceHash: sources[first]?.hash || "",
     sourceHashes: Object.fromEntries(stageIds.map((id) => [id, sources[id]?.hash || ""])),
@@ -613,6 +903,20 @@ function executionStatus(items: NativeExecutionItem[]): NativeExecutionArtifact[
   const failed = items.filter((item) => item.status !== "ready");
   if (!failed.length) return "READY";
   return items.some((item) => item.status === "ready") ? "PARTIAL" : "FAILED";
+}
+
+/**
+ * STITCH consumes the delivery-ready timeline owned by AUDIO_DELIVERY, not the
+ * structural timeline EXECUTION produced.  Both are checked so a forged or
+ * stale AUDIO_DELIVERY artifact cannot skip the audio gate.
+ */
+function deliveryAudioTimeline(ctx: StageExecutionContext) {
+  const deliveryState = ctx.workflow.stages.AUDIO_DELIVERY;
+  const delivery = deliveryState?.artifact as Partial<VideosBatchAudioDeliveryArtifact> | undefined;
+  return {
+    state: deliveryState,
+    timeline: delivery?.audioTimeline as VideosBatchAudioTimeline | undefined
+  };
 }
 
 async function stitchGateErrors(
@@ -697,7 +1001,11 @@ async function stitchGateErrors(
   const confirmedOrder = Array.isArray(confirmation?.items) ? confirmation.items.map((item: any) => text(item?.publicAssetId)).filter(Boolean) : [];
   if (!Array.isArray(quote?.assetOrder) || quote.assetOrder.map(text).join("|") !== confirmedOrder.join("|")) errors.push("STITCH QUOTE asset order is stale or inconsistent");
 
-  validateAudioTimeline(execution?.audioTimeline, expectedDuration, stageSource(ctx.workflow, "FINAL_STORYBOARD"), errors, "delivery");
+  const { state: audioDeliveryState, timeline: audioTimeline } = deliveryAudioTimeline(ctx);
+  if (audioDeliveryState?.status !== "ready") {
+    errors.push("AUDIO_TIMELINE_NOT_READY: STITCH requires a current READY AUDIO_DELIVERY artifact");
+  }
+  validateAudioTimeline(audioTimeline, expectedDuration, stageSource(ctx.workflow, "FINAL_STORYBOARD"), errors, "delivery");
   return errors;
 }
 
@@ -1149,6 +1457,37 @@ export function createVideosBatchNativeMediaStageRegistry(
     }
   };
 
+  const audioDelivery: StageDefinition<VideosBatchAudioDeliveryArtifact> = {
+    id: "AUDIO_DELIVERY",
+    async execute(ctx) {
+      const executionState = ctx.workflow.stages.EXECUTION;
+      const execution = executionState?.artifact as NativeExecutionArtifact | undefined;
+      if (executionState?.status !== "ready" || execution?.status !== "READY") {
+        throw Object.assign(new Error("AUDIO_DELIVERY requires a current READY EXECUTION artifact"), {
+          code: "AUDIO_TIMELINE_MISSING",
+          retryable: false
+        });
+      }
+      const result = await buildAudioDelivery(ctx, deps, execution);
+      if (result.artifact.status !== "READY") {
+        const firstError = result.artifact.failedItems[0]?.error;
+        throw Object.assign(
+          new Error(firstError ? `${firstError.code}: ${firstError.message}` : "AUDIO_TIMELINE_NOT_READY: 音频交付未完成"),
+          {
+            code: firstError?.code || "AUDIO_TIMELINE_NOT_READY",
+            retryable: true,
+            provider: VIDEOS_BATCH_FAKE_AUDIO_PROVIDER,
+            model: null
+          }
+        );
+      }
+      return { artifact: result.artifact, attempts: result.attempts, provider: result.artifact.provider };
+    },
+    validate(artifact, ctx) {
+      return validateAudioDelivery(artifact, ctx);
+    }
+  };
+
   const stitch: StageDefinition<any> = {
     id: "STITCH",
     async execute(ctx) {
@@ -1169,8 +1508,8 @@ export function createVideosBatchNativeMediaStageRegistry(
       const currentSession = store.getSession(ctx.session.id);
       if (!currentSession) throw new Error(`Session not found: ${ctx.session.id}`);
       const shots = await currentBatchShots(store, currentSession, storyboard, batch);
-      const execution = ctx.workflow.stages.EXECUTION?.artifact as Partial<NativeExecutionArtifact>;
-      const audioTimeline = execution.audioTimeline;
+      const audioTimeline = deliveryAudioTimeline(ctx).timeline;
+      if (!audioTimeline) throw new Error("STITCH requires a delivery-ready audio timeline from AUDIO_DELIVERY");
       const stitchJobId = `stitch_vb_${randomUUID().slice(0, 8)}`;
       const startedAt = new Date().toISOString();
       const created = await store.createStitchJob(ctx.session.id, {
@@ -1260,10 +1599,18 @@ export function createVideosBatchNativeMediaStageRegistry(
       }
       const execution = ctx.workflow.stages.EXECUTION?.artifact as Partial<NativeExecutionArtifact>;
       if (text(execution?.batchId) !== text(artifact?.batchId)) errors.push("STITCH artifact batchId does not match EXECUTION batchId");
-      if (text(artifact?.audioTimelineHash) !== contentHash(execution?.audioTimeline)) errors.push("STITCH artifact audio timeline hash is stale or missing");
+      const { state: deliveryState, timeline: deliveryTimeline } = deliveryAudioTimeline(ctx);
+      if (deliveryState?.status !== "ready") {
+        errors.push("AUDIO_TIMELINE_NOT_READY: STITCH requires a current READY AUDIO_DELIVERY artifact");
+      }
+      if (!deliveryTimeline) {
+        errors.push("AUDIO_TIMELINE_NOT_READY: STITCH requires an independent delivery audio timeline");
+      } else if (text(artifact?.audioTimelineHash) !== contentHash(deliveryTimeline)) {
+        errors.push("STITCH artifact audio timeline hash is stale or missing");
+      }
       const audioErrorStart = errors.length;
-      const expectedDuration = Number(storyboard?.targetDuration) || Number(execution?.audioTimeline?.durationSec) || 0;
-      validateAudioTimeline(execution?.audioTimeline, expectedDuration, stageSource(ctx.workflow, "FINAL_STORYBOARD"), errors, "delivery");
+      const expectedDuration = Number(storyboard?.targetDuration) || Number(deliveryTimeline?.durationSec) || 0;
+      validateAudioTimeline(deliveryTimeline, expectedDuration, stageSource(ctx.workflow, "FINAL_STORYBOARD"), errors, "delivery");
       const audioNotReady = errors.slice(audioErrorStart).some((message) => message.startsWith("AUDIO_TIMELINE_NOT_READY:"));
       return {
         ok: errors.length === 0,
@@ -1276,6 +1623,7 @@ export function createVideosBatchNativeMediaStageRegistry(
   return {
     ASSET_CANDIDATES: assetCandidates,
     EXECUTION: execution,
+    AUDIO_DELIVERY: audioDelivery,
     STITCH: stitch
   };
 }

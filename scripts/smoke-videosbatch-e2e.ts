@@ -185,6 +185,9 @@ await withServer(async () => {
       method: "POST",
       body: "{}"
     });
+    if (!workflow.completed) {
+      throw new Error(`workflow stalled at ${workflow.currentStage}: ${workflow.stages[workflow.currentStage]?.error ?? "no error recorded"}`);
+    }
     assert.equal(workflow.completed, true, "workflow must reach DONE after native/fake stitch");
 
     for (const stageId of VIDEOS_BATCH_STAGE_ORDER) {
@@ -214,6 +217,13 @@ await withServer(async () => {
 
     assert.ok(workflow.stages.QUOTE.artifact.quoteId);
     assert.equal(workflow.stages.EXECUTION.artifact.status, "READY");
+    assert.equal(workflow.stages.AUDIO_DELIVERY.artifact.status, "READY", "the canonical chain must deliver audio before stitch");
+    assert.equal(workflow.stages.AUDIO_DELIVERY.artifact.audioTimeline.streams.mix.status, "ready");
+    assert.ok(
+      workflow.stages.AUDIO_DELIVERY.artifact.audioTimeline.streams.tts.length
+        === workflow.stages.AUDIO_DELIVERY.artifact.audioTimeline.streams.narration.length,
+      "every narration event must have a matching TTS entry"
+    );
     assert.equal(workflow.stages.STITCH.artifact.finalVideoUrl, "fake://videosbatch/final.mp4");
 
     const finalSnapshot = await request<Workflow>(`/api/sessions/${session.id}/videosbatch`);

@@ -11,6 +11,7 @@ export const VIDEOS_BATCH_STAGE_ORDER = [
   "COPYABLE_PROMPT",
   "QUOTE",
   "EXECUTION",
+  "AUDIO_DELIVERY",
   "STITCH"
 ] as const;
 
@@ -41,7 +42,8 @@ export const VIDEOS_BATCH_STAGE_DEPENDENCIES: Readonly<Record<VideosBatchStageId
   COPYABLE_PROMPT: ["FINAL_STORYBOARD", "ASSET_CONFIRMATION"],
   QUOTE: ["FINAL_STORYBOARD", "ASSET_CONFIRMATION", "COPYABLE_PROMPT"],
   EXECUTION: ["FINAL_STORYBOARD", "ASSET_CONFIRMATION", "QUOTE"],
-  STITCH: ["EXECUTION", "FINAL_STORYBOARD", "QUOTE"]
+  AUDIO_DELIVERY: ["EXECUTION", "FINAL_STORYBOARD"],
+  STITCH: ["EXECUTION", "AUDIO_DELIVERY", "FINAL_STORYBOARD", "QUOTE"]
 };
 
 export interface VideosBatchStageError {
@@ -108,6 +110,42 @@ export interface VideosBatchAudioTimeline {
       generatedAt?: string;
     };
   };
+}
+
+/**
+ * AUDIO_DELIVERY closes the gap between the structural audio timeline produced
+ * by EXECUTION and the delivery-ready timeline required by STITCH.  It owns TTS
+ * synthesis, sound-effect materialization and the final mix; STITCH never
+ * synthesizes audio itself.
+ */
+export const VIDEOS_BATCH_AUDIO_DELIVERY_SCHEMA_VERSION = "1" as const;
+
+export interface VideosBatchAudioDeliveryArtifact {
+  schemaVersion: typeof VIDEOS_BATCH_AUDIO_DELIVERY_SCHEMA_VERSION;
+  status: "READY" | "PARTIAL" | "FAILED";
+  provider: string;
+  /** Delivery-ready timeline; its tts and mix streams satisfy the STITCH gate. */
+  audioTimeline: VideosBatchAudioTimeline;
+  /** Per-item synthesis evidence, kept separate from the stage state. */
+  items: VideosBatchAudioDeliveryItem[];
+  failedItems: VideosBatchAudioDeliveryItem[];
+  sourceStageId: "EXECUTION";
+  sourceRevision: number;
+  sourceHash: string;
+  sourceHashes: Record<string, string>;
+  sourceRevisions: Record<string, number>;
+}
+
+export interface VideosBatchAudioDeliveryItem {
+  /** Timeline event id this item materializes. */
+  eventId: string;
+  /** Which stream the event belongs to. */
+  stream: "narration" | "dialogue" | "soundEffects" | "mix";
+  status: "ready" | "failed";
+  audioUrl?: string;
+  durationSec?: number;
+  attempt: number;
+  error?: VideosBatchMediaError;
 }
 
 /**

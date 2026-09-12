@@ -17,6 +17,7 @@ data/
 
 # Local demo/test media should not be committed. Configure public examples through admin/runtime data.
 fixtures/
+output/
 outputs/
 ark_outputs/
 assets/generated/

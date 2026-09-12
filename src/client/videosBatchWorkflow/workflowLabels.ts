@@ -13,6 +13,7 @@ export const WORKFLOW_LABELS: Record<VideosBatchStageId, string> = {
   COPYABLE_PROMPT: "垫图副本",
   QUOTE: "报价",
   EXECUTION: "视频执行",
+  AUDIO_DELIVERY: "音频交付",
   STITCH: "最终拼接"
 };
 

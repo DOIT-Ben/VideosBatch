@@ -77,6 +77,7 @@
     "smoke:videosbatch-real-text-server": "tsx scripts/smoke-videosbatch-real-text-server.ts",
     "smoke:videosbatch-native-projection": "tsx scripts/smoke-videosbatch-native-projection.ts",
     "smoke:videosbatch-native-media-stages": "tsx scripts/smoke-videosbatch-native-media-stages.ts",
+    "smoke:videosbatch-audio-delivery": "tsx scripts/smoke-videosbatch-audio-delivery.ts",
     "smoke:videosbatch-native-media-resilience": "tsx scripts/smoke-videosbatch-native-media-resilience.ts",
     "smoke:videosbatch-runtime-provider": "tsx scripts/smoke-videosbatch-runtime-provider.ts",
     "smoke:videosbatch-stage-registry-injection": "tsx scripts/smoke-videosbatch-stage-registry-injection.ts",

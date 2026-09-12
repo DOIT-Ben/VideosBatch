@@ -62,6 +62,12 @@ try {
     },
     cacheGeneratedVideo: async (url: string) => ({ videoUrl: url, remoteVideoUrl: url }),
     probeVideoDuration: async () => 10,
+    // In-memory audio fakes keep this smoke fast and ffmpeg-free while still
+    // exercising the delivery contract: one file per event plus a ready mix.
+    synthesizeSpeech: async (event: any) => `https://mock.invalid/tts/${event.id}.mp3`,
+    materializeSoundEffect: async (event: any) => `https://mock.invalid/sfx/${event.id}.mp3`,
+    mixAudioTimeline: async () => ({ mixAudioUrl: "https://mock.invalid/mix.mp3", durationSec: 20 }),
+    probeAudioDuration: async () => 2,
     stitchShotVideos: async (id: string, shots: any[]) => {
       stitchCalls.push(`${id}:${shots.length}`);
       return { finalVideoUrl: `/media/final-${id}.mp4`, signature: "sig-native-media" };
@@ -239,7 +245,7 @@ try {
   await store.updateSession(sessionId, { videosBatchWorkflow: workflow });
 
   workflow = await runnerModule.runNext(makeCtx(workflow), registry);
-  assert.equal(workflow.currentStage, "STITCH");
+  assert.equal(workflow.currentStage, "AUDIO_DELIVERY", "EXECUTION advances to AUDIO_DELIVERY before STITCH");
   assert.equal(workflow.stages.EXECUTION?.status, "ready");
   assert.equal(videoCalls.length, 1, "native EXECUTION must reuse a ready render even when legacy top-level status is draft");
   const execution = workflow.stages.EXECUTION?.artifact as any;
@@ -274,25 +280,23 @@ try {
     "ShotRender must retain the provider-compiled prompt used for submission"
   );
 
+  // AUDIO_DELIVERY now owns TTS, sound effects and the mix. Running the stage
+  // must produce a delivery-ready timeline; STITCH then consumes that timeline
+  // rather than the structural one EXECUTION emitted.
   const executionAudio = (workflow.stages.EXECUTION!.artifact as any).audioTimeline;
-  executionAudio.streams.tts = [
-    ...executionAudio.streams.narration,
-    ...executionAudio.streams.dialogue
-  ].map((event: any) => ({
-    ...event,
-    id: `tts-${event.id}`,
-    audioUrl: `https://mock.invalid/tts/${event.id}.mp3`,
-    source: "TTS"
-  }));
-  executionAudio.streams.soundEffects = executionAudio.streams.soundEffects.map((event: any) => ({
-    ...event,
-    audioUrl: `https://mock.invalid/sfx/${event.id}.mp3`
-  }));
-  executionAudio.streams.mix = {
-    status: "ready",
-    audioUrl: "https://mock.invalid/mix.mp3",
-    generatedAt: new Date().toISOString()
-  };
+  assert.equal(executionAudio.streams.tts.length, 0, "EXECUTION emits a structural timeline without TTS");
+  assert.equal(executionAudio.streams.mix.status, "pending", "EXECUTION leaves the mix pending");
+
+  workflow = await runnerModule.runNext(makeCtx(workflow), registry);
+  assert.equal(workflow.currentStage, "STITCH", "AUDIO_DELIVERY advances to STITCH");
+  assert.equal(workflow.stages.AUDIO_DELIVERY?.status, "ready");
+  const deliveryArtifact = workflow.stages.AUDIO_DELIVERY?.artifact as any;
+  assert.equal(deliveryArtifact.audioTimeline.streams.mix.status, "ready", "AUDIO_DELIVERY must produce a ready mix");
+  assert.equal(
+    deliveryArtifact.audioTimeline.streams.tts.length,
+    executionAudio.streams.narration.length + executionAudio.streams.dialogue.length,
+    "AUDIO_DELIVERY must emit one TTS file per declared voice event"
+  );
 
   workflow = await runnerModule.runNext(makeCtx(workflow), registry);
   assert.equal(workflow.completed, true);

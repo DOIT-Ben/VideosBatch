@@ -1,9 +1,9 @@
 # VideosBatch 工作流唯一规范
 
 Status: active
-Last Reviewed: 2026-09-03
+Last Reviewed: 2026-09-12
 Spec ID: `VIDEOSBATCH_WORKFLOW_CANONICAL`
-Canonical Version: `1.2.1`
+Canonical Version: `1.3.0`
 Owner: VideosBatch 产品与运行时
 
 > 本文件是 VideosBatch 课程视频工作流的唯一有效设计真源。所有阶段顺序、提示词材料、字段语义、输出格式、人工门禁、版本血缘、重试、资产和媒体规则均以本文件为准。
@@ -49,8 +49,8 @@ VideosBatch 面向小学课程视频制作人员，把一份教案按可审阅�
 - 上游文件提交：`85252a19e6033c94b4b82699dd6e9fdc9f2f2fbf`（该文件最近一次变更）；上游检出 HEAD：`aa15bb5d57022ffc43298ba60e617fd91b1a0766`。
 - 原始文件 SHA-256：`8A794F875E117A9301150EBDEAF7E9B614EA2BDE18514652F8FEB729001E24B4`（60400 bytes，1014 行）。
 - 归档清单 [`docs/archive/videosbatch-design/manifest.json`](../docs/archive/videosbatch-design/manifest.json) 的 `bytes/sha256` 校验仓库内归档字节；由于仓库统一 `eol=lf`，上游手册归档为 59386 bytes、SHA-256 `888A49FB0E430D52795621C05345E48893B740485C5E3F5FA8BCEF01EC0757C8`，同时以 `sourceBytes/sourceSha256` 保留上述 60400 bytes 原始指纹。
-- VideosBatch 本地适配版本：`VIDEOSBATCH_WORKFLOW_CANONICAL@1.2.0`，定稿日期 `2026-09-03`。
-- 适配原则：保留上游第 1–5 节完整提示词语义；将机器阶段扩展为本地 13 阶段；最终分镜只使用语义对象标签，稳定公开资产编号只在垫图副本阶段注入。
+- VideosBatch 本地适配版本：`VIDEOSBATCH_WORKFLOW_CANONICAL@1.3.0`，定稿日期 `2026-09-12`。
+- 适配原则：保留上游第 1–5 节完整提示词语义；将机器阶段扩展为本地 14 阶段（在 `EXECUTION` 与 `STITCH` 之间插入音频交付阶段 `AUDIO_DELIVERY`）；最终分镜只使用语义对象标签，稳定公开资产编号只在垫图副本阶段注入。
 
 ## Phase 1 Governance Plan（阶段 1 规划与治理）
 
@@ -87,7 +87,7 @@ VideosBatch 面向小学课程视频制作人员，把一份教案按可审阅�
 
 ## 0. Canonical Pipeline Index
 
-以下索引是唯一机器阶段顺序。`COURSE_INTRO_SELECTION` 是显式人工锁定门，`STITCH` 是最终成片门；二者不是额外的 LLM 创作阶段。
+以下索引是唯一机器阶段顺序。`COURSE_INTRO_SELECTION` 是显式人工锁定门，`AUDIO_DELIVERY` 是音频交付门，`STITCH` 是最终成片门；它们不是额外的 LLM 创作阶段。
 
 ```json
 {
@@ -209,11 +209,21 @@ VideosBatch 面向小学课程视频制作人员，把一份教案按可审阅�
       "gate": "AUTHORIZATION_BALANCE_IDEMPOTENCY_VALID"
     },
     {
+      "id": "AUDIO_DELIVERY",
+      "kind": "media",
+      "inputKinds": [
+        "VIDEO_PROJECT",
+        "VIDEO_STORYBOARD"
+      ],
+      "outputKind": "AUDIO_DELIVERY",
+      "gate": "AUDIO_TIMELINE_DELIVERABLE"
+    },
+    {
       "id": "STITCH",
       "kind": "server_media",
       "inputKinds": [
         "READY_VIDEO_SEGMENTS",
-        "AUDIO_TIMELINE"
+        "READY_AUDIO_DELIVERY"
       ],
       "outputKind": "FINAL_VIDEO",
       "gate": "ALL_REQUIRED_SEGMENTS_READY_AND_TIMELINE_VALID"
@@ -234,6 +244,7 @@ VideosBatch 面向小学课程视频制作人员，把一份教案按可审阅�
 | 06 | 视频剧本 | `SCREENPLAY` | 目标时长锁定的正式视频剧本 |
 | 07 | 视频分镜 | `FINAL_STORYBOARD` + `COPYABLE_PROMPT` | 类型化十秒分镜和派生垫图副本 |
 | 08 | 视频生成 | `QUOTE` + `EXECUTION` | 报价快照、授权记录和视频片段 |
+| 08 | 音频交付 | `AUDIO_DELIVERY` | 逐事件语音与音效文件、交付就绪的混音时间线 |
 | 09 | 最终成片 | `STITCH` | 按时间线拼接并可播放的最终视频 |
 
 产品分组只影响展示，不改变服务器阶段 ID、顺序、版本或门禁。
@@ -270,7 +281,8 @@ VideosBatch 面向小学课程视频制作人员，把一份教案按可审阅�
 | `COPYABLE_PROMPT` | 当前最终分镜 + 已确认资产稳定 ID | 派生 `COPYABLE_STORYBOARD_PROMPT` | 检查可复制文本；不可反向改事实源 | 映射失败只阻塞当前分镜；正式分镜保持可用 | 逐字段无损，仅在画面效果插入合法 ID，副本血缘当前 |
 | `QUOTE` | 当前全祖先版本和资产顺序 | 不可变 `QUOTE_SNAPSHOT` | 用户确认报价和授权 | 版本过期、权限或金额错误不自动重试 | 祖先 hash、资产顺序、授权和余额快照一致 |
 | `EXECUTION` | 当前报价、垫图副本、视觉/参考资产 | 一对一十秒视频片段和执行事件 | 用户显式开始/重试 | 单片段失败隔离；未知提交先对账，禁止盲目重复扣费 | 每个片段有可验证终态和幂等键 |
-| `STITCH` | 所有必需 ready 片段 + 独立音频时间线 | `FINAL_VIDEO` | 用户预览/下载最终成片 | 缺片段、时长或音频不匹配时拼接门禁失败，不删除片段 | 片段顺序、时长、音频轨和版本 hash 全部一致 |
+| `AUDIO_DELIVERY` | `EXECUTION` 的结构音频时间线 + 当前最终分镜 | `AUDIO_DELIVERY`（逐事件音频文件、独立 TTS 流、交付就绪混音） | 无可视确认；失败可见并可重试 | 单事件合成失败只标记该事件；任一必需事件失败则 `mix.status=pending` 且整体不 READY | 每个语音事件有可读取 TTS `audioUrl`、每个音效有可读取 `audioUrl`、`mix.status=ready` 且 `mix.audioUrl` 可读取 |
+| `STITCH` | 所有必需 ready 片段 + 当前 READY `AUDIO_DELIVERY` | `FINAL_VIDEO`（已混入交付音频） | 用户预览/下载最终成片 | 缺片段、时长或音频不匹配时拼接门禁失败，不删除片段 | 片段顺序、时长、音频轨和版本 hash 全部一致 |
 
 ### 0.4 六个文本阶段的提示词边界
 
@@ -2401,9 +2413,13 @@ P001-A004：黄色小花（道具）
 
 - `COPYABLE_PROMPT` artifact 为 `READY` 时所属 stage 才能为 `ready`；artifact 为 `PARTIAL` 或 `FAILED` 时所属 stage 必须为 `failed`，并保留 artifact、失败分段和来源血缘。
 - 旧会话若出现 `stage=ready + artifact.status=PARTIAL/FAILED`，API 读取、运行或重试前必须自动收敛为失败状态；不得让 `currentStage` 越过该阶段，后继阶段标记 `stale`。
-- `EXECUTION` 的视频片段完成与 `STITCH` 的最终交付是两个门禁。`EXECUTION` 可记录结构完整但尚未混音的 audio timeline；`STITCH` 只能使用交付就绪的独立音频。
+- `EXECUTION` 的视频片段完成、`AUDIO_DELIVERY` 的音频就绪与 `STITCH` 的最终交付是三个独立门禁。`EXECUTION` 只记录结构完整的 audio timeline；`AUDIO_DELIVERY` 负责逐事件合成音频并产出行使交付就绪的时间线；`STITCH` 只能消费 `AUDIO_DELIVERY` 当前的 READY 产物。
+- `AUDIO_DELIVERY` 必须为每个 narration/dialogue 事件合成一条 TTS 文件（id 为 `tts-<eventId>`，或与源事件同 id），把每个 soundEffects 事件就地补上可读取 `audioUrl`，并在全部必需事件成功后产出 `mix.status=ready` 的混音。任一必需事件失败时必须把 `mix.status` 置为 `pending`；不得出现 `mix.ready` 与缺失语音并存的产物。
+- `AUDIO_DELIVERY` 血缘必须记录 `EXECUTION` 与 `FINAL_STORYBOARD` 两个来源的 revision/hash。任一来源变化后旧产物即为非当前，`STITCH` 必须等待新的 `AUDIO_DELIVERY`。
 - `STITCH` 交付校验要求：存在 narration/dialogue 时每个语音事件都有 TTS `audioUrl`；存在 soundEffects 时每个音效事件都有 `audioUrl`；`mix.status=ready` 且 `mix.audioUrl` 可读取。`tts=[]` 或 `mix.status=pending` 不得让 STITCH ready（无待播语音事件时空 tts 可合法，但 mix 仍必须 ready）。
-- 音频门禁失败使用稳定错误码 `AUDIO_TIMELINE_NOT_READY`，不得创建成功 StitchJob；可修复的状态失败必须保留错误证据并允许携带当前 lineage 的显式重试。
+- `AUDIO_DELIVERY` 与 `STITCH` 的音频门禁失败使用稳定错误码 `AUDIO_TIMELINE_NOT_READY`，不得创建成功 StitchJob；可修复的状态失败必须保留错误证据并允许携带当前 lineage 的显式重试。
+- `STITCH` 必须把交付就绪的混音真正混入最终成片，而不是仅把时间线 hash 纳入拼接签名。缺失时间线则不得拼接出无声成片。
+- canonical fake 链路必须与 native 链路产生同构的 `AUDIO_DELIVERY` 产物，使离线合同验证能够覆盖音频门禁；fake 产物使用 `fake://` URL 且仅在 fake 注册表内被接受，native 链路不得放行该 scheme。
 
 ## 8. Provider、重试与失败隔离
 
@@ -2454,7 +2470,7 @@ Skill 分发包携带本文件的指纹化快照和 manifest。仓库内以 `spe
 
 ## 9. Testing Strategy
 
-离线合同验证至少覆盖手册来源、阶段顺序和九步映射；六个文本阶段的提示词边界、专用 Schema、禁止项和字段顺序；九套导入、600–800 字故事、四类资产、目标时长集合和三类分镜 canonical `oneOf` 语义（以及 provider wire Schema 不使用 `oneOf` 的适配）；错误类型/章节、漏场次、缺标签、稳定 ID 混入、旁白超句、音效超长、提前给答案、版本过期、资产归属错误、重复旁白和非 10 秒片段；参考图声明顺序、ordinal、H3 `Image N` 映射、multipart 同源顺序、脱敏哈希快照、旧任务恢复和 `COPYABLE_PROMPT` 首个画面子镜头回退；派生 artifact PARTIAL 失败化、legacy 状态收敛、lineage 重试、音频 structural/delivery 门禁、`AUDIO_TIMELINE_NOT_READY` 和无音频 StitchJob 禁止创建；重试预算、主备切换、幂等键、未知提交对账、失败隔离、断点恢复和拼接门禁。
+离线合同验证至少覆盖手册来源、阶段顺序和九步映射；六个文本阶段的提示词边界、专用 Schema、禁止项和字段顺序；九套导入、600–800 字故事、四类资产、目标时长集合和三类分镜 canonical `oneOf` 语义（以及 provider wire Schema 不使用 `oneOf` 的适配）；错误类型/章节、漏场次、缺标签、稳定 ID 混入、旁白超句、音效超长、提前给答案、版本过期、资产归属错误、重复旁白和非 10 秒片段；参考图声明顺序、ordinal、H3 `Image N` 映射、multipart 同源顺序、脱敏哈希快照、旧任务恢复和 `COPYABLE_PROMPT` 首个画面子镜头回退；派生 artifact PARTIAL 失败化、legacy 状态收敛、lineage 重试、音频 structural/delivery 门禁、`AUDIO_TIMELINE_NOT_READY` 和无音频 StitchJob 禁止创建；`AUDIO_DELIVERY` 逐事件 TTS/音效产出、混音前置条件、双来源血缘、缺 EXECUTION 时间线时失败关闭、幂等复用与 fake/native 产物同构；重试预算、主备切换、幂等键、未知提交对账、失败隔离、断点恢复和拼接门禁。
 
 ## Verification
 
@@ -2471,14 +2487,18 @@ git diff --check
 ## Acceptance Criteria
 
 - [ ] 本文件标识为 `VIDEOSBATCH_WORKFLOW_CANONICAL`，状态为 active，来源路径、提交、SHA-256 和本地适配版本可追溯。
-- [ ] 13 个机器阶段和 9 个产品步骤只有本文件定义其当前顺序与职责。
+- [ ] 14 个机器阶段和 9 个产品步骤只有本文件定义其当前顺序与职责。
 - [ ] 六个文本阶段的完整提示词、输入边界、禁止项、输出格式和 Schema 均可从本文件还原。
 - [ ] 课程导入九套、故事 600–800 字、四类资产、正式剧本和三类最终分镜合同逐项可校验。
 - [ ] `STORY`、`SCIENCE`、`KNOWLEDGE` 字段互斥且固定顺序；正式分镜只用语义标签，稳定 ID 只在垫图副本出现。
 - [ ] 版本血缘、stale、资产归属/验证、首轮三次重试预算与独立合同修复预算、主备切换、统一错误和独立媒体流均有明确规则。
 - [x] 每个 H3 镜头的 `assetIds`、`Image N` 映射、multipart 顺序和执行快照保持同源且可审计；`COPYABLE_PROMPT` 引用集合与正式分镜一致。
 - [x] `COPYABLE_PROMPT` 的 PARTIAL/FAILED 不会显示为 ready；legacy ready+partial 会在 API 入口自动收敛并可按 lineage 重试。
+- [x] `AUDIO_DELIVERY` 为每个语音事件产出 TTS 文件、为每个音效补全可读取 URL，并仅在全部必需事件成功后产出 `mix.status=ready`；任一失败则 mix 保持 pending 且阶段不 READY。
+- [x] `AUDIO_DELIVERY` 记录 `EXECUTION` + `FINAL_STORYBOARD` 双来源血缘；来源变化后旧产物非当前，`STITCH` 等待新产物。
 - [x] `STITCH` 拒绝未完成的 TTS/音效/mix，且未通过音频交付门禁时不创建成功 StitchJob。
+- [x] `STITCH` 把交付就绪的混音真正混入最终成片，而不仅是用时间线 hash 参与拼接签名。
+- [x] canonical fake 链路产出与 native 同构的 `AUDIO_DELIVERY` 产物，离线合同验证可覆盖音频门禁；`fake://` URL 仅在 fake 注册表被接受。
 - [ ] 阶段 1 不修改业务代码、`.env` 或旧文件，不调用真实 Provider；现有脏工作树保持不变。
 
 ## Change Policy

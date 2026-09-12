@@ -1,4 +1,4 @@
-import type { StageDefinition, StageRegistry } from "./stageContracts";
+import type { StageDefinition, StageExecutionContext, StageRegistry } from "./stageContracts";
 import type { VideosBatchStageId } from "../../shared/videosBatchWorkflow";
 import type { VideosBatchLlmExecutor } from "./llmExecutor";
 import { createVideosBatchLlmTextStageRegistry, deriveCopyablePrompt, validateVideosBatchTextStage } from "./llmTextStages";
@@ -8,6 +8,7 @@ import {
   projectFinalStoryboardIntoSeeReel
 } from "./nativeProjection";
 import { canonicalStoryboardSourceHash, contentHash } from "./canonicalStoryboard";
+import { validateAudioTimelineDeliverable } from "./nativeMediaStages";
 
 function pass<T>(id: VideosBatchStageId, artifact: T): StageDefinition<T> {
   return {
@@ -300,6 +301,82 @@ const fakeQuote: StageDefinition<any> = {
   }
 };
 
+/**
+ * Build the structural audio timeline the fake EXECUTION stage publishes.
+ *
+ * Each storyboard segment contributes one narration event. Effects carry no
+ * URL here because only AUDIO_DELIVERY may declare them materialized; leaving
+ * them empty keeps the separation of concerns between the two stages, and the
+ * delivery stage is the one that has to make them readable. Times are derived
+ * from the segment durations so the timeline sums to the storyboard target and
+ * the canonical duration gate passes without special cases.
+ */
+function fakeAudioTimeline(ctx: StageExecutionContext) {
+  const storyboard = ctx.workflow.stages.FINAL_STORYBOARD?.artifact as any;
+  const segments = Array.isArray(storyboard?.segments) ? storyboard.segments : [];
+  const targetDuration = Number(storyboard?.targetDuration) || segmentDurationTotal(segments);
+  let cursor = 0;
+  const narration: Array<Record<string, unknown>> = [];
+  for (const [index, segment] of segments.entries()) {
+    const duration = Number(segment?.duration) || 0;
+    if (duration <= 0) continue;
+    const startSec = cursor;
+    const endSec = Number((cursor + duration).toFixed(3));
+    cursor = endSec;
+    const voice = (Array.isArray(segment?.visualEffects) ? segment.visualEffects : [])
+      .map((effect: any) => String(effect?.voice ?? "").trim())
+      .find((value: string) => value && value !== "无");
+    narration.push({
+      id: `narr-${index + 1}`,
+      startSec,
+      endSec,
+      text: voice || `第${index + 1}段旁白`,
+      source: "NARRATION"
+    });
+  }
+  const source = ctx.workflow.stages.FINAL_STORYBOARD;
+  return {
+    schemaVersion: "1",
+    durationSec: targetDuration || cursor,
+    sourceStageId: "FINAL_STORYBOARD",
+    sourceRevision: Number(source?.revision) || 1,
+    sourceHash: canonicalStoryboardSourceHash(storyboard || { segments: [] }),
+    streams: {
+      narration,
+      dialogue: [],
+      soundEffects: segments.flatMap((segment: any, segmentIndex: number) =>
+        (Array.isArray(segment?.visualEffects) ? segment.visualEffects : [])
+          .map((effect: any, effectIndex: number) => ({ effect, effectIndex }))
+          .filter(({ effect }: any) => Boolean(String(effect?.sound ?? "").trim()) && String(effect?.sound) !== "无")
+          .map(({ effectIndex }: any) => {
+            const offset = Number(segment?.visualEffects?.[effectIndex]?.timeRange?.split("-")?.[0]?.replace(/[^\d.]/g, "")) || 0;
+            const startSec = Number(fakeSegmentStart(segments, segmentIndex)) + offset;
+            const duration = Number(segment?.visualEffects?.[effectIndex]?.duration) || 0;
+            return {
+              id: `sfx-${segmentIndex + 1}-${effectIndex + 1}`,
+              startSec: Number(startSec.toFixed(3)),
+              endSec: Number((startSec + (duration || 1)).toFixed(3)),
+              text: String(segment?.visualEffects?.[effectIndex]?.sound ?? ""),
+              source: "SOUND_EFFECT"
+            };
+          })
+      ),
+      tts: [],
+      mix: { status: "pending" }
+    }
+  };
+}
+
+function segmentDurationTotal(segments: any[]): number {
+  return segments.reduce((sum: number, segment: any) => sum + (Number(segment?.duration) || 0), 0);
+}
+
+function fakeSegmentStart(segments: any[], index: number): number {
+  let cursor = 0;
+  for (let position = 0; position < index; position += 1) cursor += Number(segments[position]?.duration) || 0;
+  return cursor;
+}
+
 const fakeExecution: StageDefinition<any> = {
   id: "EXECUTION",
   async execute(ctx) {
@@ -308,7 +385,11 @@ const fakeExecution: StageDefinition<any> = {
         executionId: `execution_${ctx.session.id}`,
         status: "READY",
         renderIds: ctx.shots.map((shot) => `render_fake_${shot.id}`),
-        nativeShotIds: ctx.shots.map((shot) => shot.id)
+        nativeShotIds: ctx.shots.map((shot) => shot.id),
+        // The fake chain still has to describe the audio the final cut expects,
+        // otherwise AUDIO_DELIVERY cannot port it into a delivery timeline and
+        // the canonical fake workflow can never reach DONE.
+        audioTimeline: fakeAudioTimeline(ctx)
       }
     };
   },
@@ -337,6 +418,103 @@ const fakeStitch = pass("STITCH", {
   status: "READY"
 });
 
+/**
+ * The fake registry has no media backend, so it synthesizes no waveform file.
+ * It still carries the *structure* of a delivery artifact so the canonical
+ * fake chain can reach DONE and exercise the STITCH audio gate. The pass
+ * through stays honest in two ways: it fails closed with the canonical audio
+ * code when EXECUTION never produced a timeline, and it reports a fabricated
+ * `fake://` URL inside each item rather than pretending a playable file exists.
+ * Native mode replaces this stage with the real synthesizer and real media.
+ */
+const fakeAudioDelivery: StageDefinition<any> = {
+  id: "AUDIO_DELIVERY",
+  async execute(ctx) {
+    const execution = ctx.workflow.stages.EXECUTION?.artifact as any;
+    const timeline = execution?.audioTimeline;
+    if (!timeline || typeof timeline !== "object") {
+      throw Object.assign(
+        new Error("AUDIO_TIMELINE_NOT_READY: fake 运行模式的 EXECUTION 未产出音频时间线，无法完成音频交付"),
+        { code: "AUDIO_TIMELINE_NOT_READY", retryable: false, provider: "videosbatch-fake", model: null }
+      );
+    }
+    // Mirror the native contract: every declared voice event must produce a
+    // matching TTS entry, every sound effect must become readable in place, and
+    // the mix must close the timeline. Fabricated `fake://` URLs keep the
+    // artifact inspectable while remaining obviously non-playable.
+    const items: Array<Record<string, unknown>> = [];
+    const nextTimeline = structuredClone(timeline);
+    nextTimeline.streams = { ...(nextTimeline.streams || {}) };
+    nextTimeline.streams.tts = [];
+    nextTimeline.streams.soundEffects = [...(timeline.streams?.soundEffects || [])];
+
+    const voiceEvents = [
+      ...(timeline.streams?.narration || []),
+      ...(timeline.streams?.dialogue || [])
+    ];
+    for (const voiceEvent of voiceEvents) {
+      const eventId = String(voiceEvent?.id ?? "").trim();
+      if (!eventId) continue;
+      const audioUrl = `fake://videosbatch/${eventId}.wav`;
+      items.push({ eventId, stream: "narration", status: "ready", audioUrl, attempt: 1 });
+      nextTimeline.streams.tts.push({
+        id: `tts-${eventId}`,
+        startSec: Number(voiceEvent.startSec),
+        endSec: Number(voiceEvent.endSec),
+        text: String(voiceEvent?.text ?? ""),
+        audioUrl,
+        source: "TTS"
+      });
+    }
+
+    for (const [index, soundEvent] of (timeline.streams?.soundEffects || []).entries()) {
+      const eventId = String(soundEvent?.id ?? "").trim();
+      if (!eventId) continue;
+      const audioUrl = `fake://videosbatch/${eventId}.wav`;
+      items.push({ eventId, stream: "soundEffects", status: "ready", audioUrl, attempt: 1 });
+      nextTimeline.streams.soundEffects[index] = { ...soundEvent, audioUrl };
+    }
+
+    const mixAudioUrl = "fake://videosbatch/mix.wav";
+    nextTimeline.streams.mix = { status: "ready", audioUrl: mixAudioUrl, generatedAt: new Date().toISOString() };
+    items.push({ eventId: "mix", stream: "mix", status: "ready", audioUrl: mixAudioUrl, attempt: 1 });
+
+    return {
+      artifact: {
+        schemaVersion: "1",
+        status: "READY",
+        provider: "videosbatch-fake",
+        audioTimeline: nextTimeline,
+        items,
+        failedItems: []
+      },
+      attempts: 1,
+      provider: "videosbatch-fake"
+    };
+  },
+  validate(artifact, ctx) {
+    const errors: string[] = [];
+    if (artifact?.status !== "READY") errors.push("AUDIO_DELIVERY fake contract must finish READY");
+    if (!artifact?.audioTimeline) errors.push("AUDIO_TIMELINE_NOT_READY: fake AUDIO_DELIVERY requires a delivery audio timeline");
+    const execution = ctx.workflow.stages.EXECUTION?.artifact as any;
+    const executionTimeline = execution?.audioTimeline;
+    const storyboard = ctx.workflow.stages.FINAL_STORYBOARD?.artifact as any;
+    const expectedDuration = Number(storyboard?.targetDuration)
+      || Number(executionTimeline?.durationSec)
+      || 0;
+    errors.push(...validateAudioTimelineDeliverable(artifact?.audioTimeline, expectedDuration, {
+      revision: Number(ctx.workflow.stages.FINAL_STORYBOARD?.revision) || 1,
+      hash: canonicalStoryboardSourceHash(storyboard || { segments: [] })
+    }, { allowFakeAudio: true }));
+    const hasAudioError = errors.some((message) => message.startsWith("AUDIO_TIMELINE_NOT_READY:"));
+    return {
+      ok: errors.length === 0,
+      errors,
+      ...(hasAudioError ? { code: "AUDIO_TIMELINE_NOT_READY", retryable: false } : {})
+    };
+  }
+};
+
 export function createPhase1FakeStageRegistry(): StageRegistry {
   return {
     COURSE_INTRO_CANDIDATES: fakeCourseIntroCandidates,
@@ -348,6 +526,7 @@ export function createPhase1FakeStageRegistry(): StageRegistry {
     COPYABLE_PROMPT: fakeCopyablePrompt,
     QUOTE: fakeQuote,
     EXECUTION: fakeExecution,
+    AUDIO_DELIVERY: fakeAudioDelivery,
     STITCH: fakeStitch
   };
 }

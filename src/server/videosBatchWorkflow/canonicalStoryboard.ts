@@ -150,7 +150,16 @@ function sortedValue(value: unknown): unknown {
 }
 
 export function stableJson(value: unknown): string { return JSON.stringify(sortedValue(value)); }
-export function contentHash(value: unknown): string { return createHash("sha256").update(stableJson(value)).digest("hex"); }
+/**
+ * `undefined` is a legitimate "no artifact yet" value, so it hashes to the
+ * empty string instead of exploding. Callers that need a hard failure must
+ * assert presence themselves; a hard throw here turns a missing upstream
+ * artifact into an opaque TypeError.
+ */
+export function contentHash(value: unknown): string {
+  if (value === undefined) return "";
+  return createHash("sha256").update(stableJson(value)).digest("hex");
+}
 
 /**
  * Hash the handbook content of a storyboard without native projection metadata.

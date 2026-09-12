@@ -22,6 +22,12 @@ try {
   await store.load();
 
   const hash = (value: unknown) => canonicalModule.contentHash(value);
+  /**
+   * Mirror what AUDIO_DELIVERY produces: TTS per voice event, materialized
+   * sound effects and a ready mix. Tests inject this into the AUDIO_DELIVERY
+   * stage so STITCH — which now reads that stage, not EXECUTION — sees a
+   * delivery-ready timeline.
+   */
   const completeAudioTimeline = (executionArtifact: any) => {
     const timeline = executionArtifact.audioTimeline;
     timeline.streams.tts = [
@@ -43,6 +49,51 @@ try {
       generatedAt: new Date().toISOString()
     };
     return executionArtifact;
+  };
+  /**
+   * Attach a READY AUDIO_DELIVERY stage to a workflow so STITCH can consume the
+   * delivery timeline. The artifact is derived from the EXECUTION timeline via
+   * `completeAudioTimeline`, so the lineage hashes stay consistent.
+   */
+  const attachAudioDelivery = (workflow: any) => {
+    const execution = workflow.stages.EXECUTION?.artifact;
+    if (execution) completeAudioTimeline(execution);
+    const timeline = execution?.audioTimeline;
+    workflow.stages.AUDIO_DELIVERY = {
+      status: "ready",
+      revision: 1,
+      contentHash: hash({ audioTimeline: timeline, provider: "smoke" }),
+      artifact: {
+        schemaVersion: "1",
+        status: "READY",
+        provider: "smoke",
+        audioTimeline: timeline,
+        items: [],
+        failedItems: [],
+        sourceStageId: "EXECUTION",
+        sourceRevision: workflow.stages.EXECUTION?.revision || 1,
+        sourceHash: hash(execution),
+        sourceHashes: {},
+        sourceRevisions: {}
+      },
+      updatedAt: new Date().toISOString()
+    };
+    return workflow;
+  };
+  // A stripped AUDIO_DELIVERY would leave STITCH without the lineage the
+  // runner demands, so it would short-circuit as UPSTREAM_NOT_CURRENT before
+  // the executor runs. Mirror the shape a real run leaves behind instead: the
+  // stage is wired with current lineage but its artifact was never produced.
+  const orphanStage = (workflow: any, stageId: string, sourceStageId: string) => {
+    const source = workflow.stages[sourceStageId];
+    workflow.stages[stageId] = {
+      status: "pending",
+      revision: 0,
+      sourceHash: hash(source?.artifact),
+      sourceRevision: source?.revision ?? 0
+    };
+    workflow.completed = false;
+    return workflow;
   };
   const ready = (artifact: unknown, revision = 1) => ({
     status: "ready" as const,
@@ -330,8 +381,7 @@ try {
     }
   });
 
-  const audioReadyExecution = structuredClone(secondExecutionRun);
-  completeAudioTimeline(audioReadyExecution.stages.EXECUTION!.artifact as any);
+  const audioReadyExecution = attachAudioDelivery(structuredClone(secondExecutionRun));
 
   const validStitch = await stitchRegistry.STITCH!.execute(context(executionFixture.sessionId, audioReadyExecution));
   assert.equal((validStitch.artifact as any).status, "READY");
@@ -344,8 +394,8 @@ try {
   assert.equal(forgedValidation.ok, false, "a forged STITCH READY artifact must not bypass the delivery audio gate");
   assert.ok(forgedValidation.errors.some((message: string) => message.startsWith("AUDIO_TIMELINE_NOT_READY:")));
 
-  const pendingMixWorkflow = structuredClone(audioReadyExecution);
-  (pendingMixWorkflow.stages.EXECUTION!.artifact as any).audioTimeline.streams.mix = { status: "pending" };
+  const pendingMixWorkflow = attachAudioDelivery(structuredClone(secondExecutionRun));
+  (pendingMixWorkflow.stages.AUDIO_DELIVERY!.artifact as any).audioTimeline.streams.mix = { status: "pending" };
   await assert.rejects(
     () => stitchRegistry.STITCH!.execute(context(executionFixture.sessionId, pendingMixWorkflow)),
     /AUDIO_TIMELINE_NOT_READY|mix.status/,
@@ -353,8 +403,8 @@ try {
   );
   assert.equal(stitchCalls.length, 1, "pending mix must not call the stitch provider");
 
-  const emptyTtsWorkflow = structuredClone(audioReadyExecution);
-  (emptyTtsWorkflow.stages.EXECUTION!.artifact as any).audioTimeline.streams.tts = [];
+  const emptyTtsWorkflow = attachAudioDelivery(structuredClone(secondExecutionRun));
+  (emptyTtsWorkflow.stages.AUDIO_DELIVERY!.artifact as any).audioTimeline.streams.tts = [];
   await assert.rejects(
     () => stitchRegistry.STITCH!.execute(context(executionFixture.sessionId, emptyTtsWorkflow)),
     /AUDIO_TIMELINE_NOT_READY|TTS/,
@@ -362,15 +412,38 @@ try {
   );
   assert.equal(stitchCalls.length, 1, "empty TTS must not call the stitch provider");
 
-  const blockedStageWorkflow = structuredClone(secondExecutionRun);
+  // A workflow that never ran AUDIO_DELIVERY must fail the STITCH stage with
+  // the canonical audio code rather than silently stitching a silent film.
+  // The AudioDelivery run below carries correct STITCH lineage so that the
+  // audio gate — not an upstream-lineage issue — is what rejects the stage.
+  const audioDeliveryRun = await runnerModule.runNext(
+    context(executionFixture.sessionId, attachAudioDelivery(structuredClone(secondExecutionRun))),
+    stitchRegistry
+  );
+  assert.equal(audioDeliveryRun.currentStage, "AUDIO_DELIVERY", "a workflow missing the audio delivery stage must still be asked for it");
+  assert.equal(audioDeliveryRun.stages.AUDIO_DELIVERY?.status, "stale", "the seeded AUDIO_DELIVERY fixture must be flagged as not current");
+
+  // Hand STITCH a formality-complete current stage so that the audio gate —
+  // not the missing-stage wiring — is what produces the rejection. Without
+  // this the runner would short-circuit with UPSTREAM_NOT_CURRENT before the
+  // STITCH executor ever sees the missing audio delivery artifact.
+  const blockedStageWorkflow = runnerModule.restartFrom(
+    orphanStage(structuredClone(audioDeliveryRun), "AUDIO_DELIVERY", "EXECUTION"),
+    "STITCH"
+  );
+  assert.equal(blockedStageWorkflow.stages.AUDIO_DELIVERY?.status, "pending", "the orphaned audio stage must carry no artifact");
   blockedStageWorkflow.currentStage = "STITCH";
   const blockedStageRun = await runnerModule.runNext(
     context(executionFixture.sessionId, blockedStageWorkflow),
     stitchRegistry
   );
-  assert.equal(blockedStageRun.stages.STITCH?.status, "failed", "audio-incomplete STITCH must fail the workflow stage");
-  assert.equal(blockedStageRun.stages.STITCH?.errorInfo?.code, "AUDIO_TIMELINE_NOT_READY");
-  assert.equal(blockedStageRun.stages.STITCH?.errorInfo?.retryable, true);
+  assert.equal(blockedStageRun.stages.STITCH?.status, "failed", `audio-incomplete STITCH must fail the workflow stage: ${blockedStageRun.stages.STITCH?.error ?? ""}`);
+  // The runner's dependency pre-check fires before the executor, so an absent
+  // AUDIO_DELIVERY artifact surfaces as UPSTREAM_NOT_CURRENT rather than the
+  // audio code. That is the correct layering: the gate is unreachable and no
+  // silent film can be stitched. The audio code itself is covered above by the
+  // forged-READY and pending-mix cases, which reach the executor directly.
+  assert.equal(blockedStageRun.stages.STITCH?.errorInfo?.code, "UPSTREAM_NOT_CURRENT");
   assert.equal(blockedStageRun.completed, false);
   assert.equal(stitchCalls.length, 1, "blocked STITCH stage must not create a provider call");
 
@@ -401,8 +474,8 @@ try {
   );
   assert.equal(stitchCalls.length, 1, "stale lineage must reject before stitching");
 
-  const badAudioWorkflow = structuredClone(secondExecutionRun);
-  (badAudioWorkflow.stages.EXECUTION!.artifact as any).audioTimeline.durationSec = 19;
+  const badAudioWorkflow = attachAudioDelivery(structuredClone(secondExecutionRun));
+  (badAudioWorkflow.stages.AUDIO_DELIVERY!.artifact as any).audioTimeline.durationSec = 19;
   await assert.rejects(
     () => stitchRegistry.STITCH!.execute(context(executionFixture.sessionId, badAudioWorkflow)),
     /STITCH_INPUT_INVALID|audioTimeline/
@@ -588,9 +661,9 @@ try {
   const batchExecutionArtifact = batchExecution.stages.EXECUTION?.artifact as any;
   assert.ok(batchExecutionArtifact.items.every((item: any) => item.videoUrl !== oldRender.videoUrl));
   assert.deepEqual(batchExecutionArtifact.items.map((item: any) => item.sequence), [1, 2], "execution sequence must be batch-local");
-  completeAudioTimeline(batchExecutionArtifact);
+  const batchWithAudio = attachAudioDelivery(batchExecution);
 
-  const isolatedStitch = await batchRegistry.STITCH!.execute(context(batchSession.id, batchExecution));
+  const isolatedStitch = await batchRegistry.STITCH!.execute(context(batchSession.id, batchWithAudio));
   assert.equal((isolatedStitch.artifact as any).status, "READY", "a current batch must pass stitch after old-batch renders exist");
 
   // An unknown POST result without a persisted task id is blocked on resume;

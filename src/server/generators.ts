@@ -2189,7 +2189,78 @@ export async function stitchShotVideos(sessionId: string, shots: Shot[], options
     outputPath
   ]);
   await report(`ffmpeg concat done in ${((Date.now() - concatStart) / 1000).toFixed(1)}s`);
+
+  // The final cut must carry the delivered audio. Concat alone produces a
+  // silent film because the concatenated segments have no soundtrack, so the
+  // delivery mix has to be muxed in explicitly. A `fake://` mix (canonical fake
+  // chain) has no bytes to read and is left to the caller's contract tests.
+  const mixUrl = typeof options.audioTimeline?.streams?.mix?.audioUrl === "string"
+    ? options.audioTimeline.streams.mix.audioUrl.trim()
+    : "";
+  if (mixUrl && !mixUrl.startsWith("fake://")) {
+    const mixPath = await materializeAudio(mixUrl, sessionId, signature);
+    if (mixPath) {
+      const muxedPath = path.join(MEDIA_DIR, `final-${sessionId}-${signature}${runSuffix}-av.mp4`);
+      await report(`ffmpeg mux delivered audio -> ${path.basename(muxedPath)}`);
+      await runFfmpeg([
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        outputPath,
+        "-i",
+        mixPath,
+        "-map",
+        "0:v:0",
+        "-map",
+        "1:a:0",
+        "-c:v",
+        "copy",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "192k",
+        "-shortest",
+        "-movflags",
+        "+faststart",
+        muxedPath
+      ]);
+      await unlink(outputPath).catch(() => undefined);
+      return { finalVideoUrl: `/media/${path.basename(muxedPath)}`, signature };
+    }
+    await report("delivered audio could not be read; keeping the silent cut");
+  } else if (mixUrl) {
+    await report("delivered audio is a fake:// placeholder; keeping the silent cut");
+  }
+
   return { finalVideoUrl: `/media/${outputName}`, signature };
+}
+
+/**
+ * Resolve an audio URL to a readable local file. Local `/media/...` paths and
+ * `file://` URLs are used directly; remote URLs are downloaded to the media
+ * dir. Returns undefined when the source is unusable so the caller can fall
+ * back to the silent cut instead of failing the whole stitch.
+ */
+async function materializeAudio(url: string, sessionId: string, signature: string): Promise<string | undefined> {
+  try {
+    const localMediaPath = localMediaPathFromUrl(url);
+    if (localMediaPath) return (await hasUsableMediaFile(localMediaPath)) ? localMediaPath : undefined;
+    if (url.startsWith("file://")) {
+      const filePath = new URL(url).pathname;
+      return (await hasUsableMediaFile(filePath)) ? filePath : undefined;
+    }
+    if (!isHttpUrl(url)) return undefined;
+    await mkdir(MEDIA_DIR, { recursive: true });
+    const outputPath = path.join(MEDIA_DIR, `stitch-${sessionId}-${signature}-delivery-mix.m4a`);
+    if (await hasUsableMediaFile(outputPath)) return outputPath;
+    await unlink(outputPath).catch(() => undefined);
+    await downloadVideoToFile(url, outputPath, "delivery mix");
+    return outputPath;
+  } catch {
+    return undefined;
+  }
 }
 
 async function materializeVideo(url: string, sessionId: string, index: number, signature = "single") {
