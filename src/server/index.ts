@@ -153,6 +153,9 @@ const serviceStartedAt = Date.now();
 const buildVersion = process.env.SEEREEL_VERSION || process.env.REELYAI_VERSION || process.env.npm_package_version || "dev";
 const buildCommit = process.env.SEEREEL_COMMIT_SHA || process.env.REELYAI_COMMIT_SHA || process.env.GITHUB_SHA || "";
 const FINAL_VIDEO_PUBLISH_TIMEOUT_MS = Math.max(1000, Number(process.env.FINAL_VIDEO_PUBLISH_TIMEOUT_MS || 15_000));
+/** 选角提取的系统提示词：集中定义，路由内只做材料注入。 */
+const SHORT_FILM_CASTING_SYSTEM_PROMPT =
+  "你是短片拍摄选角助手。请只返回 JSON，不要 Markdown。只识别故事的核心主角/主要人物，不要超过 6 个。";
 const shotGenerateSubmissions = new Map<string, Promise<{ status: number; body: unknown }>>();
 const ADMIN_COOKIE = "seereel_admin_session";
 const adminSessions = new Map<string, { createdAt: number }>();
@@ -3643,8 +3646,7 @@ async function inferCastCandidatesFromSession(session: Session): Promise<CastCan
       input: [
         {
           role: "system",
-          content:
-            "你是短片拍摄选角助手。请只返回 JSON，不要 Markdown。只识别故事的核心主角/主要人物，不要超过 6 个。"
+          content: SHORT_FILM_CASTING_SYSTEM_PROMPT
         },
         {
           role: "user",

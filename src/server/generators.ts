@@ -41,6 +41,14 @@ export interface BuildSeedancePayloadOpts {
 }
 
 export const MEDIA_DIR = path.resolve(process.cwd(), "data", "media");
+
+/**
+ * 集中提示词段落区：与媒体生成相关的系统/风格提示词文本一律提为具名常量，
+ * 组装函数只做段落注入与变量插值，不再内嵌整句提示词。
+ */
+const SHORT_FILM_OUTLINE_SYSTEM_PROMPT =
+  "你是电影短篇编剧和导演。只返回严格 JSON，不要 Markdown。生成短片大纲、人物弧线和节拍表，后续会直接派生分镜。";
+
 const BYTEPLUS_SEEDANCE_BASE = BYTEPLUS_ARK_BASE;
 const BYTEPLUS_SEEDANCE_MODEL = "dreamina-seedance-2-0-260128";
 const BYTEPLUS_SEEDANCE_FAST_MODEL = "dreamina-seedance-2-0-fast-260128";
@@ -300,8 +308,7 @@ export async function generateStoryPlanDetailed(session: SessionWithShots, asset
         input: [
           {
             role: "system",
-            content:
-              "你是电影短篇编剧和导演。只返回严格 JSON，不要 Markdown。生成短片大纲、人物弧线和节拍表，后续会直接派生分镜。"
+            content: SHORT_FILM_OUTLINE_SYSTEM_PROMPT
           },
           {
             role: "user",
@@ -1786,6 +1793,15 @@ function extractGenerationError(body: unknown): unknown {
   return data.error || data.message || data.reason || body;
 }
 
+/**
+ * 资产图像 prompt 模板段落区（模板注入形态）。
+ *
+ * 以下两个组装函数覆盖全部资产图像 prompt 的产生路径：每个分支按段落
+ * 数组拼装、唯一插值变量是用户原文（rawPrompt）。段落文本刻意因分支而异
+ * （LLM 扩写指令 ≠ 本地兜底 prompt，人类角色 ≠ 非人类角色），因此不做
+ * 跨分支"去重合并"——合并任何近似段落都会改变发给模型的文本。修改段落
+ * 时保持"逐字节一致或整段重写"二选一，不要顺手润色。
+ */
 function buildAssetPromptExpansionInstruction(asset: Partial<Asset>) {
   const rawPrompt = [asset.name, asset.prompt || asset.description].filter(Boolean).join("，").trim() || "未命名电影资产";
   if (asset.type === "image") {
