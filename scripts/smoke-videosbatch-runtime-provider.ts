@@ -19,12 +19,16 @@ const fakeConfig = resolveVideosBatchRuntimeConfig({
 });
 assert.equal(fakeConfig.executorMode, "fake", "missing executor mode must stay fake even when keys exist");
 assert.equal(fakeConfig.mediaMode, "fake", "missing media mode must stay fake even when SeeReel media keys exist");
+assert.equal(fakeConfig.ttsProvider, "fake", "missing TTS mode must stay fake even when MINIMAX_API_KEY exists");
 const fakeReadiness = getVideosBatchProviderReadiness(fakeConfig);
 assert.equal(fakeReadiness.executorMode, "fake");
 assert.equal(fakeReadiness.mediaMode, "fake");
 assert.equal(fakeReadiness.text.enabled, false);
 assert.equal(fakeReadiness.text.ready, true);
 assert.equal(fakeReadiness.media.enabled, false);
+assert.equal(fakeReadiness.tts.enabled, false);
+assert.equal(fakeReadiness.tts.provider, "fake");
+assert.equal(fakeReadiness.tts.label, "videosbatch-fake-audio");
 assert.equal(JSON.stringify(fakeReadiness).includes("dedicated-test-key-that-must-not-auto-enable"), false, "readiness must never expose API key material");
 assert.equal(JSON.stringify(fakeReadiness).includes("image-test-key-that-must-not-auto-enable"), false, "readiness must never expose media keys");
 
@@ -39,6 +43,26 @@ assert.equal(nativeMediaConfig.mediaMode, "native");
 const nativeMediaReadiness = getVideosBatchProviderReadiness(nativeMediaConfig);
 assert.equal(nativeMediaReadiness.media.enabled, true);
 assert.equal(nativeMediaReadiness.media.mode, "native");
+
+// TTS is an independent switch: it must be requestable without native media, and
+// it must refuse to arm without its own dedicated key.
+assert.throws(() => resolveVideosBatchRuntimeConfig({ VIDEOSBATCH_TTS_PROVIDER: "surprise" }), /VIDEOSBATCH_TTS_PROVIDER.*fake.*minimax/i);
+assert.throws(
+  () => resolveVideosBatchRuntimeConfig({ VIDEOSBATCH_TTS_PROVIDER: "minimax" }),
+  /VIDEOSBATCH_TTS_PROVIDER=minimax requires MINIMAX_API_KEY/,
+  "minimax TTS must not arm without a dedicated key"
+);
+const minimaxConfig = resolveVideosBatchRuntimeConfig({ VIDEOSBATCH_TTS_PROVIDER: "minimax", MINIMAX_API_KEY: "minimax-test-key-must-not-leak" });
+assert.equal(minimaxConfig.mediaMode, "fake", "TTS must not turn on paid visual media");
+assert.equal(minimaxConfig.ttsProvider, "minimax");
+const minimaxReadiness = getVideosBatchProviderReadiness(minimaxConfig);
+assert.equal(minimaxReadiness.tts.enabled, true);
+assert.equal(minimaxReadiness.tts.label, "minimax-t2a-v2");
+assert.equal(minimaxReadiness.media.enabled, false, "tts-only mode must leave visual media fake");
+assert.equal(JSON.stringify(minimaxReadiness).includes("minimax-test-key-must-not-leak"), false, "readiness must never expose the MiniMax key");
+const ttsOnlyRegistry = createVideosBatchRuntimeStageRegistry({ VIDEOSBATCH_TTS_PROVIDER: "minimax", MINIMAX_API_KEY: "minimax-test-key" });
+assert.equal(typeof ttsOnlyRegistry.AUDIO_DELIVERY?.execute, "function", "tts-only mode must install the native AUDIO_DELIVERY stage");
+assert.equal(ttsOnlyRegistry.STITCH?.execute?.name === "execute", true, "unrelated stages stay on the fake registry");
 
 const mediaWorkflow = createVideosBatchWorkflow({ projectId: "P001", lessonText: "完整教案：观察物体。" });
 mediaWorkflow.stages.ASSET_PLAN = {

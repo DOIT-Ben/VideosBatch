@@ -39,6 +39,23 @@ import {
   probeLocalAudioDuration,
   synthesizeFakeSpeech
 } from "./audioDelivery";
+import {
+  MINIMAX_TTS_PROVIDER,
+  resolveMiniMaxTtsConfig,
+  synthesizeMiniMaxSpeech
+} from "./minimaxTts";
+
+/**
+ * The AUDIO_DELIVERY artifact records which provider actually produced the speech
+ * so a reviewer can tell a billed MiniMax run from a zero-cost fake run.
+ */
+function audioDeliveryProvider(
+  deps: VideosBatchNativeMediaDeps
+): string {
+  return typeof deps.synthesizeSpeech === "function" && deps.synthesizeSpeech !== synthesizeFakeSpeech
+    ? MINIMAX_TTS_PROVIDER
+    : VIDEOS_BATCH_FAKE_AUDIO_PROVIDER;
+}
 
 export interface NativeAssetImageResult {
   url: string;
@@ -175,6 +192,53 @@ export const defaultVideosBatchNativeMediaDeps: VideosBatchNativeMediaDeps = {
   mixAudioTimeline: mixFakeAudioTimeline,
   probeAudioDuration: probeLocalAudioDuration
 };
+
+export type VideosBatchTtsProvider = "fake" | "minimax";
+
+/** Read the TTS provider switch; an absent value keeps the zero-cost fake default. */
+export function resolveVideosBatchTtsProvider(
+  env: Record<string, string | undefined> = process.env
+): VideosBatchTtsProvider {
+  const raw = String(env.VIDEOSBATCH_TTS_PROVIDER || "").trim().toLowerCase();
+  const provider = raw || "fake";
+  if (provider !== "fake" && provider !== "minimax") {
+    throw new Error(`VIDEOSBATCH_TTS_PROVIDER must be one of: fake, minimax (received: ${provider})`);
+  }
+  return provider;
+}
+
+/**
+ * Build the AUDIO_DELIVERY dependency set for the requested TTS provider.
+ *
+ * Only `synthesizeSpeech` changes. Sound effects stay on the deterministic local
+ * fake because MiniMax T2A is a speech model — it cannot produce an explosion or a
+ * page-turn, so routing them through it would burn quota for a wrong result. The
+ * mix stays local: every stream is already a file on this machine, and `ffmpeg`
+ * does the job without a provider round-trip.
+ */
+export function buildVideosBatchNativeMediaDeps(
+  env: Record<string, string | undefined> = process.env
+): VideosBatchNativeMediaDeps {
+  const provider = resolveVideosBatchTtsProvider(env);
+  if (provider === "fake") return defaultVideosBatchNativeMediaDeps;
+
+  const config = resolveMiniMaxTtsConfig(env);
+  if (!config) {
+    throw new Error(
+      "VIDEOSBATCH_TTS_PROVIDER=minimax requires MINIMAX_API_KEY. " +
+      "VideosBatch does not reuse another provider's key for TTS."
+    );
+  }
+  return {
+    ...defaultVideosBatchNativeMediaDeps,
+    synthesizeSpeech: (event, sessionId) => synthesizeMiniMaxSpeech(event, sessionId, config)
+  };
+}
+
+/** Human-readable provider label for the AUDIO_DELIVERY artifact. */
+export function videosBatchTtsProviderLabel(provider: VideosBatchTtsProvider) {
+  return provider === "minimax" ? MINIMAX_TTS_PROVIDER : VIDEOS_BATCH_FAKE_AUDIO_PROVIDER;
+}
 
 function requireStore(ctx: StageExecutionContext): CinemaStore {
   if (!ctx.store) throw new Error("Native VideosBatch media execution requires CinemaStore");
@@ -546,6 +610,7 @@ async function buildAudioDelivery(
   execution: NativeExecutionArtifact
 ): Promise<AudioDeliveryBuildResult> {
   const lineage = sourceLineage(ctx.workflow, ["EXECUTION", "FINAL_STORYBOARD"]);
+  const provider = audioDeliveryProvider(deps);
   const previous = ctx.workflow.stages.AUDIO_DELIVERY?.artifact as Partial<VideosBatchAudioDeliveryArtifact> | undefined;
   const previousByEvent = new Map(
     (Array.isArray(previous?.items) ? previous.items : []).map((item: any) => [text(item?.eventId), item])
@@ -647,7 +712,7 @@ async function buildAudioDelivery(
       artifact: {
         schemaVersion: "1",
         status,
-        provider: VIDEOS_BATCH_FAKE_AUDIO_PROVIDER,
+        provider,
         audioTimeline: nextTimeline,
         items,
         failedItems,
@@ -679,7 +744,7 @@ async function buildAudioDelivery(
       artifact: {
         schemaVersion: "1",
         status: "READY",
-        provider: VIDEOS_BATCH_FAKE_AUDIO_PROVIDER,
+        provider,
         audioTimeline: nextTimeline,
         items,
         failedItems: [],
@@ -696,7 +761,7 @@ async function buildAudioDelivery(
       artifact: {
         schemaVersion: "1",
         status: "PARTIAL",
-        provider: VIDEOS_BATCH_FAKE_AUDIO_PROVIDER,
+        provider,
         audioTimeline: nextTimeline,
         items,
         failedItems,
@@ -1476,7 +1541,7 @@ export function createVideosBatchNativeMediaStageRegistry(
           {
             code: firstError?.code || "AUDIO_TIMELINE_NOT_READY",
             retryable: true,
-            provider: VIDEOS_BATCH_FAKE_AUDIO_PROVIDER,
+            provider: audioDeliveryProvider(deps),
             model: null
           }
         );

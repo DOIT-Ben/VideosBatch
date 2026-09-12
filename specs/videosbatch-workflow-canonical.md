@@ -3,12 +3,12 @@
 Status: active
 Last Reviewed: 2026-09-12
 Spec ID: `VIDEOSBATCH_WORKFLOW_CANONICAL`
-Canonical Version: `1.3.0`
+Canonical Version: `1.4.0`
 Owner: VideosBatch 产品与运行时
 
 > 本文件是 VideosBatch 课程视频工作流的唯一有效设计真源。所有阶段顺序、提示词材料、字段语义、输出格式、人工门禁、版本血缘、重试、资产和媒体规则均以本文件为准。
 >
-> 阶段 1 的文档治理和阶段 2 的归档已经完成；1.1.0 增加参考图绑定合同，1.2.0 增加音频就绪门禁与 PARTIAL 重试合同，分别按对应落地文档执行。
+> 阶段 1 的文档治理和阶段 2 的归档已经完成；1.1.0 增加参考图绑定合同，1.2.0 增加音频就绪门禁与 PARTIAL 重试合同，1.3.0 增加凭据卫生守卫，1.4.0 增加可插拔语音合成 Provider（MiniMax T2A v2），分别按对应落地文档执行。
 >
 > JSON 只承担传输和持久化结构；它不能删减、替代或改写上游手册规定的字段语义和创作约束。模型输出是建议稿，服务端校验、用户确认和版本血缘才决定可继续的事实。
 
@@ -2420,13 +2420,26 @@ P001-A004：黄色小花（道具）
 - `AUDIO_DELIVERY` 与 `STITCH` 的音频门禁失败使用稳定错误码 `AUDIO_TIMELINE_NOT_READY`，不得创建成功 StitchJob；可修复的状态失败必须保留错误证据并允许携带当前 lineage 的显式重试。
 - `STITCH` 必须把交付就绪的混音真正混入最终成片，而不是仅把时间线 hash 纳入拼接签名。缺失时间线则不得拼接出无声成片。
 - canonical fake 链路必须与 native 链路产生同构的 `AUDIO_DELIVERY` 产物，使离线合同验证能够覆盖音频门禁；fake 产物使用 `fake://` URL 且仅在 fake 注册表内被接受，native 链路不得放行该 scheme。
+- `AUDIO_DELIVERY` 的语音合成必须可插拔：`VIDEOSBATCH_TTS_PROVIDER` 取 `fake`（默认，本地等长静音，零成本）或 `minimax`（MiniMax T2A v2，按字符计费）。开关只影响 `synthesizeSpeech`；音效 `materializeSoundEffect` 与混音 `mixAudioTimeline` 始终为本地实现，因为 T2A 只做语音合成，且各音轨已是本机文件。`AUDIO_DELIVERY` 产物的 `provider` 字段必须如实反映本次语音的实际来源，使评审者能区分计费运行与零成本运行。
+- `VIDEOSBATCH_TTS_PROVIDER=minimax` 缺少 `MINIMAX_API_KEY` 时必须在运行时配置解析阶段失败关闭，不得静默降级为静音。TTS 开关独立于 `VIDEOSBATCH_MEDIA_MODE`：`tts=minimax` 与 `media=fake` 并存时必须只覆盖 `AUDIO_DELIVERY` 阶段，视觉链路保持 fake。
+
+### 7.10 语音合成 Provider（MiniMax T2A v2）
+
+- 端点 `POST https://api.minimaxi.com/v1/t2a_v2`，`Authorization: Bearer <key>`，非流式单次返回。`GroupId` 是 URL query 参数而非请求体字段，仅在 `MINIMAX_GROUP_ID` 显式配置时附加；账户级 `sk-cp-` 凭据无需该参数。
+- 请求固定 `output_format=hex`，音频以内联 hex 字符串返回于 `data.audio`。不使用 `output_format=url`，避免引入短时失效的远端 URL 作为交付依赖。hex 解码前必须校验长度与字符集，畸形载荷不得落盘成为看似合法的音频。
+- 错误必须按 `base_resp.status_code` 映射为稳定错误码：`1002`/`1039` 归为限流可重试，`1004` 归为鉴权失败，`1042` 归为非法字符，`1008` 归为余额不足；未列出的非零码按不可重试的 Provider 失败处理。`status_code=0` 但 `data` 为空或 `data.audio` 为空时判定为 `MINIMAX_EMPTY_AUDIO`，不得写出空文件。
+- 合成是计费的外部副作用操作，不得按幂等请求重试：仅在请求未到达服务端的网络层失败时重试，超时与 5xx 一律不重放。空文本与超出 Provider 长度上限的文本必须在本地拒绝，不消耗配额。
+- 时间线给出的是事件的起止秒而非语速；Provider 只接受 `[0.5, 2]` 的 `speed` 倍率。必须由文本可读字数与事件时长推算期望倍率并夹取到该区间，使合成结果贴合镜头窗口。
+- 合成文件必须内容寻址写入 `MEDIA_DIR` 并返回可读取的 `/media/...` URL；相同文本、音色与参数重复运行必须复用既有文件而不重复计费。
+- 真实调用属于显式的付费变更，只在 `VIDEOSBATCH_TTS_PROVIDER=minimax` 时发生；离线合同验证必须能在无网络、无凭据的条件下覆盖请求形状、hex 解码、错误映射与依赖装配。
 
 ### 7.9 凭据卫生
 
 - 真实 Provider 凭据只存在于被 git 忽略的本机 `.env`；本文件、README、UI 规格和代码注释都不得记录密钥值。
 - `smoke:secrets` 只扫描进入版本控制的文件，天然看不到被忽略的 `.env`；`.env` 的卫生状态由独立的本地检查 `smoke:env-hygiene` 覆盖：`.env` 是否被忽略、是否曾进入历史、跟踪的 `*.example` 模板是否被误填、已配置凭据数量与实际 Provider 开关是否一致。
 - `smoke:env-hygiene` 只输出键名与布尔结论，不打印任何密钥值；它是本地检查，不纳入 `verify:offline`，因为全新检出本就没有凭据。
-- 模式开关（`VIDEOSBATCH_EXECUTOR_MODE`、`VIDEOSBATCH_MEDIA_MODE`）保持 `fake` 时不得产生真实 Provider 调用；把开关切到 `llm`/`native` 属于显式的付费变更，必须单独确认。
+- 模式开关（`VIDEOSBATCH_EXECUTOR_MODE`、`VIDEOSBATCH_MEDIA_MODE`、`VIDEOSBATCH_TTS_PROVIDER`）保持 `fake` 时不得产生真实 Provider 调用；把开关切到 `llm`/`native`/`minimax` 属于显式的付费变更，必须单独确认。
+- 因语音合成按字符计费，`smoke:env-hygiene` 必须单独报告 TTS 开关状态：`minimax` 已武装且密钥存在时给出计费提示，开关已置而密钥缺失时判定为失败。
 
 ## 8. Provider、重试与失败隔离
 
@@ -2465,6 +2478,13 @@ P001-A004：黄色小花（道具）
 - `STITCH` 前必须验证每个片段的 10 秒时长、顺序、版本和交付就绪的独立音频时间线；缺失、stale 或 `AUDIO_TIMELINE_NOT_READY` 禁止拼接。
 - 图片供应商若在提交前返回明确的 `content_policy_violation`，可针对当前资产最多进行一次 `provider-safe-v1` 重试：原始教案提示词和内容哈希必须保留，临时提交文本只能去除供应商敏感的年龄/姓名表述并补充非写实教育场景安全约束；适配策略、原始哈希和提交哈希必须写入资产审计字段。第二次仍被拒绝时按不可重试的单项失败隔离，不得静默改写事实源或重复扣费。
 
+### 8.4 语音合成 Provider
+
+- `VIDEOSBATCH_TTS_PROVIDER` 决定 `AUDIO_DELIVERY` 的语音来源，与 `VIDEOSBATCH_MEDIA_MODE` 解耦。默认 `fake` 走本地等长静音，可在无网络、无凭据条件下跑通全链路；`minimax` 走 MiniMax T2A v2 真实合成。
+- 只有语音合成可插拔。音效与混音始终本地完成，因为 T2A 是语音模型不产音效，且各音轨已是本机文件，无需 Provider 往返。
+- 语音合成按字符计费，属显式付费变更；离线合同验证必须在 `fake` 下运行，真实调用只在显式开关与真实凭据同时存在时发生。
+- 契约、错误码映射、语速推算、内容寻址复用与请求载荷要求见 §7.10；凭据卫生要求见 §7.9。
+
 ## 8.4 Standalone Local Runtime Boundary
 
 VideosBatch 的独立 Skill 默认使用本地运行目录，不要求启动 VideosBatch Web 服务。运行目录是 Planner、Worker、artifact、媒体路径、事件和最终交付的持久化事实源；Web API/Session 仅作为显式远程适配模式保留。
@@ -2477,7 +2497,7 @@ Skill 分发包携带本文件的指纹化快照和 manifest。仓库内以 `spe
 
 ## 9. Testing Strategy
 
-离线合同验证至少覆盖手册来源、阶段顺序和九步映射；六个文本阶段的提示词边界、专用 Schema、禁止项和字段顺序；九套导入、600–800 字故事、四类资产、目标时长集合和三类分镜 canonical `oneOf` 语义（以及 provider wire Schema 不使用 `oneOf` 的适配）；错误类型/章节、漏场次、缺标签、稳定 ID 混入、旁白超句、音效超长、提前给答案、版本过期、资产归属错误、重复旁白和非 10 秒片段；参考图声明顺序、ordinal、H3 `Image N` 映射、multipart 同源顺序、脱敏哈希快照、旧任务恢复和 `COPYABLE_PROMPT` 首个画面子镜头回退；派生 artifact PARTIAL 失败化、legacy 状态收敛、lineage 重试、音频 structural/delivery 门禁、`AUDIO_TIMELINE_NOT_READY` 和无音频 StitchJob 禁止创建；`AUDIO_DELIVERY` 逐事件 TTS/音效产出、混音前置条件、双来源血缘、缺 EXECUTION 时间线时失败关闭、幂等复用与 fake/native 产物同构；重试预算、主备切换、幂等键、未知提交对账、失败隔离、断点恢复和拼接门禁。
+离线合同验证至少覆盖手册来源、阶段顺序和九步映射；六个文本阶段的提示词边界、专用 Schema、禁止项和字段顺序；九套导入、600–800 字故事、四类资产、目标时长集合和三类分镜 canonical `oneOf` 语义（以及 provider wire Schema 不使用 `oneOf` 的适配）；错误类型/章节、漏场次、缺标签、稳定 ID 混入、旁白超句、音效超长、提前给答案、版本过期、资产归属错误、重复旁白和非 10 秒片段；参考图声明顺序、ordinal、H3 `Image N` 映射、multipart 同源顺序、脱敏哈希快照、旧任务恢复和 `COPYABLE_PROMPT` 首个画面子镜头回退；派生 artifact PARTIAL 失败化、legacy 状态收敛、lineage 重试、音频 structural/delivery 门禁、`AUDIO_TIMELINE_NOT_READY` 和无音频 StitchJob 禁止创建；`AUDIO_DELIVERY` 逐事件 TTS/音效产出、混音前置条件、双来源血缘、缺 EXECUTION 时间线时失败关闭、幂等复用与 fake/native 产物同构；TTS Provider 开关解析与缺钥匙失败关闭、MiniMax 请求形状（`GroupId` 只走 query、正文无该字段）、hex 解码与畸形载荷拒绝、`base_resp.status_code` 到稳定错误码的映射、空 `data`/空音频判定、语速夹取到 `[0.5, 2]`、内容寻址复用不重复计费、以及音效/混音不被 TTS 开关改写；重试预算、主备切换、幂等键、未知提交对账、失败隔离、断点恢复和拼接门禁。
 
 ## Verification
 
@@ -2506,7 +2526,10 @@ git diff --check
 - [x] `STITCH` 拒绝未完成的 TTS/音效/mix，且未通过音频交付门禁时不创建成功 StitchJob。
 - [x] `STITCH` 把交付就绪的混音真正混入最终成片，而不仅是用时间线 hash 参与拼接签名。
 - [x] canonical fake 链路产出与 native 同构的 `AUDIO_DELIVERY` 产物，离线合同验证可覆盖音频门禁；`fake://` URL 仅在 fake 注册表被接受。
-- [x] `smoke:env-hygiene` 验证 `.env` 被忽略且从未提交、跟踪模板无真实密钥，并只以键名和布尔结论报告凭据武装状态。
+- [x] `smoke:env-hygiene` 验证 `.env` 被忽略且从未提交、跟踪模板无真实密钥，并只以键名和布尔结论报告凭据武装状态（含 TTS 开关的计费提示与缺钥失败）。
+- [x] `VIDEOSBATCH_TTS_PROVIDER` 可在 `fake`/`minimax` 间切换且独立于 `VIDEOSBATCH_MEDIA_MODE`；`minimax` 缺钥匙时失败关闭，`tts=minimax`+`media=fake` 时只覆盖 `AUDIO_DELIVERY`。
+- [x] MiniMax T2A v2 请求形状、`GroupId` 仅走 query、hex 解码、`status_code` 错误映射、空音频判定、语速夹取与内容寻址复用均被离线验证覆盖，且无网络无凭据即可通过。
+- [x] TTS 开关只替换语音合成；音效与混音仍为本地实现，`AUDIO_DELIVERY` 产物 `provider` 如实反映实际语音来源。
 - [ ] 阶段 1 不修改业务代码、`.env` 或旧文件，不调用真实 Provider；现有脏工作树保持不变。
 
 ## Change Policy

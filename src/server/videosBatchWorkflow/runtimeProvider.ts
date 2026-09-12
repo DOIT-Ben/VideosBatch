@@ -4,7 +4,13 @@ import {
   type VideosBatchLlmConfig
 } from "./llmExecutor";
 import { createVideosBatchLlmTextStageRegistry } from "./llmTextStages";
-import { createVideosBatchNativeMediaStageRegistry } from "./nativeMediaStages";
+import {
+  buildVideosBatchNativeMediaDeps,
+  createVideosBatchNativeMediaStageRegistry,
+  resolveVideosBatchTtsProvider,
+  videosBatchTtsProviderLabel,
+  type VideosBatchTtsProvider
+} from "./nativeMediaStages";
 import { createPhase1FakeStageRegistry } from "./stages";
 import type { StageRegistry } from "./stageContracts";
 
@@ -17,6 +23,11 @@ export interface VideosBatchRuntimeConfig {
   mediaMode: VideosBatchMediaMode;
   videoProvider: "seedance" | "newapi-h3";
   imageProvider: "seedream" | "lyaiapp";
+  /**
+   * TTS is its own switch, independent of `mediaMode`. Video/image work can stay
+   * on the fake path while speech runs against a paid provider, and vice versa.
+   */
+  ttsProvider: VideosBatchTtsProvider;
   llm?: VideosBatchLlmConfig;
 }
 
@@ -34,6 +45,14 @@ export interface VideosBatchProviderReadiness {
   media: {
     enabled: boolean;
     mode: VideosBatchMediaMode;
+  };
+  /** Speech synthesis readiness, reported separately from visual media. */
+  tts: {
+    enabled: boolean;
+    provider: VideosBatchTtsProvider;
+    label: string;
+    keyConfigured: boolean;
+    ready: boolean;
   };
 }
 
@@ -84,7 +103,12 @@ export function resolveVideosBatchRuntimeConfig(
     throw new Error("VIDEOSBATCH_IMAGE_PROVIDER=lyaiapp requires VIDEOSBATCH_IMAGE_API_KEY.");
   }
 
-  if (executorMode === "fake") return { executorMode, mediaMode, videoProvider, imageProvider };
+  const ttsProvider = resolveVideosBatchTtsProvider(env);
+  if (ttsProvider === "minimax" && !trimmed(env, "MINIMAX_API_KEY")) {
+    throw new Error("VIDEOSBATCH_TTS_PROVIDER=minimax requires MINIMAX_API_KEY.");
+  }
+
+  if (executorMode === "fake") return { executorMode, mediaMode, videoProvider, imageProvider, ttsProvider };
 
   const apiKey = trimmed(env, "VIDEOSBATCH_LLM_API_KEY");
   if (!apiKey) {
@@ -115,7 +139,7 @@ export function resolveVideosBatchRuntimeConfig(
     VIDEOSBATCH_LLM_FALLBACK_REASONING: trimmed(env, "VIDEOSBATCH_LLM_FALLBACK_REASONING")
   });
 
-  return { executorMode, mediaMode, videoProvider, imageProvider, llm };
+  return { executorMode, mediaMode, videoProvider, imageProvider, ttsProvider, llm };
 }
 
 export function getVideosBatchProviderReadiness(
@@ -124,6 +148,15 @@ export function getVideosBatchProviderReadiness(
   const media = {
     enabled: config.mediaMode === "native",
     mode: config.mediaMode
+  } as const;
+
+  const tts = {
+    enabled: config.ttsProvider === "minimax",
+    provider: config.ttsProvider,
+    label: videosBatchTtsProviderLabel(config.ttsProvider),
+    keyConfigured: config.ttsProvider === "minimax",
+    // The key was already validated in `resolveVideosBatchRuntimeConfig`.
+    ready: true
   } as const;
 
   if (config.executorMode === "fake") {
@@ -135,7 +168,8 @@ export function getVideosBatchProviderReadiness(
         ready: true,
         keyConfigured: false
       },
-      media
+      media,
+      tts
     };
   }
 
@@ -151,7 +185,8 @@ export function getVideosBatchProviderReadiness(
       baseUrl: llm?.baseUrl,
       keyConfigured: Boolean(llm?.apiKey)
     },
-    media
+    media,
+    tts
   };
 }
 
@@ -173,8 +208,14 @@ export function createVideosBatchRuntimeStageRegistry(
   if (config.mediaMode === "native") {
     registry = {
       ...registry,
-      ...createVideosBatchNativeMediaStageRegistry()
+      ...createVideosBatchNativeMediaStageRegistry(buildVideosBatchNativeMediaDeps(env))
     };
+  } else if (config.ttsProvider !== "fake") {
+    // Native media is off, but real speech was explicitly requested. Install only
+    // the AUDIO_DELIVERY stage over the native dependency set so the fake visual
+    // pipeline keeps running while narration is synthesized for real.
+    const audioOnly = createVideosBatchNativeMediaStageRegistry(buildVideosBatchNativeMediaDeps(env));
+    registry = { ...registry, AUDIO_DELIVERY: audioOnly.AUDIO_DELIVERY };
   }
 
   return registry;

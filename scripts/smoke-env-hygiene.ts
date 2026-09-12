@@ -140,21 +140,28 @@ if (!hasEnv) {
     entries.find((entry) => entry.key === name)?.value?.trim().toLowerCase() ?? "(unset)";
   const executorMode = modeSwitch("VIDEOSBATCH_EXECUTOR_MODE");
   const mediaMode = modeSwitch("VIDEOSBATCH_MEDIA_MODE");
+  const ttsProvider = modeSwitch("VIDEOSBATCH_TTS_PROVIDER");
 
   record(
     "ok",
     `.env holds ${armed.length} credential-shaped value(s) for keys: ${armed.map((entry) => entry.key).join(", ") || "(none)"}`,
   );
-  if (armed.length > 0 && executorMode === "fake" && mediaMode === "fake") {
-    record(
-      "ok",
-      `provider calls are switched off (executor=${executorMode}, media=${mediaMode}); the stored keys are dormant`,
-    );
+  const allOff = executorMode === "fake" && mediaMode === "fake" && (ttsProvider === "fake" || ttsProvider === "(unset)");
+  const modeSummary = `executor=${executorMode}, media=${mediaMode}, tts=${ttsProvider}`;
+  if (armed.length > 0 && allOff) {
+    record("ok", `provider calls are switched off (${modeSummary}); the stored keys are dormant`);
   } else if (armed.length > 0) {
-    record(
-      "warn",
-      `credentials are present and provider calls are live (executor=${executorMode}, media=${mediaMode}); confirm this is intended`,
-    );
+    record("warn", `credentials are present and provider calls are live (${modeSummary}); confirm this is intended`);
+  }
+  // TTS is billed per character, so an armed switch deserves an explicit call-out
+  // even when the visual pipeline is still on the free fake path.
+  if (ttsProvider === "minimax") {
+    const hasMinimaxKey = armed.some((entry) => entry.key === "MINIMAX_API_KEY");
+    if (hasMinimaxKey) {
+      record("warn", "VIDEOSBATCH_TTS_PROVIDER=minimax will bill real character-based TTS on the next AUDIO_DELIVERY run");
+    } else {
+      record("fail", "VIDEOSBATCH_TTS_PROVIDER=minimax is set but MINIMAX_API_KEY is missing; startup will throw");
+    }
   }
   record("ok", `.env size ${stat.size} bytes`);
 }
