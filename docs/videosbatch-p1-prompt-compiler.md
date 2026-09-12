@@ -23,7 +23,7 @@
 - 画面执行：每个子镜头的时间、画面、动作、运镜、连续性；
 - 声音意图：旁白/对白文本、说话者和音效意图（只作为执行约束，不要求 H3 生成受控音频）；
 - 有序参考图：`referenceId`、`ordinal`、`assetKey`、语义标签和已验证图片快照；
-- 版本血缘：`sourceStageId`、`sourceRevision`、`sourceHash`、`contentHash`。
+- 版本血缘：`sourceStageId`、`sourceRevision`、`sourceHash`、`assetPlanRevision`、`assetPlanHash`、`contentHash`。
 
 ### 1.2 非目标
 
@@ -51,6 +51,8 @@ type ShotExecutionPackage = {
   sourceStageId: "FINAL_STORYBOARD";
   sourceRevision: number;
   sourceHash: string;
+  assetPlanRevision: number;
+  assetPlanHash: string;
   contentHash: string;
   shot: {
     sequence: number;
@@ -78,6 +80,8 @@ type ShotExecutionPackage = {
       action: string;
       camera: string;
     }>;
+    styleSpec: string;
+    negativePrompt: string;
     globalContinuity: string;
   };
   audioIntent: {
@@ -95,13 +99,17 @@ type ShotExecutionPackage = {
 };
 ```
 
-`assetId` 和 `imageUrlHash` 只能留在服务端审计视图；Provider 文本只允许语义标签和 `Image N`。执行包必须在发送前冻结，重试时按相同 `contentHash` 重放，不能重新从全局资产表排序。
+`assetId` 和 `imageUrlHash` 只能留在服务端审计视图；Provider 文本只允许语义标签和 `Image N`。构造器只接受 `status=ready` 的 `ASSET_PLAN` stage wrapper（含 `revision`、`contentHash` 和 `artifact`），拒绝裸 artifact。`styleSpec` 与 `negativePrompt` 从已确认的 `ASSET_PLAN` 继承，并在 Prompt 的“连续性”章节作为全局画面约束输出。执行包必须在发送前冻结，重试时按相同 `contentHash` 重放，不能重新从全局资产表排序。
+
+编译结果另返回 `compilerVersion` 和独立的 `promptHash`；`promptHash` 覆盖实际 Prompt 文本、编译器版本和 full/compact 渲染模式。`Image N` 映射保留完整的类型化语义标签，例如 `Image 1 = 【人物：小宇】`，不得退化为只有名称的绑定。
 
 ## 4. 编译器行为合同
 
 ### 4.1 输入来源和优先级
 
-编译器只读取当前确认版本的 `FINAL_STORYBOARD`、`ASSET_CONFIRMATION` 和必要的 `SCREENPLAY` 血缘。输入版本或哈希过期、场次不存在、参考图无法解析时，直接返回结构化错误，不生成部分 Prompt。
+编译器只读取当前确认版本的 `FINAL_STORYBOARD`、`ASSET_PLAN`、`ASSET_CONFIRMATION` 和必要的 `SCREENPLAY` 血缘。执行包必须保存 `assetPlanRevision` 与 `assetPlanHash`；输入版本或哈希过期、风格/负面约束不匹配、场次不存在、参考图无法解析时，直接返回结构化错误，不生成部分 Prompt。风格和负面约束只能从已确认 `ASSET_PLAN` artifact 复制，不能由调用方另行覆盖。
+
+`compileShotProviderPrompt()` 与直接的 `renderShotProviderPromptSections()` 都必须接收当前 `FINAL_STORYBOARD` 和 `ASSET_PLAN` 的 revision/hash；当前 `ASSET_PLAN` 还必须提供 style/negative 原文用于逐项比对。缺少当前上下文视为血缘不完整并阻断，不能仅凭执行包自身 hash 渲染。
 
 ### 4.2 固定渲染顺序
 
@@ -116,7 +124,7 @@ Provider Prompt 的章节顺序固定如下，顺序变化视为合同变化：
 7. `声音表演约束`：原始旁白/对白和音效意图，仅用于嘴型、反应和节奏；明确“音频由独立 TTS/混音链路提供”
 8. `Reference image bindings (strict)`：按 `ordinal` 输出 `Image N = 语义标签`
 
-每个章节都必须来自结构化字段，禁止只把整个 JSON `JSON.stringify()` 后塞进用户 Prompt。合同修复只发送受影响字段和校验错误。
+每个章节都必须来自结构化字段，禁止只把整个 JSON `JSON.stringify()` 后塞进用户 Prompt。字段值中的换行、控制字符、ASCII 章节标记和 compact 分隔符必须被规整或阻断；输出还要验证固定章节标题唯一且顺序不变。合同修复只发送受影响字段和校验错误。
 
 ### 4.3 Provider 安全规则
 
@@ -124,6 +132,7 @@ Provider Prompt 的章节顺序固定如下，顺序变化视为合同变化：
 - 不出现位置型“第几张图”替代 `Image N` 语义映射；
 - 不让模型改写、补写或回答教学结论；
 - 不把台词/旁白重复拼到多个章节；
+- 不把服务端音频事件 ID写入 Provider Prompt；
 - H3 若支持 `generate_audio`，VideosBatch 请求必须显式关闭，或在进入混音前明确丢弃其语音轨；不能让 H3 原生音轨与 TTS 双播；
 - Prompt 编译必须是确定性的纯函数，不能在编译器内隐式调用 LLM。
 
@@ -175,7 +184,7 @@ Provider Prompt 的章节顺序固定如下，顺序变化视为合同变化：
 
 ## 6. 完成定义
 
-- H3 的唯一 Prompt 来源是当前 `ShotExecutionPackage`，不再是精简 `rawPrompt`；
+- H3 的唯一 Prompt 来源是当前 `ShotExecutionPackage`，不再是精简 `rawPrompt`；编译结果另有包含编译器版本和渲染模式的 `promptHash`，不能只用执行包 `contentHash` 区分 Prompt 变体；
 - 三种类型字段都能无损追溯；
 - 旁白/音效进入独立音频意图流，既不会丢失，也不会要求 H3 生成受控音频；
 - 参考图顺序、语义映射和审计快照保持现有实现；

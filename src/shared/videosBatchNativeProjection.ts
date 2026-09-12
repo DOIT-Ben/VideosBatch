@@ -14,6 +14,8 @@ export interface VideosBatchReferenceBinding {
   imageUrlHash?: string;
 }
 
+export type VideosBatchPromptRendering = "full" | "compact";
+
 declare module "./types" {
   interface Asset {
     /** Stable VideosBatch business reference such as P001-A001. Native Asset.id remains runtime-owned. */
@@ -27,6 +29,14 @@ declare module "./types" {
     videosBatchBatchId?: string;
     videosBatchSourceRevision?: number;
     videosBatchSourceHash?: string;
+    /** Lineage of the confirmed ASSET_PLAN used to compile this shot. */
+    videosBatchAssetPlanRevision?: number;
+    videosBatchAssetPlanHash?: string;
+    /** Hashes of the immutable execution package and exact provider prompt. */
+    videosBatchPackageContentHash?: string;
+    videosBatchPromptHash?: string;
+    videosBatchPromptCompilerVersion?: string;
+    videosBatchPromptRendering?: VideosBatchPromptRendering;
     /** Ordered semantic-to-native reference snapshot used by VideosBatch media execution. */
     videosBatchReferenceBindings?: VideosBatchReferenceBinding[];
   }

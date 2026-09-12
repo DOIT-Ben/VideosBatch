@@ -156,6 +156,10 @@ export interface ShotExecutionPackage {
   sourceStageId: "FINAL_STORYBOARD";
   sourceRevision: number;
   sourceHash: string;
+  /** Revision of the confirmed ASSET_PLAN used for visual constraints. */
+  assetPlanRevision: number;
+  /** SHA-256 of the exact ASSET_PLAN artifact used for visual constraints. */
+  assetPlanHash: string;
   /** SHA-256 of this package with the contentHash field omitted. */
   contentHash: string;
   shot: {
@@ -177,6 +181,10 @@ export interface ShotExecutionPackage {
     supportLabel: "道具" | "辅助元素";
     support: string;
     effects: ShotExecutionEffect[];
+    /** Global visual style inherited from the confirmed ASSET_PLAN. */
+    styleSpec: string;
+    /** Global negative constraints inherited from the confirmed ASSET_PLAN. */
+    negativePrompt: string;
     globalContinuity: string;
   };
   audioIntent: {
@@ -194,6 +202,22 @@ export type ShotExecutionPackageDraft = Omit<ShotExecutionPackage, "contentHash"
 export interface ShotExecutionPackageLineage {
   sourceRevision?: number;
   sourceHash?: string;
+  /** Current confirmed ASSET_PLAN lineage and copied visual constraints. */
+  assetPlanRevision?: number;
+  assetPlanHash?: string;
+  assetPlanStatus?: "ready" | "pending" | "running" | "failed" | "stale";
+  assetPlanArtifactHash?: string;
+  assetPlanStyleSpec?: string;
+  assetPlanNegativePrompt?: string;
+  assetPlan?: {
+    revision?: number;
+    hash?: string;
+    contentHash?: string;
+    status?: "ready" | "pending" | "running" | "failed" | "stale";
+    styleSpec?: string;
+    negativePrompt?: string;
+    artifact?: unknown;
+  };
   /** Friendly aliases accepted by local contract tests and migration callers. */
   revision?: number;
   hash?: string;

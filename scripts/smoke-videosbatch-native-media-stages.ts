@@ -8,13 +8,14 @@ const tmp = await mkdtemp(path.join(os.tmpdir(), "videosbatch-native-media-"));
 process.chdir(tmp);
 
 try {
-  const [storeModule, workflowModule, runnerModule, mediaModule, projection, canonicalModule] = await Promise.all([
+  const [storeModule, workflowModule, runnerModule, mediaModule, projection, canonicalModule, fixtureModule] = await Promise.all([
     import("../src/server/store"),
     import("../src/shared/videosBatchWorkflow"),
     import("../src/server/videosBatchWorkflow/runner"),
     import("../src/server/videosBatchWorkflow/nativeMediaStages"),
     import("../src/server/videosBatchWorkflow/nativeProjection"),
-    import("../src/server/videosBatchWorkflow/canonicalStoryboard")
+    import("../src/server/videosBatchWorkflow/canonicalStoryboard"),
+    import("../src/server/videosBatchWorkflow/shotExecutionPackageFixtures")
   ]);
 
   const store = new storeModule.CinemaStore();
@@ -67,16 +68,45 @@ try {
     }
   });
 
+  const assetPlan = structuredClone(fixtureModule.SHOT_EXECUTION_PACKAGE_FIXTURE_INPUTS.STORY.assetPlan) as any;
+  assetPlan.title = "媒体阶段资产计划";
+  assetPlan.candidateAssets = ["小宇", "教室", "观察尺", "课堂小鸟"];
+  assetPlan.candidateInventory = [
+    { assetKey: "CHARACTER-HERO", name: "小宇", category: "CHARACTER", required: true, sourceEvidence: "故事主角。", decision: "required" },
+    { assetKey: "SCENE-CLASSROOM", name: "教室", category: "SCENE", required: true, sourceEvidence: "故事场景。", decision: "required" },
+    { assetKey: "PROP-RULER", name: "观察尺", category: "PROP", required: false, sourceEvidence: "故事核对过的道具。", decision: "omitted" },
+    { assetKey: "CREATURE-BIRD", name: "课堂小鸟", category: "CREATURE", required: false, sourceEvidence: "故事核对过的生物。", decision: "omitted" }
+  ];
+  assetPlan.omissionCheck = "已逐段回看故事，并按人物、场景、道具、生物完成四类二次核对；观察尺和课堂小鸟不进入本次资产计划。";
+  assetPlan.items = [
+    {
+      ...assetPlan.items[0],
+      assetKey: "CHARACTER-HERO",
+      name: "小宇",
+      description: "故事主角。",
+      sourceEvidence: "故事主角参与观察推理。",
+      usage: "跨分镜保持主角一致。"
+    },
+    {
+      ...assetPlan.items[0],
+      assetKey: "SCENE-CLASSROOM",
+      category: "SCENE",
+      name: "教室",
+      description: "故事主要场景。",
+      sourceEvidence: "故事在教室发生。",
+      usage: "建立连续的课堂空间。",
+      prompt: "影视级 3D 国漫 CG 风格教室空镜；不要文字，不要水印，不要logo，不要主体裁切，不要主体缺失，不要多余人物，不要复杂背景，不要畸形肢体，不要低清模糊。"
+    }
+  ];
+  const assetPlanStage = {
+    status: "ready" as const,
+    revision: 1,
+    artifact: assetPlan,
+    contentHash: canonicalModule.contentHash(assetPlan)
+  };
   let workflow = workflowModule.createVideosBatchWorkflow({ projectId: "P001", lessonText: "完整教案" });
   workflow.stages.ASSET_PLAN = {
-    status: "ready",
-    revision: 1,
-    artifact: {
-      items: [
-        { assetKey: "CHARACTER-HERO", category: "CHARACTER", name: "小宇", prompt: "角色三视图" },
-        { assetKey: "SCENE-CLASSROOM", category: "SCENE", name: "教室", prompt: "教室空镜" }
-      ]
-    }
+    ...assetPlanStage
   };
   workflow.currentStage = "ASSET_CANDIDATES";
 
@@ -166,7 +196,18 @@ try {
       }
     ]
   };
-  await projection.projectFinalStoryboardIntoSeeReel(store, sessionId, storyboard);
+  const projectionOptions = {
+    sourceRevision: 1,
+    sourceHash: canonicalModule.canonicalStoryboardSourceHash(storyboard),
+    assetPlan: assetPlanStage,
+    teaching: {
+      goal: storyboard.goal,
+      knowledgeFocus: "通过观察与比较理解可靠判断",
+      evidence: []
+    },
+    assetConfirmation: confirmation
+  };
+  await projection.projectFinalStoryboardIntoSeeReel(store, sessionId, storyboard, projectionOptions);
   const projectedFirst = store.getSession(sessionId)!.shots.sort((a: any, b: any) => a.index - b.index)[0];
   await store.updateShot(projectedFirst.id, {
     status: "draft",
@@ -195,6 +236,7 @@ try {
     }
   };
   workflow.currentStage = "EXECUTION";
+  await store.updateSession(sessionId, { videosBatchWorkflow: workflow });
 
   workflow = await runnerModule.runNext(makeCtx(workflow), registry);
   assert.equal(workflow.currentStage, "STITCH");

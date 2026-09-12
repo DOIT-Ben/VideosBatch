@@ -33,5 +33,8 @@ assets/references/
 # Local agent runtime locks
 .claude/
 
+# Playwright CLI debug artifacts (console logs, page snapshots)
+.playwright-cli/
+
 .DS_Store
 .vercel

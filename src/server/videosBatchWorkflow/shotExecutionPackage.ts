@@ -4,6 +4,7 @@ import {
   normalizeStoryboardType,
   contentHash as canonicalContentHash
 } from "./canonicalStoryboard";
+import { validateVideosBatchAssetPlan } from "./llmTextStages";
 import {
   SHOT_EXECUTION_PACKAGE_SCHEMA_VERSION,
   SHOT_EXECUTION_STORY_TYPES,
@@ -19,6 +20,7 @@ import {
 
 const HASH_PATTERN = /^[a-f0-9]{64}$/u;
 const CHAPTER_PATTERN = /^第\d+章$/u;
+const TIME_RANGE_PATTERN = /^(\d+(?:\.\d+)?)\s*[-至]\s*(\d+(?:\.\d+)?)(?:秒|s)$/u;
 const DURATION_TOLERANCE_SEC = 1e-6;
 
 const ROLE_LABELS: Record<ShotExecutionStoryType, "人物" | "主体" | "核心意象"> = {
@@ -76,6 +78,10 @@ export interface BuildShotExecutionPackageFromStoryboardInput {
   /** Friendly aliases used by migration callers. */
   revision?: number;
   hash?: string;
+  /** Confirmed ASSET_PLAN artifact; it must be paired with its stage lineage. */
+  assetPlan?: unknown;
+  assetPlanRevision?: number;
+  assetPlanHash?: string;
   screenplay?: unknown;
   teaching?: ShotExecutionPackageTeachingInput;
   goal?: unknown;
@@ -155,28 +161,182 @@ function makeValidationResult(errors: string[], code: string): ShotExecutionPack
   };
 }
 
+export interface ShotExecutionLineageNormalization {
+  lineage: Partial<ShotExecutionPackageLineage>;
+  conflicts: string[];
+}
+
+function readConsistentAlias(
+  value: AnyRecord,
+  keys: readonly string[],
+  label: string,
+  conflicts: string[]
+): unknown {
+  const present = keys
+    .filter((key) => hasOwn(value, key) && value[key] !== undefined)
+    .map((key) => ({ key, value: value[key] }));
+  if (!present.length) return undefined;
+  const first = present[0].value;
+  if (present.some((entry) => entry.value !== first)) conflicts.push(`${label} aliases conflict`);
+  return first;
+}
+
+export function normalizeShotExecutionSourceLineage(
+  value: unknown,
+  fallbackHash?: unknown
+): ShotExecutionLineageNormalization {
+  const conflicts: string[] = [];
+  if (typeof value === "number") {
+    return {
+      lineage: {
+        sourceRevision: value,
+        ...(fallbackHash !== undefined ? { sourceHash: fallbackHash as string } : {})
+      },
+      conflicts
+    };
+  }
+  if (!isRecord(value)) {
+    return {
+      lineage: fallbackHash !== undefined ? { sourceHash: fallbackHash as string } : {},
+      conflicts
+    };
+  }
+  const sourceRevision = readConsistentAlias(value, ["sourceRevision", "revision"], "sourceRevision", conflicts);
+  const suppliedHash = readConsistentAlias(value, ["sourceHash", "hash"], "sourceHash", conflicts);
+  if (suppliedHash !== undefined && fallbackHash !== undefined && suppliedHash !== fallbackHash) {
+    conflicts.push("sourceHash aliases conflict");
+  }
+  const sourceHash = suppliedHash ?? fallbackHash;
+  return {
+    lineage: {
+      ...(sourceRevision !== undefined ? { sourceRevision: sourceRevision as number } : {}),
+      ...(sourceHash !== undefined ? { sourceHash: sourceHash as string } : {})
+    },
+    conflicts
+  };
+}
+
+export function normalizeShotExecutionAssetPlanLineage(
+  value: unknown,
+  fallbackHash?: unknown
+): ShotExecutionLineageNormalization {
+  const conflicts: string[] = [];
+  if (typeof value === "number") return { lineage: { assetPlanRevision: value }, conflicts };
+  if (!isRecord(value)) return { lineage: {}, conflicts };
+
+  const nested = isRecord(value.assetPlan) ? value.assetPlan : undefined;
+  const sources = nested ? [nested, value] : [value];
+  const read = (keys: readonly string[], label: string): unknown => {
+    let resolved: unknown;
+    for (const source of sources) {
+      const candidate = readConsistentAlias(source, keys, label, conflicts);
+      if (candidate === undefined) continue;
+      if (resolved !== undefined && resolved !== candidate) conflicts.push(`${label} aliases conflict`);
+      resolved = candidate;
+    }
+    return resolved;
+  };
+
+  const revision = read(["assetPlanRevision", "revision"], "assetPlanRevision");
+  const suppliedHash = read(["assetPlanHash", "contentHash", "hash"], "assetPlanHash");
+  if (suppliedHash !== undefined && fallbackHash !== undefined && suppliedHash !== fallbackHash) {
+    conflicts.push("assetPlanHash aliases conflict");
+  }
+  const hash = suppliedHash ?? fallbackHash;
+  const status = read(["assetPlanStatus", "status"], "assetPlanStatus");
+  const explicitArtifactHash = read(["assetPlanArtifactHash"], "assetPlanArtifactHash");
+  const artifact = isRecord(value.artifact) ? value.artifact : undefined;
+  let artifactHash = typeof explicitArtifactHash === "string" ? explicitArtifactHash : undefined;
+  if (artifact) {
+    try {
+      artifactHash = canonicalContentHash(artifact);
+    } catch {
+      conflicts.push("assetPlan artifact hash is unavailable");
+    }
+    if (explicitArtifactHash !== undefined && explicitArtifactHash !== artifactHash) {
+      conflicts.push("assetPlanArtifactHash does not match artifact");
+    }
+  }
+  const explicitStyle = read(["assetPlanStyleSpec", "styleSpec"], "assetPlanStyleSpec");
+  const explicitNegative = read(["assetPlanNegativePrompt", "negativePrompt"], "assetPlanNegativePrompt");
+  const artifactStyle = artifact && typeof artifact.styleSpec === "string" ? artifact.styleSpec.trim() : undefined;
+  const artifactNegative = artifact && typeof artifact.negativePrompt === "string" ? artifact.negativePrompt.trim() : undefined;
+  if (explicitStyle !== undefined && artifactStyle !== undefined && text(explicitStyle) !== artifactStyle) {
+    conflicts.push("assetPlanStyleSpec does not match artifact");
+  }
+  if (explicitNegative !== undefined && artifactNegative !== undefined && text(explicitNegative) !== artifactNegative) {
+    conflicts.push("assetPlanNegativePrompt does not match artifact");
+  }
+  const styleSpec = artifactStyle ?? (typeof explicitStyle === "string" ? explicitStyle.trim() : undefined);
+  const negativePrompt = artifactNegative ?? (typeof explicitNegative === "string" ? explicitNegative.trim() : undefined);
+  return {
+    lineage: {
+      ...(revision !== undefined ? { assetPlanRevision: revision as number } : {}),
+      ...(hash !== undefined ? { assetPlanHash: hash as string } : {}),
+      ...(typeof status === "string" ? { assetPlanStatus: status as ShotExecutionPackageLineage["assetPlanStatus"] } : {}),
+      ...(artifactHash !== undefined ? { assetPlanArtifactHash: artifactHash } : {}),
+      ...(styleSpec !== undefined ? { assetPlanStyleSpec: styleSpec } : {}),
+      ...(negativePrompt !== undefined ? { assetPlanNegativePrompt: negativePrompt } : {})
+    },
+    conflicts
+  };
+}
+
+function mergeLineageParts(...parts: ShotExecutionLineageNormalization[]): ShotExecutionLineageNormalization {
+  const lineage: Partial<ShotExecutionPackageLineage> = {};
+  const conflicts = parts.flatMap((part) => part.conflicts);
+  for (const part of parts) {
+    for (const [key, value] of Object.entries(part.lineage) as Array<[keyof ShotExecutionPackageLineage, unknown]>) {
+      if (value === undefined) continue;
+      if (lineage[key] !== undefined && lineage[key] !== value) conflicts.push(`${String(key)} aliases conflict`);
+      lineage[key] = value as never;
+    }
+  }
+  return { lineage, conflicts };
+}
+
+function hasAssetPlanLineageFields(value: AnyRecord): boolean {
+  return ["assetPlanRevision", "assetPlanHash", "assetPlanStatus", "assetPlanArtifactHash", "assetPlanStyleSpec", "assetPlanNegativePrompt", "status", "artifact", "contentHash"]
+    .some((key) => hasOwn(value, key));
+}
+
+/** Resolve the actual ASSET_PLAN stage wrapper from a current lineage value. */
+function assetPlanWrapperFromLineage(value: unknown): AnyRecord | undefined {
+  if (!isRecord(value)) return undefined;
+  const candidates = [value, ...(isRecord(value.assetPlan) ? [value.assetPlan] : [])];
+  const isWrapperShape = (candidate: AnyRecord): boolean =>
+    (hasOwn(candidate, "status") || hasOwn(candidate, "assetPlanStatus"))
+    && (hasOwn(candidate, "revision") || hasOwn(candidate, "assetPlanRevision"))
+    && (hasOwn(candidate, "contentHash") || hasOwn(candidate, "assetPlanHash") || hasOwn(candidate, "hash"))
+    && hasOwn(candidate, "artifact");
+  return candidates.find(isWrapperShape)
+    || candidates.find((candidate) => hasOwn(candidate, "artifact") || hasOwn(candidate, "status") || hasOwn(candidate, "assetPlanStatus"))
+    || undefined;
+}
+
 function expectedLineage(
   value: unknown,
   expectedHash?: string
-): ShotExecutionPackageLineage | undefined {
-  if (typeof value === "number") return { sourceRevision: value, sourceHash: expectedHash };
-  if (!isRecord(value)) return undefined;
-  return {
-    sourceRevision: typeof value.sourceRevision === "number"
-      ? value.sourceRevision
-      : typeof value.revision === "number"
-        ? value.revision
-        : undefined,
-    sourceHash: typeof value.sourceHash === "string"
-      ? value.sourceHash
-      : typeof value.hash === "string"
-        ? value.hash
-        : expectedHash
-  };
+): ShotExecutionLineageNormalization {
+  const source = normalizeShotExecutionSourceLineage(value, expectedHash);
+  if (!isRecord(value)) return source;
+  const planParts: ShotExecutionLineageNormalization[] = [];
+  if (isRecord(value.assetPlan)) planParts.push(normalizeShotExecutionAssetPlanLineage(value.assetPlan));
+  if (hasAssetPlanLineageFields(value)) planParts.push(normalizeShotExecutionAssetPlanLineage(value));
+  return planParts.length ? mergeLineageParts(source, ...planParts) : source;
 }
 
 function finiteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
+}
+
+function parseTimeRange(value: unknown): { startSec: number; endSec: number } | undefined {
+  if (typeof value !== "string") return undefined;
+  const match = value.trim().match(TIME_RANGE_PATTERN);
+  if (!match) return undefined;
+  const startSec = Number(match[1]);
+  const endSec = Number(match[2]);
+  return Number.isFinite(startSec) && Number.isFinite(endSec) ? { startSec, endSec } : undefined;
 }
 
 /**
@@ -217,6 +377,20 @@ export function validateShotExecutionPackage(
     push("sourceHash must be a lowercase SHA-256 hash");
   }
 
+  let assetPlanRevision: number | undefined;
+  if (!Number.isInteger(value.assetPlanRevision) || Number(value.assetPlanRevision) < 1) {
+    push("assetPlanRevision must be a positive integer");
+  } else {
+    assetPlanRevision = value.assetPlanRevision as number;
+  }
+
+  const assetPlanHash = text(value.assetPlanHash);
+  if (typeof value.assetPlanHash !== "string" || !assetPlanHash) {
+    push("assetPlanHash is required and must be a string");
+  } else if (!HASH_PATTERN.test(assetPlanHash)) {
+    push("assetPlanHash must be a lowercase SHA-256 hash");
+  }
+
   const packageHash = text(value.contentHash);
   if (typeof value.contentHash !== "string" || !packageHash) {
     push("contentHash is required and must be a string");
@@ -226,12 +400,77 @@ export function validateShotExecutionPackage(
     push("contentHash does not match the canonical package payload", "SHOT_EXECUTION_PACKAGE_HASH_MISMATCH");
   }
 
-  const lineage = expectedLineage(current, currentHash);
+  const normalizedLineage = expectedLineage(current, currentHash);
+  const lineage = normalizedLineage.lineage;
+  for (const conflict of normalizedLineage.conflicts) {
+    push(conflict, "SHOT_EXECUTION_PACKAGE_LINEAGE_STALE");
+  }
+  const currentAssetPlanWrapper = assetPlanWrapperFromLineage(current);
+  const currentAssetPlanArtifact = currentAssetPlanWrapper?.artifact;
+  const normalizedCurrentAssetPlan = normalizeShotExecutionAssetPlanLineage(currentAssetPlanWrapper);
+  let currentAssetPlanArtifactHash: string | undefined;
+  if (isRecord(currentAssetPlanArtifact)) {
+    try {
+      currentAssetPlanArtifactHash = canonicalContentHash(currentAssetPlanArtifact);
+    } catch {
+      currentAssetPlanArtifactHash = undefined;
+    }
+  }
+  const currentAssetPlanContentHash = text(normalizedCurrentAssetPlan.lineage.assetPlanHash);
+  const currentAssetPlanIsReadyWrapper = normalizedCurrentAssetPlan.lineage.assetPlanStatus === "ready"
+    && Number.isInteger(normalizedCurrentAssetPlan.lineage.assetPlanRevision)
+    && Number(normalizedCurrentAssetPlan.lineage.assetPlanRevision) >= 1
+    && typeof normalizedCurrentAssetPlan.lineage.assetPlanHash === "string"
+    && HASH_PATTERN.test(currentAssetPlanContentHash)
+    && isRecord(currentAssetPlanArtifact)
+    && currentAssetPlanArtifactHash === currentAssetPlanContentHash;
+  const currentLineageIsComplete = Number.isInteger(lineage.sourceRevision)
+    && Number(lineage.sourceRevision) >= 1
+    && typeof lineage.sourceHash === "string"
+    && HASH_PATTERN.test(lineage.sourceHash)
+    && Number.isInteger(lineage.assetPlanRevision)
+    && Number(lineage.assetPlanRevision) >= 1
+    && typeof lineage.assetPlanHash === "string"
+    && HASH_PATTERN.test(lineage.assetPlanHash)
+    && lineage.assetPlanStatus === "ready"
+    && typeof lineage.assetPlanArtifactHash === "string"
+    && HASH_PATTERN.test(lineage.assetPlanArtifactHash)
+    && lineage.assetPlanArtifactHash === lineage.assetPlanHash
+    && typeof lineage.assetPlanStyleSpec === "string"
+    && Boolean(lineage.assetPlanStyleSpec.trim())
+    && typeof lineage.assetPlanNegativePrompt === "string"
+    && Boolean(lineage.assetPlanNegativePrompt.trim())
+    && currentAssetPlanIsReadyWrapper;
+  if (!currentLineageIsComplete) {
+    push(
+      "current FINAL_STORYBOARD and ready ASSET_PLAN lineage is required",
+      "SHOT_EXECUTION_PACKAGE_LINEAGE_STALE"
+    );
+  }
+  if (currentAssetPlanIsReadyWrapper) {
+    const assetPlanValidation = validateVideosBatchAssetPlan(currentAssetPlanArtifact);
+    if (!assetPlanValidation.ok) {
+      push(
+        `current ASSET_PLAN business validation failed: ${assetPlanValidation.errors.join("；")}`,
+        "SHOT_EXECUTION_PACKAGE_INVALID"
+      );
+    }
+  }
   if (lineage?.sourceRevision !== undefined && sourceRevision !== undefined && sourceRevision !== lineage.sourceRevision) {
     push("sourceRevision is stale", "SHOT_EXECUTION_PACKAGE_LINEAGE_STALE");
   }
   if (lineage?.sourceHash !== undefined && sourceHash && sourceHash !== lineage.sourceHash) {
     push("sourceHash is stale", "SHOT_EXECUTION_PACKAGE_LINEAGE_STALE");
+  }
+  if (lineage?.assetPlanRevision !== undefined
+    && assetPlanRevision !== undefined
+    && assetPlanRevision !== lineage.assetPlanRevision) {
+    push("assetPlanRevision is stale", "SHOT_EXECUTION_PACKAGE_LINEAGE_STALE");
+  }
+  if (lineage?.assetPlanHash !== undefined
+    && assetPlanHash
+    && assetPlanHash !== lineage.assetPlanHash) {
+    push("assetPlanHash is stale", "SHOT_EXECUTION_PACKAGE_LINEAGE_STALE");
   }
 
   const shot = isRecord(value.shot) ? value.shot : undefined;
@@ -275,8 +514,18 @@ export function validateShotExecutionPackage(
   if (!visual) {
     push("visual is required and must be an object");
   } else {
-    for (const field of ["scene", "role", "support", "globalContinuity"] as const) {
+    for (const field of ["scene", "role", "support", "styleSpec", "negativePrompt", "globalContinuity"] as const) {
       if (typeof visual[field] !== "string" || !text(visual[field])) push(`visual.${field} is required`);
+    }
+    if (typeof visual.styleSpec === "string"
+      && lineage?.assetPlanStyleSpec !== undefined
+      && visual.styleSpec !== lineage.assetPlanStyleSpec) {
+      push("visual.styleSpec does not match the current ASSET_PLAN", "SHOT_EXECUTION_PACKAGE_LINEAGE_STALE");
+    }
+    if (typeof visual.negativePrompt === "string"
+      && lineage?.assetPlanNegativePrompt !== undefined
+      && visual.negativePrompt !== lineage.assetPlanNegativePrompt) {
+      push("visual.negativePrompt does not match the current ASSET_PLAN", "SHOT_EXECUTION_PACKAGE_LINEAGE_STALE");
     }
     if (!(["人物", "主体", "核心意象"] as readonly string[]).includes(String(visual.roleLabel))) push("visual.roleLabel is invalid");
     if (!(["道具", "辅助元素"] as readonly string[]).includes(String(visual.supportLabel))) push("visual.supportLabel is invalid");
@@ -291,13 +540,29 @@ export function validateShotExecutionPackage(
     } else {
       if (visual.effects.length < 3 || visual.effects.length > 5) push("visual.effects must contain 3 to 5 subshots");
       let totalDuration = 0;
+      let expectedStartSec = 0;
+      let timeRangesValid = true;
       visual.effects.forEach((effect, index) => {
         if (!isRecord(effect)) {
           push(`visual.effects[${index}] must be an object`);
           return;
         }
         if (effect.sequence !== index + 1) push(`visual.effects[${index}].sequence must be ${index + 1}`);
-        if (typeof effect.timeRange !== "string" || !text(effect.timeRange)) push(`visual.effects[${index}].timeRange is required`);
+        const timeRange = parseTimeRange(effect.timeRange);
+        if (!timeRange) {
+          push(`visual.effects[${index}].timeRange must be a valid range within 0-10 seconds`);
+          timeRangesValid = false;
+        } else {
+          if (timeRange.startSec < 0 || timeRange.endSec <= timeRange.startSec || timeRange.endSec > 10 + DURATION_TOLERANCE_SEC) {
+            push(`visual.effects[${index}].timeRange must stay within 0-10 seconds`);
+            timeRangesValid = false;
+          }
+          if (Math.abs(timeRange.startSec - expectedStartSec) > DURATION_TOLERANCE_SEC) {
+            push(`visual.effects[${index}].timeRange must start at ${expectedStartSec} seconds`);
+            timeRangesValid = false;
+          }
+          expectedStartSec = timeRange.endSec;
+        }
         if (!finiteNumber(effect.duration) || effect.duration <= 0) {
           push(`visual.effects[${index}].duration must be positive`);
         } else {
@@ -306,8 +571,16 @@ export function validateShotExecutionPackage(
         for (const field of ["visual", "action", "camera"] as const) {
           if (typeof effect[field] !== "string" || !text(effect[field])) push(`visual.effects[${index}].${field} is required`);
         }
+        if (timeRange && finiteNumber(effect.duration)
+          && Math.abs((timeRange.endSec - timeRange.startSec) - effect.duration) > DURATION_TOLERANCE_SEC) {
+          push(`visual.effects[${index}].timeRange must match duration`);
+          timeRangesValid = false;
+        }
       });
       if (Math.abs(totalDuration - 10) > DURATION_TOLERANCE_SEC) push("visual.effects durations must total 10 seconds");
+      if (timeRangesValid && Math.abs(expectedStartSec - 10) > DURATION_TOLERANCE_SEC) {
+        push("visual.effects timeRange values must cover exactly 0-10 seconds");
+      }
     }
   }
 
@@ -492,6 +765,36 @@ function buildReferences(
     const reference = isRecord(rawReference) ? rawReference : {};
     const resolved = referenceBindingFor(rawReference, provided, usedIndexes);
     const binding = resolved.binding;
+    const bindingAliasConflicts: string[] = [];
+    const bindingSemanticLabel = readConsistentAlias(
+      binding,
+      ["semanticLabel", "label"],
+      `referenceBindings[${index}].semanticLabel`,
+      bindingAliasConflicts
+    );
+    const bindingAssetId = readConsistentAlias(
+      binding,
+      ["assetId", "selectedAssetId"],
+      `referenceBindings[${index}].assetId`,
+      bindingAliasConflicts
+    );
+    if (bindingAliasConflicts.length) {
+      return throwContract(makeValidationResult(bindingAliasConflicts, "SHOT_EXECUTION_PACKAGE_INVALID"));
+    }
+    const declaredLabel = text(reference.label ?? reference.semanticLabel);
+    const bindingLabel = text(bindingSemanticLabel);
+    const declaredReferenceId = text(reference.referenceId);
+    const bindingReferenceId = text(binding.referenceId);
+    const declaredAssetKey = text(reference.assetKey);
+    const bindingAssetKey = text(binding.assetKey);
+    if ((declaredLabel && bindingLabel && declaredLabel !== bindingLabel)
+      || (declaredReferenceId && bindingReferenceId && declaredReferenceId !== bindingReferenceId)
+      || (declaredAssetKey && bindingAssetKey && declaredAssetKey !== bindingAssetKey)) {
+      return throwContract(makeValidationResult(
+        [`referenceBindings[${index}] does not match FINAL_STORYBOARD.references[${index}]`],
+        "SHOT_EXECUTION_PACKAGE_INVALID"
+      ));
+    }
     const imageUrlHash = hasOwn(binding, "imageUrlHash")
       ? binding.imageUrlHash
       : typeof binding.imageUrl === "string" && text(binding.imageUrl)
@@ -501,8 +804,8 @@ function buildReferences(
       referenceId: (hasOwn(binding, "referenceId") ? binding.referenceId : reference.referenceId) as string,
       ordinal: (hasOwn(binding, "ordinal") ? binding.ordinal : index + 1) as number,
       assetKey: (hasOwn(binding, "assetKey") ? binding.assetKey : reference.assetKey) as string,
-      semanticLabel: (hasOwn(binding, "semanticLabel") ? binding.semanticLabel : binding.label ?? reference.label) as string,
-      assetId: (hasOwn(binding, "assetId") ? binding.assetId : binding.selectedAssetId ?? reference.assetId) as string,
+      semanticLabel: (bindingSemanticLabel !== undefined ? bindingSemanticLabel : reference.label) as string,
+      assetId: (bindingAssetId !== undefined ? bindingAssetId : reference.assetId) as string,
       ...(imageUrlHash !== undefined ? { imageUrlHash: imageUrlHash as string } : {})
     });
   }
@@ -584,6 +887,103 @@ function screenplaySceneFor(segment: AnyRecord, screenplay: unknown): AnyRecord 
   return (screenplay.scenes.find((scene) => isRecord(scene) && scene.sequence === segment.screenplaySceneSequence) as AnyRecord | undefined) || {};
 }
 
+function assetPlanSourceFromInput(input: BuildShotExecutionPackageFromStoryboardInput): {
+  revision: number;
+  hash: string;
+  artifactHash: string;
+  styleSpec: string;
+  negativePrompt: string;
+  wrapper: AnyRecord;
+} {
+  if (hasOwn(input as AnyRecord, "styleSpec") || hasOwn(input as AnyRecord, "negativePrompt")) {
+    return throwContract(makeValidationResult(
+      ["styleSpec and negativePrompt must be copied from the confirmed ASSET_PLAN; explicit overrides are not allowed"],
+      "SHOT_EXECUTION_PACKAGE_INVALID"
+    ));
+  }
+
+  const supplied = input.assetPlan;
+  if (!isRecord(supplied) || !isRecord(supplied.artifact)) {
+    return throwContract(makeValidationResult(
+      ["assetPlan must be the current ready ASSET_PLAN stage state; raw artifacts are not accepted"],
+      "SHOT_EXECUTION_PACKAGE_INVALID"
+    ));
+  }
+  const artifact = supplied.artifact as AnyRecord;
+  if (artifact.schemaVersion !== "1" || artifact.kind !== "VIDEO_ASSET_PLAN") {
+    return throwContract(makeValidationResult(["assetPlan must be a VIDEO_ASSET_PLAN artifact"], "SHOT_EXECUTION_PACKAGE_INVALID"));
+  }
+
+  const normalized = normalizeShotExecutionAssetPlanLineage(supplied);
+  if (normalized.conflicts.length) {
+    return throwContract(makeValidationResult(normalized.conflicts, "SHOT_EXECUTION_PACKAGE_LINEAGE_STALE"));
+  }
+  const planLineage = normalized.lineage;
+  if (planLineage.assetPlanStatus !== "ready") {
+    return throwContract(makeValidationResult(
+      ["assetPlan must have status=ready"],
+      "SHOT_EXECUTION_PACKAGE_LINEAGE_STALE"
+    ));
+  }
+  const stageRevision = planLineage.assetPlanRevision;
+  if (stageRevision === undefined) {
+    return throwContract(makeValidationResult(["assetPlan stage revision is required"], "SHOT_EXECUTION_PACKAGE_INVALID"));
+  }
+  if (stageRevision !== undefined
+    && input.assetPlanRevision !== undefined
+    && input.assetPlanRevision !== stageRevision) {
+    return throwContract(makeValidationResult(["assetPlanRevision cannot override the ASSET_PLAN stage revision"], "SHOT_EXECUTION_PACKAGE_LINEAGE_STALE"));
+  }
+  const revision = stageRevision ?? input.assetPlanRevision;
+  if (!Number.isInteger(revision) || Number(revision) < 1) {
+    return throwContract(makeValidationResult(["assetPlanRevision must be a positive integer"], "SHOT_EXECUTION_PACKAGE_INVALID"));
+  }
+
+  const stageHash = planLineage.assetPlanHash;
+  if (stageHash === undefined) {
+    return throwContract(makeValidationResult(["assetPlan stage contentHash is required"], "SHOT_EXECUTION_PACKAGE_INVALID"));
+  }
+  if (stageHash !== undefined
+    && input.assetPlanHash !== undefined
+    && text(input.assetPlanHash) !== text(stageHash)) {
+    return throwContract(makeValidationResult(["assetPlanHash cannot override the ASSET_PLAN stage hash"], "SHOT_EXECUTION_PACKAGE_LINEAGE_STALE"));
+  }
+  const hash = stageHash ?? input.assetPlanHash;
+  const normalizedHash = text(hash);
+  if (!HASH_PATTERN.test(normalizedHash)) {
+    return throwContract(makeValidationResult(["assetPlanHash must be a lowercase SHA-256 hash"], "SHOT_EXECUTION_PACKAGE_INVALID"));
+  }
+  const computedHash = planLineage.assetPlanArtifactHash;
+  if (!computedHash || !HASH_PATTERN.test(computedHash)) {
+    return throwContract(makeValidationResult(["ASSET_PLAN artifact hash is unavailable"], "SHOT_EXECUTION_PACKAGE_INVALID"));
+  }
+  if (normalizedHash !== computedHash) {
+    return throwContract(makeValidationResult(["assetPlanHash does not match the canonical ASSET_PLAN artifact"], "SHOT_EXECUTION_PACKAGE_HASH_MISMATCH"));
+  }
+
+  const businessValidation = validateVideosBatchAssetPlan(artifact);
+  if (!businessValidation.ok) {
+    return throwContract(makeValidationResult(
+      [`ASSET_PLAN business validation failed: ${businessValidation.errors.join("；")}`],
+      "SHOT_EXECUTION_PACKAGE_INVALID"
+    ));
+  }
+
+  const styleSpec = planLineage.assetPlanStyleSpec || text(artifact.styleSpec);
+  const negativePrompt = planLineage.assetPlanNegativePrompt || text(artifact.negativePrompt);
+  if (!styleSpec || !negativePrompt) {
+    return throwContract(makeValidationResult(["ASSET_PLAN styleSpec and negativePrompt are required"], "SHOT_EXECUTION_PACKAGE_INVALID"));
+  }
+  return {
+    revision: revision as number,
+    hash: normalizedHash,
+    artifactHash: computedHash,
+    styleSpec,
+    negativePrompt,
+    wrapper: supplied
+  };
+}
+
 /** Build a package from one current FINAL_STORYBOARD segment and its audit bindings. */
 export function buildShotExecutionPackageFromStoryboard(
   input: BuildShotExecutionPackageFromStoryboardInput
@@ -606,7 +1006,16 @@ export function buildShotExecutionPackageFromStoryboard(
   if (segment.duration !== 10) {
     return throwContract(makeValidationResult(["FINAL_STORYBOARD segment duration must be 10 seconds"], "SHOT_EXECUTION_PACKAGE_INVALID"));
   }
-  const rawSourceRevision = input.sourceRevision ?? input.revision;
+  const normalizedSource = normalizeShotExecutionSourceLineage({
+    sourceRevision: input.sourceRevision,
+    revision: input.revision,
+    sourceHash: input.sourceHash,
+    hash: input.hash
+  });
+  if (normalizedSource.conflicts.length) {
+    return throwContract(makeValidationResult(normalizedSource.conflicts, "SHOT_EXECUTION_PACKAGE_LINEAGE_STALE"));
+  }
+  const rawSourceRevision = normalizedSource.lineage.sourceRevision;
   if (!Number.isInteger(rawSourceRevision) || Number(rawSourceRevision) < 1) {
     return throwContract(makeValidationResult(["sourceRevision must be a positive integer"], "SHOT_EXECUTION_PACKAGE_INVALID"));
   }
@@ -615,7 +1024,7 @@ export function buildShotExecutionPackageFromStoryboard(
   if (!computedSourceHash || !HASH_PATTERN.test(computedSourceHash)) {
     return throwContract(makeValidationResult(["FINAL_STORYBOARD source hash is unavailable"], "SHOT_EXECUTION_PACKAGE_INVALID"));
   }
-  const sourceHash = input.sourceHash ?? input.hash ?? computedSourceHash;
+  const sourceHash = normalizedSource.lineage.sourceHash ?? computedSourceHash;
   if (typeof sourceHash !== "string" || !HASH_PATTERN.test(sourceHash)) {
     return throwContract(makeValidationResult(["sourceHash must be a lowercase SHA-256 hash"], "SHOT_EXECUTION_PACKAGE_INVALID"));
   }
@@ -625,6 +1034,7 @@ export function buildShotExecutionPackageFromStoryboard(
 
   const screenplayScene = screenplaySceneFor(segment, input.screenplay);
   const teaching = isRecord(input.teaching) ? input.teaching : {};
+  const assetPlan = assetPlanSourceFromInput(input);
   const evidence = hasOwn(teaching, "evidence")
     ? teaching.evidence
     : Array.isArray(segment.evidence)
@@ -635,6 +1045,8 @@ export function buildShotExecutionPackageFromStoryboard(
     sourceStageId: "FINAL_STORYBOARD",
     sourceRevision,
     sourceHash,
+    assetPlanRevision: assetPlan.revision,
+    assetPlanHash: assetPlan.hash,
     shot: {
       sequence: segment.sequence as number,
       chapter: segment.chapter === undefined ? null : segment.chapter as string | null,
@@ -654,12 +1066,35 @@ export function buildShotExecutionPackageFromStoryboard(
       supportLabel: SUPPORT_LABELS[typedStoryType],
       support: segment[SUPPORT_FIELDS[typedStoryType]] as string,
       effects: buildEffects(segment),
+      styleSpec: assetPlan.styleSpec,
+      negativePrompt: assetPlan.negativePrompt,
       globalContinuity: (input.globalContinuity ?? storyboard.visualContinuity) as string
     },
     audioIntent: buildAudioIntent(segment),
     references: buildReferences(segment, input)
   };
-  return createFromDraft(draft, input.expectedLineage as ShotExecutionPackageLineage | undefined);
+  const currentLineage: ShotExecutionPackageLineage = {
+    sourceRevision,
+    sourceHash,
+    assetPlan: assetPlan.wrapper,
+    assetPlanRevision: assetPlan.revision,
+    assetPlanHash: assetPlan.hash,
+    assetPlanStatus: "ready",
+    assetPlanArtifactHash: assetPlan.artifactHash,
+    assetPlanStyleSpec: assetPlan.styleSpec,
+    assetPlanNegativePrompt: assetPlan.negativePrompt
+  };
+  const expected = expectedLineage(input.expectedLineage);
+  const expectationErrors = [...expected.conflicts];
+  for (const [key, expectedValue] of Object.entries(expected.lineage) as Array<[keyof ShotExecutionPackageLineage, unknown]>) {
+    if (expectedValue !== undefined && currentLineage[key] !== expectedValue) {
+      expectationErrors.push(`${String(key)} is stale`);
+    }
+  }
+  if (expectationErrors.length) {
+    return throwContract(makeValidationResult(expectationErrors, "SHOT_EXECUTION_PACKAGE_LINEAGE_STALE"));
+  }
+  return createFromDraft(draft, currentLineage);
 }
 
 function looksLikeStoryboardInput(value: unknown): boolean {
@@ -682,7 +1117,7 @@ export function buildShotExecutionPackage(
 ): ShotExecutionPackage {
   if (looksLikeStoryboardInput(input)) {
     const sourceInput = (isRecord(input) && Array.isArray(input.segments)
-      ? { finalStoryboard: input }
+      ? { ...(input as BuildShotExecutionPackageFromStoryboardInput), finalStoryboard: input }
       : { ...(input as BuildShotExecutionPackageFromStoryboardInput) }) as BuildShotExecutionPackageFromStoryboardInput;
     if (typeof current === "number" && sourceInput.sourceRevision === undefined) sourceInput.sourceRevision = current;
     if (currentHash !== undefined && sourceInput.sourceHash === undefined) sourceInput.sourceHash = currentHash;

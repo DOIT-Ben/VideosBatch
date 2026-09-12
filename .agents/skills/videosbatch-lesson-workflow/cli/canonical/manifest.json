@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "specId": "VIDEOSBATCH_WORKFLOW_CANONICAL",
+  "canonicalVersion": "1.2.1",
+  "sourcePath": "specs/videosbatch-workflow-canonical.md",
+  "sourceSha256": "681C551F9F3E5ACCB8E1A4554581EC6D21C5F0397195251F05C8B03EAFF28424",
+  "snapshotPath": "canonical/videosbatch-workflow-canonical.md",
+  "snapshotSha256": "681C551F9F3E5ACCB8E1A4554581EC6D21C5F0397195251F05C8B03EAFF28424",
+  "generatedAt": "2026-09-04",
+  "role": "standalone-distribution-snapshot",
+  "note": "仓库开发时以 specs/ 源文件为源；脱离仓库运行时使用此已指纹化快照。"
+}

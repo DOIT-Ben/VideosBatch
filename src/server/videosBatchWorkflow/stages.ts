@@ -247,7 +247,10 @@ const fakeFinalStoryboard: StageDefinition<any> = {
     const sourceRevision = Number(ctx.workflow.stages.FINAL_STORYBOARD?.revision) || 0;
     const projected = await projectFinalStoryboardIntoSeeReel(ctx.store, ctx.session.id, artifact, {
       sourceRevision,
-      sourceHash: canonicalStoryboardSourceHash(artifact)
+      sourceHash: canonicalStoryboardSourceHash(artifact),
+      assetPlan: ctx.workflow.stages.ASSET_PLAN,
+      screenplay: ctx.workflow.stages.SCREENPLAY?.artifact,
+      assetConfirmation: ctx.workflow.stages.ASSET_CONFIRMATION?.artifact
     });
     (artifact.segments || []).forEach((segment: any, index: number) => {
       if (projected[index]) segment.nativeShotId = projected[index].id;
@@ -319,7 +322,12 @@ const fakeExecution: StageDefinition<any> = {
     if (!ctx.store) return;
     const storyboard = ctx.workflow.stages.FINAL_STORYBOARD?.artifact as any;
     const confirmation = ctx.workflow.stages.ASSET_CONFIRMATION?.artifact as any;
-    const shots = await applyConfirmedReferencesToNativeShots(ctx.store, ctx.session.id, storyboard || { segments: [] }, confirmation || {});
+    const sourceRevision = Number(ctx.workflow.stages.FINAL_STORYBOARD?.revision) || 0;
+    const shots = await applyConfirmedReferencesToNativeShots(ctx.store, ctx.session.id, storyboard || { segments: [] }, confirmation || {}, {
+      sourceRevision,
+      sourceHash: canonicalStoryboardSourceHash(storyboard || { segments: [] }),
+      assetPlan: ctx.workflow.stages.ASSET_PLAN
+    });
     artifact.nativeShotIds = shots.map((shot) => shot.id);
   }
 };

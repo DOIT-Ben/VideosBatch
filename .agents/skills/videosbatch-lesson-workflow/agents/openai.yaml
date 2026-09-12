@@ -1,0 +1,4 @@
+interface:
+  display_name: "VideosBatch 课程视频工作流"
+  short_description: "按阶段执行教案到课程视频，并保留人工审阅与恢复状态"
+  default_prompt: "使用 $videosbatch-lesson-workflow 按当前会话状态推进一个课程视频阶段，遵守中文提示词、工具边界和人工确认门禁。"

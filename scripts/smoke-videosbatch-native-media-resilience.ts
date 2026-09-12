@@ -8,13 +8,14 @@ const tmp = await mkdtemp(path.join(os.tmpdir(), "videosbatch-native-resilience-
 process.chdir(tmp);
 
 try {
-  const [{ CinemaStore }, workflowModule, runnerModule, mediaModule, projection, canonicalModule] = await Promise.all([
+  const [{ CinemaStore }, workflowModule, runnerModule, mediaModule, projection, canonicalModule, fixtureModule] = await Promise.all([
     import("../src/server/store"),
     import("../src/shared/videosBatchWorkflow"),
     import("../src/server/videosBatchWorkflow/runner"),
     import("../src/server/videosBatchWorkflow/nativeMediaStages"),
     import("../src/server/videosBatchWorkflow/nativeProjection"),
-    import("../src/server/videosBatchWorkflow/canonicalStoryboard")
+    import("../src/server/videosBatchWorkflow/canonicalStoryboard"),
+    import("../src/server/videosBatchWorkflow/shotExecutionPackageFixtures")
   ]);
 
   const store = new CinemaStore();
@@ -62,27 +63,37 @@ try {
     };
   };
 
-  const assetPlan = {
-    schemaVersion: "1",
-    title: "媒体韧性资产计划",
-    kind: "VIDEO_ASSET_PLAN",
-    items: [
-      {
-        assetKey: "CHARACTER-HERO",
-        category: "CHARACTER",
-        name: "小宇",
-        prompt: "角色设定图",
-        required: true
-      },
-      {
-        assetKey: "SCENE-CLASSROOM",
-        category: "SCENE",
-        name: "教室",
-        prompt: "教室空镜",
-        required: true
-      }
-    ]
-  };
+  const assetPlan = structuredClone(fixtureModule.SHOT_EXECUTION_PACKAGE_FIXTURE_INPUTS.STORY.assetPlan) as any;
+  assetPlan.title = "媒体韧性资产计划";
+  assetPlan.candidateAssets = ["小宇", "教室", "观察尺", "课堂小鸟"];
+  assetPlan.candidateInventory = [
+    { assetKey: "CHARACTER-HERO", name: "小宇", category: "CHARACTER", required: true, sourceEvidence: "故事主角。", decision: "required" },
+    { assetKey: "SCENE-CLASSROOM", name: "教室", category: "SCENE", required: true, sourceEvidence: "故事场景。", decision: "required" },
+    { assetKey: "PROP-RULER", name: "观察尺", category: "PROP", required: false, sourceEvidence: "故事核对过的道具。", decision: "omitted" },
+    { assetKey: "CREATURE-BIRD", name: "课堂小鸟", category: "CREATURE", required: false, sourceEvidence: "故事核对过的生物。", decision: "omitted" }
+  ];
+  assetPlan.omissionCheck = "已逐段回看故事，并按人物、场景、道具、生物完成四类二次核对；观察尺和课堂小鸟不进入本次资产计划。";
+  assetPlan.items = [
+    {
+      ...assetPlan.items[0],
+      assetKey: "CHARACTER-HERO",
+      name: "小宇",
+      description: "故事主角。",
+      sourceEvidence: "故事主角参与观察推理。",
+      usage: "跨分镜保持主角一致。"
+    },
+    {
+      ...assetPlan.items[0],
+      assetKey: "SCENE-CLASSROOM",
+      category: "SCENE",
+      name: "教室",
+      description: "故事主要场景。",
+      sourceEvidence: "故事在教室发生。",
+      usage: "建立连续的课堂空间。",
+      prompt: "影视级 3D 国漫 CG 风格教室空镜；不要文字，不要水印，不要logo，不要主体裁切，不要主体缺失，不要多余人物，不要复杂背景，不要畸形肢体，不要低清模糊。"
+    }
+  ];
+  const assetPlanStage = { status: "ready" as const, revision: 1, artifact: assetPlan, contentHash: hash(assetPlan) };
 
   // A required image fails once. The successful sibling must remain usable and
   // the retry must call the provider only for the failed item.
@@ -211,7 +222,6 @@ try {
         sourceImageUrl: `https://mock.invalid/assets/${item.publicAssetId}.png`
       });
     }
-    await projection.projectFinalStoryboardIntoSeeReel(store, created.id, storyboard);
     const candidateArtifact = {
       schemaVersion: "1",
       status: "READY",
@@ -230,8 +240,21 @@ try {
         selectedAssetId: item.candidateAssetIds[0]
       }))
     };
+    const screenplay = {
+      schemaVersion: "1",
+      kind: "VIDEO_SCREENPLAY",
+      storyType: "STORY",
+      scenes: [{ sequence: 1, knowledgeFocus: "通过观察与比较理解可靠判断", evidence: [] }]
+    };
+    await projection.projectFinalStoryboardIntoSeeReel(store, created.id, storyboard, {
+      sourceRevision: 1,
+      sourceHash: canonicalModule.canonicalStoryboardSourceHash(storyboard),
+      assetPlan: assetPlanStage,
+      screenplay,
+      assetConfirmation: confirmationArtifact
+    });
     const workflow = workflowModule.createVideosBatchWorkflow({ projectId: "P001", lessonText: "完整教案" });
-    workflow.stages.ASSET_PLAN = ready(assetPlan);
+    workflow.stages.ASSET_PLAN = assetPlanStage;
     workflow.stages.ASSET_CANDIDATES = ready(candidateArtifact);
     workflow.stages.ASSET_CONFIRMATION = ready(confirmationArtifact);
     workflow.stages.FINAL_STORYBOARD = ready(storyboard);
@@ -248,6 +271,7 @@ try {
   }
 
   const executionFixture = await prepareExecutionSession();
+  await store.updateSession(executionFixture.sessionId, { videosBatchWorkflow: executionFixture.workflow });
   const initialShots = store.getSession(executionFixture.sessionId)!.shots;
   const failedShotId = initialShots[0].id;
   let failShotOnce = true;
@@ -409,23 +433,48 @@ try {
     targetDurationSec: 20,
     shotCount: 0
   });
+  const batchReferenceBindings = [
+    { referenceId: "CHARACTER-HERO", ordinal: 1, assetKey: "CHARACTER-HERO", semanticLabel: "【人物：小宇】", assetId: "asset_batch_character" },
+    { referenceId: "SCENE-CLASSROOM", ordinal: 2, assetKey: "SCENE-CLASSROOM", semanticLabel: "【场景：教室】", assetId: "asset_batch_scene" }
+  ];
+  const batchTeaching = {
+    goal: storyboard.goal,
+    knowledgeFocus: "通过观察与比较理解可靠判断",
+    evidence: []
+  };
   const firstStoryboard = structuredClone(storyboard);
   for (const segment of firstStoryboard.segments) delete (segment as any).nativeShotId;
-  const firstBatchShots = await projection.projectFinalStoryboardIntoSeeReel(store, batchSession.id, firstStoryboard, { sourceRevision: 1 });
+  const firstBatchShots = await projection.projectFinalStoryboardIntoSeeReel(store, batchSession.id, firstStoryboard, {
+    sourceRevision: 1,
+    sourceHash: canonicalModule.canonicalStoryboardSourceHash(firstStoryboard),
+    assetPlan: assetPlanStage,
+    teaching: batchTeaching,
+    referenceBindings: batchReferenceBindings
+  });
   const firstBatchId = firstBatchShots[0].videosBatchBatchId;
   assert.ok(firstBatchId);
 
-  const secondStoryboard = structuredClone(storyboard);
+  const secondStoryboard = structuredClone(firstStoryboard);
   secondStoryboard.title = "第二版最终分镜";
   secondStoryboard.segments.forEach((segment: any) => {
-    delete segment.nativeShotId;
     segment.scene = `${segment.scene}（第二版）`;
   });
-  const secondBatchShots = await projection.projectFinalStoryboardIntoSeeReel(store, batchSession.id, secondStoryboard, { sourceRevision: 2 });
+  const secondBatchShots = await projection.projectFinalStoryboardIntoSeeReel(store, batchSession.id, secondStoryboard, {
+    sourceRevision: 2,
+    sourceHash: canonicalModule.canonicalStoryboardSourceHash(secondStoryboard),
+    assetPlan: assetPlanStage,
+    teaching: batchTeaching,
+    referenceBindings: batchReferenceBindings
+  });
   const secondBatchId = secondBatchShots[0].videosBatchBatchId;
   assert.ok(secondBatchId);
   assert.notEqual(secondBatchId, firstBatchId, "changed storyboard content must create a new batch");
   assert.equal(new Set(secondBatchShots.map((shot: any) => shot.id)).size, secondStoryboard.segments.length);
+  assert.deepEqual(
+    secondStoryboard.segments.map((segment: any) => segment.nativeShotId),
+    secondBatchShots.map((shot: any) => shot.id),
+    "a changed storyboard must replace stale UI runtime pointers with the new batch pointers"
+  );
   assert.equal(store.getSession(batchSession.id)!.shots.length, firstStoryboard.segments.length + secondStoryboard.segments.length);
 
   // Simulate a persisted/model round-trip where native runtime pointers are
@@ -436,7 +485,13 @@ try {
     store,
     batchSession.id,
     secondWithoutRuntimePointers,
-    { sourceRevision: 2 }
+    {
+      sourceRevision: 2,
+      sourceHash: canonicalModule.canonicalStoryboardSourceHash(secondWithoutRuntimePointers),
+      assetPlan: assetPlanStage,
+      teaching: batchTeaching,
+      referenceBindings: batchReferenceBindings
+    }
   );
   assert.deepEqual(
     reprojectedSecond.map((shot: any) => shot.id),
@@ -508,6 +563,7 @@ try {
     current: true
   });
   batchWorkflow.currentStage = "EXECUTION";
+  await store.updateSession(batchSession.id, { videosBatchWorkflow: batchWorkflow });
   const batchExecutionCalls: string[] = [];
   const batchRegistry = mediaModule.createVideosBatchNativeMediaStageRegistry({
     defaultAssetImageModel: () => "seedream-4-5",

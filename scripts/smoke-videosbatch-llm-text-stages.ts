@@ -2,7 +2,7 @@ import { strict as assert } from "node:assert";
 import { createVideosBatchWorkflow } from "../src/shared/videosBatchWorkflow";
 import type { Session } from "../src/shared/types";
 import { VideosBatchLlmError, type VideosBatchLlmExecutor, type StructuredGenerationRequest } from "../src/server/videosBatchWorkflow/llmExecutor";
-import { createVideosBatchLlmTextStageRegistry, deriveCopyablePrompt } from "../src/server/videosBatchWorkflow/llmTextStages";
+import { createVideosBatchLlmTextStageRegistry, deriveCopyablePrompt, validateVideosBatchAssetPlan } from "../src/server/videosBatchWorkflow/llmTextStages";
 import type { StageExecutionContext } from "../src/server/videosBatchWorkflow/stageContracts";
 import { renderCanonicalSegmentText } from "../src/server/videosBatchWorkflow/canonicalStoryboard";
 import { PromptMaterialTooLargeError, renderPromptMaterial } from "../src/server/videosBatchWorkflow/promptMaterial";
@@ -378,6 +378,27 @@ workflow.stages.STORY_SCRIPT = { status: "ready", revision: 1, artifact: storyAr
 ctx = context(workflow);
 const assetResult = await registry.ASSET_PLAN!.execute(ctx);
 assert.equal(registry.ASSET_PLAN!.validate(assetResult.artifact, ctx).ok, true);
+for (const invalidItem of [null, 1, "bad"] as const) {
+  const malformedPlan = structuredClone(assetPlanArtifact) as any;
+  malformedPlan.items = [invalidItem];
+  assert.doesNotThrow(() => validateVideosBatchAssetPlan(malformedPlan), `items=${String(invalidItem)} must not throw`);
+  const malformedValidation = validateVideosBatchAssetPlan(malformedPlan);
+  assert.equal(malformedValidation.ok, false, `items=${String(invalidItem)} must be rejected`);
+}
+for (const [label, mutate] of [
+  ["numeric candidateAssets", (plan: any) => { plan.candidateAssets = [1]; }],
+  ["numeric item sourceEvidence", (plan: any) => { plan.items[0].sourceEvidence = 1; }],
+  ["numeric inventory name", (plan: any) => { plan.candidateInventory[0].name = 1; }]
+] as const) {
+  const malformedFieldPlan = structuredClone(assetPlanArtifact) as any;
+  mutate(malformedFieldPlan);
+  assert.doesNotThrow(() => validateVideosBatchAssetPlan(malformedFieldPlan), `${label} must not throw`);
+  assert.equal(validateVideosBatchAssetPlan(malformedFieldPlan).ok, false, `${label} must be rejected`);
+}
+const malformedInventoryPlan = structuredClone(assetPlanArtifact) as any;
+malformedInventoryPlan.candidateInventory = [null, 1, "bad"];
+assert.doesNotThrow(() => validateVideosBatchAssetPlan(malformedInventoryPlan), "invalid candidateInventory entries must not throw");
+assert.equal(validateVideosBatchAssetPlan(malformedInventoryPlan).ok, false, "invalid candidateInventory entries must be rejected");
 const assetPlanRequest = calls.find((request) => request.operation === "ASSET_PLAN");
 assert.equal(assetPlanRequest?.reasoningEffort, "none", "ASSET_PLAN must default to non-thinking mode");
 const assetPlanStats = assetPlanRequest?.metadata || {};

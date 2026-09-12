@@ -1,0 +1,24 @@
+{
+  "name": "videosbatch-skill-cli",
+  "version": "0.1.0",
+  "description": "VideosBatch CLI bundled with the videosbatch-lesson-workflow skill.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "videosbatch": "videosbatch.mjs"
+  },
+  "files": [
+    "videosbatch.mjs",
+    "worker-state.mjs",
+    "local-runtime.mjs",
+    "local-providers.mjs",
+    "README.md",
+    "env.example",
+    "canonical",
+    "prompts",
+    "scripts"
+  ],
+  "engines": {
+    "node": ">=18.17"
+  }
+}

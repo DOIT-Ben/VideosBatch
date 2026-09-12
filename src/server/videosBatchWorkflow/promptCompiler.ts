@@ -1,4 +1,11 @@
-import { validateShotExecutionPackage } from "./shotExecutionPackage";
+import { createHash } from "node:crypto";
+import { contentHash as canonicalContentHash } from "./canonicalStoryboard";
+import { validateVideosBatchAssetPlan } from "./llmTextStages";
+import {
+  normalizeShotExecutionAssetPlanLineage,
+  normalizeShotExecutionSourceLineage,
+  validateShotExecutionPackage
+} from "./shotExecutionPackage";
 import type {
   ShotExecutionAudioIntentEvent,
   ShotExecutionEffect,
@@ -9,6 +16,7 @@ import type {
 } from "../../shared/videosBatchWorkflow";
 
 export const SHOT_PROVIDER_PROMPT_SCHEMA_VERSION = "1" as const;
+export const SHOT_PROVIDER_PROMPT_COMPILER_VERSION = "2" as const;
 
 export const SHOT_PROVIDER_PROMPT_SECTION_ORDER = [
   "teaching",
@@ -39,6 +47,7 @@ const ROLE_LABELS: Record<ShotExecutionStoryType, "人物" | "主体" | "核心�
   SCIENCE: "主体",
   KNOWLEDGE: "核心意象"
 };
+const HASH_PATTERN = /^[a-f0-9]{64}$/u;
 
 const SUPPORT_LABELS: Record<ShotExecutionStoryType, "道具" | "辅助元素"> = {
   STORY: "道具",
@@ -47,15 +56,28 @@ const SUPPORT_LABELS: Record<ShotExecutionStoryType, "道具" | "辅助元素"> 
 };
 
 const SEMANTIC_TAG_PATTERN = /^【(人物|场景|道具|主体|辅助元素|核心意象)[：:]\s*(.+?)】$/u;
+const REFERENCE_LABELS: Record<ShotExecutionStoryType, readonly string[]> = {
+  STORY: ["人物", "场景", "道具"],
+  SCIENCE: ["主体", "场景", "辅助元素"],
+  KNOWLEDGE: ["核心意象", "场景", "辅助元素"]
+};
 const POSITION_REFERENCE_PATTERN = /(?:第\s*(?:\d+|[一二三四五六七八九十百千]+)\s*(?:张|个)?\s*(?:图|图片|参考图)|(?:参考图|图片|图像|图)\s*#?\s*(?:\d+|[一二三四五六七八九十百千]+)|image\s*#?\s*\d+)/iu;
 const STABLE_PUBLIC_ASSET_ID_PATTERN = /\bP\d{3,}-A\d{3,}\b/iu;
-const URL_PATTERN = /https?:\/\//iu;
-const MEDIA_PATH_PATTERN = /\/media\//iu;
+const URL_PATTERN = /\b[a-z][a-z\d+.-]{1,31}:(?:\/\/|[^\s])/iu;
+const MEDIA_PATH_PATTERN = /(?:^|[\\/])media[\\/]/iu;
 const WINDOWS_PATH_PATTERN = /\b[A-Z]:[\\/]/iu;
 const UNC_PATH_PATTERN = /\\\\[A-Za-z0-9._-]+[\\/]/u;
 const POSIX_PATH_PATTERN = /(?:^|[\s(])\/(?:Users|user|home|tmp|var|mnt|workspace|data|private|opt|srv|media)(?:[\\/]|$)/iu;
-const INTERNAL_IDENTIFIER_PATTERN = /\b(?:assetId|shotId|taskId)\s*[:=]\s*[^\s,;，。；]+|\b(?:asset|shot|task)_[A-Za-z0-9][A-Za-z0-9_-]*/iu;
+const STRUCTURED_PATH_PATTERN = /[\p{L}\p{N}._~-]+(?:[/\\]+[\p{L}\p{N}._~-]+)+/gu;
+const NUMERIC_SLASH_EXPRESSION_PATTERN = /^(?:\d+(?:\.\d+)?\/\d+(?:\.\d+)?|\d{4}\/\d{1,2}\/\d{1,2})$/u;
+const PROMPT_ESCAPE_PATTERN = /\\(?:\\|n|u[0-9a-f]{4})/gu;
+const PROVIDER_PROMPT_SLASH_EXCEPTIONS = new Set([
+  "保持人物/主体、场景、道具/辅助元素的身份连续。",
+  "旁白/对白由独立 TTS 与混音链路提供，Provider 不负责生成受控旁白。"
+]);
+const INTERNAL_IDENTIFIER_PATTERN = /\b(?:assetId|selectedAssetId|publicAssetId|referenceId|shotId|taskId|contentHash|sourceHash)\b\s*[:=]?\s*[^\s,;，。；]*|\b(?:asset|shot|task)_[A-Za-z0-9][A-Za-z0-9_-]*/iu;
 const EVENT_INTERNAL_IDENTIFIER_PATTERN = /\b(?:asset|shot|task)_[A-Za-z0-9][A-Za-z0-9_-]*|\b(?:assetId|shotId|taskId)\b/iu;
+const CONTROL_CHARACTER_PATTERN = /[\u0000-\u0009\u000B\u000C\u000E-\u001F\u007F-\u009F\u2028\u2029]/u;
 
 export interface CompiledShotPromptSection {
   id: ShotProviderPromptSectionId;
@@ -69,7 +91,11 @@ export interface CompiledShotPrompt {
   sourceStageId: "FINAL_STORYBOARD";
   sourceRevision: number;
   sourceHash: string;
+  assetPlanRevision: number;
+  assetPlanHash: string;
   contentHash: string;
+  compilerVersion: typeof SHOT_PROVIDER_PROMPT_COMPILER_VERSION;
+  promptHash: string;
   text: string;
   sections: readonly CompiledShotPromptSection[];
 }
@@ -99,6 +125,27 @@ export interface PromptCompilerError {
 
 export type ShotProviderPromptCompileResult = CompiledShotPrompt | PromptCompilerError;
 
+export interface ShotProviderPromptAssetPlanLineage {
+  revision?: number;
+  hash?: string;
+  contentHash?: string;
+  styleSpec?: string;
+  negativePrompt?: string;
+  assetPlanRevision?: number;
+  assetPlanHash?: string;
+  status?: "ready" | "pending" | "running" | "failed" | "stale";
+  assetPlanStatus?: "ready" | "pending" | "running" | "failed" | "stale";
+  assetPlanStyleSpec?: string;
+  assetPlanNegativePrompt?: string;
+  assetPlan?: {
+    revision?: number;
+    hash?: string;
+    styleSpec?: string;
+    negativePrompt?: string;
+  };
+  artifact?: unknown;
+}
+
 export interface CompileShotProviderPromptOptions {
   maxChars?: number;
   /** Current FINAL_STORYBOARD lineage, when the caller has it available. */
@@ -107,6 +154,14 @@ export interface CompileShotProviderPromptOptions {
   expectedLineage?: ShotExecutionPackageLineage | number;
   expectedSourceRevision?: number;
   expectedSourceHash?: string;
+  /** Current confirmed ASSET_PLAN stage/artifact lineage, when available. */
+  currentAssetPlan?: ShotProviderPromptAssetPlanLineage | number;
+  currentAssetPlanHash?: string;
+  expectedAssetPlanLineage?: ShotProviderPromptAssetPlanLineage | number;
+  expectedAssetPlanRevision?: number;
+  expectedAssetPlanHash?: string;
+  expectedAssetPlanStyleSpec?: string;
+  expectedAssetPlanNegativePrompt?: string;
 }
 
 type AnyRecord = Record<string, unknown>;
@@ -117,6 +172,18 @@ type ValidationIssue = {
   retryable?: boolean;
 };
 
+export class ShotProviderPromptRenderError extends Error {
+  readonly code: PromptCompilerErrorCode;
+  readonly retryable: boolean;
+
+  constructor(issue: ValidationIssue) {
+    super(issue.message);
+    this.name = "ShotProviderPromptRenderError";
+    this.code = issue.code;
+    this.retryable = Boolean(issue.retryable);
+  }
+}
+
 function isRecord(value: unknown): value is AnyRecord {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -125,9 +192,23 @@ function normalizeLineEndings(value: string): string {
   return value.replace(/\r\n?/gu, "\n");
 }
 
+function escapePromptData(value: string): string {
+  return normalizeLineEndings(value)
+    .replace(/[\u2028\u2029]/gu, "\n")
+    .replace(/\\/gu, "\\\\")
+    .replace(/\n/gu, "\\n")
+    .replace(/[\u0000-\u0009\u000B\u000C\u000E-\u001F\u007F-\u009F]/gu, (character) => {
+      const codePoint = character.codePointAt(0) || 0;
+      return `\\u${codePoint.toString(16).padStart(4, "0")}`;
+    })
+    .replace(/\[/gu, "\\[")
+    .replace(/\]/gu, "\\]")
+    .replace(/\|/gu, "\\|");
+}
+
 function display(value: unknown): string {
   if (value === null || value === undefined) return "无";
-  return normalizeLineEndings(String(value));
+  return escapePromptData(String(value));
 }
 
 function sourceMetadata(value: unknown): { sourceRevision: number | null; sourceHash: string | null } {
@@ -153,37 +234,175 @@ function makeError(value: unknown, issue: ValidationIssue): PromptCompilerError 
   };
 }
 
-function expectedLineage(options: CompileShotProviderPromptOptions): {
-  current?: ShotExecutionPackageLineage | number;
-  currentHash?: string;
-} {
-  const current = options.expectedLineage ?? options.current;
-  const sourceRevision = options.expectedSourceRevision;
-  const sourceHash = options.expectedSourceHash ?? options.currentHash;
+type PromptLineageNormalization = {
+  current?: ShotExecutionPackageLineage;
+  conflicts: string[];
+};
 
-  if (current !== undefined) {
-    return {
-      current: sourceRevision === undefined && sourceHash === undefined
-        ? current
-        : {
-          ...(typeof current === "number" ? { sourceRevision: current } : current),
-          ...(sourceRevision !== undefined ? { sourceRevision } : {}),
-          ...(sourceHash !== undefined ? { sourceHash } : {})
-        },
-      currentHash: typeof current === "number" ? sourceHash : undefined
-    };
+function mergePromptLineageParts(
+  parts: Array<{ lineage: Partial<ShotExecutionPackageLineage>; conflicts: string[] }>
+): PromptLineageNormalization {
+  const current: Partial<ShotExecutionPackageLineage> = {};
+  const conflicts = parts.flatMap((part) => part.conflicts);
+  for (const part of parts) {
+    for (const [key, value] of Object.entries(part.lineage) as Array<[keyof ShotExecutionPackageLineage, unknown]>) {
+      if (value === undefined) continue;
+      if (current[key] !== undefined && current[key] !== value) conflicts.push(`${String(key)} aliases conflict`);
+      current[key] = value as never;
+    }
+  }
+  return { current: Object.keys(current).length ? current as ShotExecutionPackageLineage : undefined, conflicts };
+}
+
+function hasAssetPlanLineageFields(value: AnyRecord): boolean {
+  return ["assetPlanRevision", "assetPlanHash", "assetPlanStatus", "assetPlanArtifactHash", "assetPlanStyleSpec", "assetPlanNegativePrompt", "status", "artifact", "contentHash"]
+    .some((key) => Object.prototype.hasOwnProperty.call(value, key));
+}
+
+function isCompleteAssetPlanStage(value: unknown): value is ShotProviderPromptAssetPlanLineage {
+  if (!isRecord(value)) return false;
+  return (value.status === "ready" || value.assetPlanStatus === "ready")
+    && (typeof value.revision === "number" || typeof value.assetPlanRevision === "number")
+    && (typeof value.contentHash === "string" || typeof value.assetPlanHash === "string" || typeof value.hash === "string")
+    && isRecord(value.artifact);
+}
+
+function assetPlanInputsFromLineage(value: unknown): ShotProviderPromptAssetPlanLineage[] {
+  if (!isRecord(value)) return [];
+  const inputs: ShotProviderPromptAssetPlanLineage[] = [];
+  if (isCompleteAssetPlanStage(value)) inputs.push(value as ShotProviderPromptAssetPlanLineage);
+  if (isRecord(value.assetPlan)) inputs.push(value.assetPlan as ShotProviderPromptAssetPlanLineage);
+  if (hasAssetPlanLineageFields(value) && !isCompleteAssetPlanStage(value)) {
+    inputs.push(value as ShotProviderPromptAssetPlanLineage);
+  }
+  return inputs;
+}
+
+function expectedLineage(options: CompileShotProviderPromptOptions): PromptLineageNormalization {
+  const sourceParts: Array<{ lineage: Partial<ShotExecutionPackageLineage>; conflicts: string[] }> = [];
+  if (options.current !== undefined) {
+    sourceParts.push(normalizeShotExecutionSourceLineage(options.current, options.currentHash));
+  } else if (options.expectedLineage !== undefined) {
+    sourceParts.push(normalizeShotExecutionSourceLineage(options.expectedLineage, options.currentHash));
+  }
+  if (options.current !== undefined && options.expectedLineage !== undefined) {
+    sourceParts.push(normalizeShotExecutionSourceLineage(options.expectedLineage));
   }
 
-  if (sourceRevision !== undefined || sourceHash !== undefined) {
-    return {
-      current: {
-        ...(sourceRevision !== undefined ? { sourceRevision } : {}),
-        ...(sourceHash !== undefined ? { sourceHash } : {})
-      }
-    };
+  const planParts: Array<{ lineage: Partial<ShotExecutionPackageLineage>; conflicts: string[] }> = [];
+  const sourceInputs = [options.current, options.expectedLineage].filter((value) => value !== undefined);
+  for (const sourceInput of sourceInputs) {
+    for (const planInput of assetPlanInputsFromLineage(sourceInput)) {
+      planParts.push(normalizeShotExecutionAssetPlanLineage(planInput));
+    }
+  }
+  if (options.currentAssetPlan !== undefined) {
+    planParts.push(normalizeShotExecutionAssetPlanLineage(options.currentAssetPlan));
+  }
+  if (options.expectedAssetPlanLineage !== undefined) {
+    planParts.push(normalizeShotExecutionAssetPlanLineage(options.expectedAssetPlanLineage));
   }
 
-  return {};
+  const merged = mergePromptLineageParts([...sourceParts, ...planParts]);
+  const expectedValues: Array<[keyof ShotExecutionPackageLineage, unknown, string]> = [
+    ["sourceRevision", options.expectedSourceRevision, "expectedSourceRevision"],
+    ["sourceHash", options.expectedSourceHash, "expectedSourceHash"],
+    ["assetPlanRevision", options.expectedAssetPlanRevision, "expectedAssetPlanRevision"],
+    ["assetPlanHash", options.expectedAssetPlanHash ?? options.currentAssetPlanHash, "expectedAssetPlanHash"],
+    ["assetPlanStyleSpec", options.expectedAssetPlanStyleSpec, "expectedAssetPlanStyleSpec"],
+    ["assetPlanNegativePrompt", options.expectedAssetPlanNegativePrompt, "expectedAssetPlanNegativePrompt"]
+  ];
+  for (const [key, expected, label] of expectedValues) {
+    if (expected === undefined) continue;
+    if (merged.current?.[key] !== undefined && merged.current[key] !== expected) {
+      merged.conflicts.push(`${label} conflicts with current lineage`);
+    }
+  }
+  return merged;
+}
+
+function currentAssetPlanSource(options: CompileShotProviderPromptOptions): ShotProviderPromptAssetPlanLineage | undefined {
+  const explicit = options.currentAssetPlan ?? options.expectedAssetPlanLineage;
+  if (explicit !== undefined && typeof explicit !== "number") return explicit;
+  for (const value of [options.current, options.expectedLineage]) {
+    const embedded = assetPlanInputsFromLineage(value);
+    if (embedded.length) return embedded[0];
+  }
+  return undefined;
+}
+
+function packageValidationLineage(
+  lineage: PromptLineageNormalization,
+  options: CompileShotProviderPromptOptions
+): ShotExecutionPackageLineage | undefined {
+  if (!lineage.current) return undefined;
+  const assetPlan = currentAssetPlanSource(options);
+  if (!assetPlan || typeof assetPlan === "number") return lineage.current;
+  return { ...lineage.current, assetPlan } as ShotExecutionPackageLineage;
+}
+
+function currentLineageIssue(
+  lineage: PromptLineageNormalization,
+  options: CompileShotProviderPromptOptions
+): ValidationIssue | undefined {
+  if (lineage.conflicts.length) {
+    return {
+      code: "PROMPT_PACKAGE_LINEAGE_STALE",
+      retryable: false,
+      message: `当前血缘别名冲突：${lineage.conflicts.join("；")}`
+    };
+  }
+  const current = lineage.current;
+  if (!isRecord(current)
+    || !Number.isInteger(current.sourceRevision)
+    || Number(current.sourceRevision) < 1
+    || typeof current.sourceHash !== "string"
+    || !HASH_PATTERN.test(current.sourceHash)
+    || !Number.isInteger(current.assetPlanRevision)
+    || Number(current.assetPlanRevision) < 1
+    || typeof current.assetPlanHash !== "string"
+    || !HASH_PATTERN.test(current.assetPlanHash)
+    || current.assetPlanStatus !== "ready"
+    || typeof current.assetPlanArtifactHash !== "string"
+    || !HASH_PATTERN.test(current.assetPlanArtifactHash)
+    || current.assetPlanArtifactHash !== current.assetPlanHash
+    || typeof current.assetPlanStyleSpec !== "string"
+    || !current.assetPlanStyleSpec.trim()
+    || typeof current.assetPlanNegativePrompt !== "string"
+    || !current.assetPlanNegativePrompt.trim()) {
+    return {
+      code: "PROMPT_PACKAGE_LINEAGE_STALE",
+      retryable: false,
+      message: "编译 Provider Prompt 必须提供当前 FINAL_STORYBOARD 与 ASSET_PLAN 的 revision/hash，以及当前计划的 styleSpec/negativePrompt"
+    };
+  }
+  const assetPlan = currentAssetPlanSource(options);
+  if (!assetPlan || typeof assetPlan === "number" || !isRecord(assetPlan.artifact)) {
+    return {
+      code: "PROMPT_PACKAGE_LINEAGE_STALE",
+      retryable: false,
+      message: "当前 ASSET_PLAN 必须来自带 artifact 的 ready stage wrapper"
+    };
+  }
+  const assetPlanStatus = typeof assetPlan.status === "string"
+    ? assetPlan.status
+    : assetPlan.assetPlanStatus;
+  if (assetPlanStatus !== "ready") {
+    return {
+      code: "PROMPT_PACKAGE_LINEAGE_STALE",
+      retryable: false,
+      message: "当前 ASSET_PLAN stage 必须为 ready"
+    };
+  }
+  const assetPlanValidation = validateVideosBatchAssetPlan(assetPlan.artifact);
+  if (!assetPlanValidation.ok) {
+    return {
+      code: "PROMPT_PACKAGE_INVALID",
+      retryable: false,
+      message: `当前 ASSET_PLAN 业务校验失败：${assetPlanValidation.errors.join("；")}`
+    };
+  }
+  return undefined;
 }
 
 function promptCodeForPackageValidation(
@@ -217,6 +436,22 @@ function packageValidationIssue(
   });
 }
 
+function hasStructuredPath(
+  value: string,
+  allowedTokens: ReadonlySet<string> = new Set(),
+  maskPromptEscapes = false
+): boolean {
+  let scanValue = [...allowedTokens].reduce(
+    (current, token) => current.split(token).join(""),
+    value
+  );
+  if (maskPromptEscapes) scanValue = scanValue.replace(PROMPT_ESCAPE_PATTERN, "");
+  for (const match of scanValue.matchAll(STRUCTURED_PATH_PATTERN)) {
+    if (!allowedTokens.has(match[0]) && !NUMERIC_SLASH_EXPRESSION_PATTERN.test(match[0])) return true;
+  }
+  return false;
+}
+
 function hasForbiddenTransportOrIdentifier(value: string): boolean {
   return STABLE_PUBLIC_ASSET_ID_PATTERN.test(value)
     || URL_PATTERN.test(value)
@@ -224,11 +459,16 @@ function hasForbiddenTransportOrIdentifier(value: string): boolean {
     || WINDOWS_PATH_PATTERN.test(value)
     || UNC_PATH_PATTERN.test(value)
     || POSIX_PATH_PATTERN.test(value)
+    || hasStructuredPath(value)
     || INTERNAL_IDENTIFIER_PATTERN.test(value);
 }
 
 function isPositionReference(value: string): boolean {
   return POSITION_REFERENCE_PATTERN.test(value);
+}
+
+function containsPromptSectionMarker(value: string): boolean {
+  return Object.values(SECTION_TITLES).some((title) => value.includes(title));
 }
 
 function userFacingPackageTexts(executionPackage: ShotExecutionPackage): string[] {
@@ -239,6 +479,8 @@ function userFacingPackageTexts(executionPackage: ShotExecutionPackage): string[
     executionPackage.visual.scene,
     executionPackage.visual.role,
     executionPackage.visual.support,
+    executionPackage.visual.styleSpec,
+    executionPackage.visual.negativePrompt,
     executionPackage.visual.globalContinuity,
     ...executionPackage.teaching.evidence.flatMap((entry) => [entry.source, entry.quote]),
     ...executionPackage.visual.effects.flatMap((effect) => [effect.timeRange, effect.visual, effect.action, effect.camera]),
@@ -249,7 +491,10 @@ function userFacingPackageTexts(executionPackage: ShotExecutionPackage): string[
   return texts.filter((value): value is string => typeof value === "string");
 }
 
-function referenceSemanticText(reference: ShotExecutionReference): { text?: string; issue?: ValidationIssue } {
+function referenceSemanticText(
+  reference: ShotExecutionReference,
+  storyType: ShotExecutionStoryType
+): { text?: string; issue?: ValidationIssue } {
   const raw = normalizeLineEndings(reference.semanticLabel).trim();
   const key = normalizeLineEndings(reference.assetKey).trim();
   if (!raw || !key) {
@@ -278,18 +523,31 @@ function referenceSemanticText(reference: ShotExecutionReference): { text?: stri
   }
 
   const tagged = raw.match(SEMANTIC_TAG_PATTERN);
-  if (raw.startsWith("【") || raw.endsWith("】")) {
-    if (!tagged) {
-      return {
-        issue: {
-          code: "PROMPT_REFERENCE_INVALID",
-          message: "参考图 semanticLabel 的语义标签格式无效"
-        }
-      };
-    }
-    return { text: tagged[2].trim() };
+  if (!tagged) {
+    return {
+      issue: {
+        code: "PROMPT_REFERENCE_INVALID",
+        message: `参考图 semanticLabel 必须使用 ${REFERENCE_LABELS[storyType].join("、")} 类型标签`
+      }
+    };
   }
-  return { text: raw };
+  if (!REFERENCE_LABELS[storyType].includes(tagged[1])) {
+    return {
+      issue: {
+        code: "PROMPT_REFERENCE_INVALID",
+        message: `参考图 semanticLabel 类型 ${tagged[1]} 与 ${storyType} 不匹配`
+      }
+    };
+  }
+  if (!tagged[2].trim()) {
+    return {
+      issue: {
+        code: "PROMPT_REFERENCE_INVALID",
+        message: "参考图 semanticLabel 的语义名称不能为空"
+      }
+    };
+  }
+  return { text: escapePromptData(raw) };
 }
 
 function validatePromptPackageSemantics(executionPackage: ShotExecutionPackage): ValidationIssue | undefined {
@@ -320,6 +578,12 @@ function validatePromptPackageSemantics(executionPackage: ShotExecutionPackage):
         message: "Provider Prompt 不得使用位置型图片引用"
       };
     }
+    if (containsPromptSectionMarker(value)) {
+      return {
+        code: "PROMPT_FORBIDDEN_IDENTIFIER",
+        message: "Provider Prompt 字段不得包含章节标记"
+      };
+    }
   }
 
   const references = [...executionPackage.references].sort((left, right) => left.ordinal - right.ordinal);
@@ -338,7 +602,7 @@ function validatePromptPackageSemantics(executionPackage: ShotExecutionPackage):
         message: "参考图审计字段不得携带稳定公开资产编号"
       };
     }
-    const semantic = referenceSemanticText(reference);
+    const semantic = referenceSemanticText(reference, storyType);
     if (semantic.issue) return semantic.issue;
   }
 
@@ -381,7 +645,6 @@ function audioEventFields(
 ): Array<[string, unknown]> {
   const prefix = `${path}[${index + 1}]`;
   return [
-    [`${prefix}.id`, event.id],
     [`${prefix}.timeWindow`, `${event.startSec}-${event.endSec}秒`],
     [`${prefix}.startSec`, event.startSec],
     [`${prefix}.endSec`, event.endSec],
@@ -405,7 +668,7 @@ function referenceLines(executionPackage: ShotExecutionPackage): string[] {
   const lines: string[] = [];
   const references = [...executionPackage.references].sort((left, right) => left.ordinal - right.ordinal);
   for (const reference of references) {
-    const semantic = referenceSemanticText(reference).text || "";
+    const semantic = referenceSemanticText(reference, executionPackage.shot.storyType).text || "";
     lines.push(`Image ${reference.ordinal} = ${semantic}`);
   }
 
@@ -422,8 +685,8 @@ function referenceLines(executionPackage: ShotExecutionPackage): string[] {
   return lines;
 }
 
-/** Render an already validated package without reading any external state. */
-export function renderShotProviderPromptSections(
+/** Render a package after its caller has completed the public preflight. */
+function renderShotProviderPromptSectionsUnchecked(
   executionPackage: ShotExecutionPackage,
   compact = false
 ): readonly CompiledShotPromptSection[] {
@@ -482,6 +745,8 @@ export function renderShotProviderPromptSections(
     ]),
     section("effects", effectLines),
     section("continuity", [
+      field("visual.styleSpec", executionPackage.visual.styleSpec, compact),
+      field("visual.negativePrompt", executionPackage.visual.negativePrompt, compact),
       field("visual.globalContinuity", executionPackage.visual.globalContinuity, compact)
     ]),
     section("audio", [
@@ -493,10 +758,68 @@ export function renderShotProviderPromptSections(
   ];
 }
 
+function assertRenderablePackage(
+  executionPackage: ShotExecutionPackage,
+  options: CompileShotProviderPromptOptions = {}
+): void {
+  const lineage = expectedLineage(options);
+  const validation = validateShotExecutionPackage(
+    executionPackage as unknown,
+    packageValidationLineage(lineage, options),
+    undefined
+  );
+  if (!validation.ok) {
+    throw new ShotProviderPromptRenderError({
+      code: promptCodeForPackageValidation(validation),
+      retryable: Boolean(validation.retryable),
+      message: `ShotExecutionPackage 校验失败：${validation.errors.join("；")}`
+    });
+  }
+  const semanticIssue = validatePromptPackageSemantics(executionPackage);
+  if (semanticIssue) throw new ShotProviderPromptRenderError(semanticIssue);
+  const lineageIssue = currentLineageIssue(lineage, options);
+  if (lineageIssue) throw new ShotProviderPromptRenderError(lineageIssue);
+}
+
+/**
+ * Render one package for callers that need sections directly. The guard is
+ * intentional: this low-level export must not become a validation bypass.
+ */
+export function renderShotProviderPromptSections(
+  executionPackage: ShotExecutionPackage,
+  compactOrOptions: boolean | CompileShotProviderPromptOptions = false,
+  maybeOptions: CompileShotProviderPromptOptions = {}
+): readonly CompiledShotPromptSection[] {
+  const compact = typeof compactOrOptions === "boolean" ? compactOrOptions : false;
+  const options = typeof compactOrOptions === "boolean" ? maybeOptions : compactOrOptions;
+  assertRenderablePackage(executionPackage, options);
+  const sections = freezePromptSections(renderShotProviderPromptSectionsUnchecked(executionPackage, compact));
+  const rendered = compileSuccess(executionPackage, sections, compact);
+  const renderedIssue = validateRenderedPrompt(rendered);
+  if (renderedIssue) throw new ShotProviderPromptRenderError(renderedIssue);
+  const lengthIssue = promptLengthIssue(rendered.text, options.maxChars);
+  if (lengthIssue) throw new ShotProviderPromptRenderError(lengthIssue);
+  return sections;
+}
+
 export const renderProviderPromptSections = renderShotProviderPromptSections;
 
 function joinSections(sections: readonly CompiledShotPromptSection[], compact: boolean): string {
   return sections.map((item) => item.text).join(compact ? "\n" : "\n\n");
+}
+
+function freezePromptSections(sections: readonly CompiledShotPromptSection[]): readonly CompiledShotPromptSection[] {
+  return Object.freeze(sections.map((section) => Object.freeze({ ...section })));
+}
+
+function promptHashFor(text: string, compact: boolean): string {
+  return createHash("sha256")
+    .update(JSON.stringify({
+      compilerVersion: SHOT_PROVIDER_PROMPT_COMPILER_VERSION,
+      rendering: compact ? "compact" : "full",
+      text
+    }))
+    .digest("hex");
 }
 
 function compileSuccess(
@@ -504,23 +827,48 @@ function compileSuccess(
   sections: readonly CompiledShotPromptSection[],
   compact: boolean
 ): CompiledShotPrompt {
-  return {
+  const frozenSections = freezePromptSections(sections);
+  const text = joinSections(frozenSections, compact);
+  return Object.freeze({
     ok: true,
     schemaVersion: SHOT_PROVIDER_PROMPT_SCHEMA_VERSION,
     sourceStageId: executionPackage.sourceStageId,
     sourceRevision: executionPackage.sourceRevision,
     sourceHash: executionPackage.sourceHash,
+    assetPlanRevision: executionPackage.assetPlanRevision,
+    assetPlanHash: executionPackage.assetPlanHash,
     contentHash: executionPackage.contentHash,
-    text: joinSections(sections, compact),
-    sections
-  };
+    compilerVersion: SHOT_PROVIDER_PROMPT_COMPILER_VERSION,
+    promptHash: promptHashFor(text, compact),
+    text,
+    sections: frozenSections
+  });
+}
+
+function promptLengthIssue(value: string, rawMaxChars: unknown): ValidationIssue | undefined {
+  if (rawMaxChars === undefined) return undefined;
+  const maxChars = Number(rawMaxChars);
+  if (!Number.isInteger(maxChars) || maxChars <= 0) {
+    return {
+      code: "PROMPT_CONTEXT_TOO_LARGE",
+      message: "Provider Prompt maxChars 必须是正整数"
+    };
+  }
+  if (value.length > maxChars) {
+    return {
+      code: "PROMPT_CONTEXT_TOO_LARGE",
+      message: `Provider Prompt 超过 maxChars=${maxChars}（实际 ${value.length}）`
+    };
+  }
+  return undefined;
 }
 
 function validateRenderedPrompt(result: CompiledShotPrompt): ValidationIssue | undefined {
-  if (/\r/u.test(result.text) || result.sections.some((section) => /\r/u.test(section.text))) {
+  if (CONTROL_CHARACTER_PATTERN.test(result.text)
+    || result.sections.some((section) => CONTROL_CHARACTER_PATTERN.test(section.text))) {
     return {
       code: "PROMPT_PACKAGE_INVALID",
-      message: "Provider Prompt 换行必须统一为 LF"
+      message: "Provider Prompt 不得包含未规整的换行或控制字符"
     };
   }
   if (STABLE_PUBLIC_ASSET_ID_PATTERN.test(result.text)
@@ -529,6 +877,7 @@ function validateRenderedPrompt(result: CompiledShotPrompt): ValidationIssue | u
     || WINDOWS_PATH_PATTERN.test(result.text)
     || UNC_PATH_PATTERN.test(result.text)
     || POSIX_PATH_PATTERN.test(result.text)
+    || hasStructuredPath(result.text, PROVIDER_PROMPT_SLASH_EXCEPTIONS, true)
     || INTERNAL_IDENTIFIER_PATTERN.test(result.text)) {
     return {
       code: "PROMPT_FORBIDDEN_IDENTIFIER",
@@ -539,6 +888,15 @@ function validateRenderedPrompt(result: CompiledShotPrompt): ValidationIssue | u
     return {
       code: "PROMPT_FORBIDDEN_IDENTIFIER",
       message: "Provider Prompt 不得包含完整原始 JSON"
+    };
+  }
+  const expectedTitles = SHOT_PROVIDER_PROMPT_SECTION_ORDER.map((id) => SECTION_TITLES[id]);
+  const renderedTitles = result.text.split("\n").filter((line) => expectedTitles.includes(line));
+  if (renderedTitles.length !== expectedTitles.length
+    || renderedTitles.some((title, index) => title !== expectedTitles[index])) {
+    return {
+      code: "PROMPT_PACKAGE_INVALID",
+      message: "Provider Prompt 章节标题必须固定、唯一且按合同顺序出现"
     };
   }
   return undefined;
@@ -555,15 +913,18 @@ export function compileShotProviderPrompt(
   const lineage = expectedLineage(options);
   const validation = validateShotExecutionPackage(
     executionPackage as unknown,
-    lineage.current,
-    lineage.currentHash
+    packageValidationLineage(lineage, options),
+    undefined
   );
   if (!validation.ok) return packageValidationIssue(executionPackage, validation);
 
   const semanticIssue = validatePromptPackageSemantics(executionPackage);
   if (semanticIssue) return makeError(executionPackage, semanticIssue);
 
-  const fullSections = renderShotProviderPromptSections(executionPackage, false);
+  const lineageIssue = currentLineageIssue(lineage, options);
+  if (lineageIssue) return makeError(executionPackage, lineageIssue);
+
+  const fullSections = renderShotProviderPromptSectionsUnchecked(executionPackage, false);
   const fullResult = compileSuccess(executionPackage, fullSections, false);
   const renderedIssue = validateRenderedPrompt(fullResult);
   if (renderedIssue) return makeError(executionPackage, renderedIssue);
@@ -578,7 +939,7 @@ export function compileShotProviderPrompt(
   }
   if (fullResult.text.length <= maxChars) return fullResult;
 
-  const compactSections = renderShotProviderPromptSections(executionPackage, true);
+  const compactSections = renderShotProviderPromptSectionsUnchecked(executionPackage, true);
   const compactResult = compileSuccess(executionPackage, compactSections, true);
   const compactIssue = validateRenderedPrompt(compactResult);
   if (compactIssue) return makeError(executionPackage, compactIssue);
@@ -593,7 +954,20 @@ export function compileShotProviderPrompt(
 export function isCompiledShotPrompt(
   result: ShotProviderPromptCompileResult
 ): result is CompiledShotPrompt {
-  return result.ok === true && typeof result.text === "string" && Array.isArray(result.sections);
+  if (!(result.ok === true
+    && typeof result.text === "string"
+    && Array.isArray(result.sections)
+    && Number.isInteger(result.assetPlanRevision)
+    && /^[a-f0-9]{64}$/u.test(result.assetPlanHash)
+    && result.compilerVersion === SHOT_PROVIDER_PROMPT_COMPILER_VERSION
+    && /^[a-f0-9]{64}$/u.test(result.promptHash))) return false;
+  const fullText = result.sections.map((section) => section.text).join("\n\n");
+  const compactText = result.sections.map((section) => section.text).join("\n");
+  const isFull = result.text === fullText;
+  const isCompact = result.text === compactText;
+  return isFull !== isCompact
+    && result.promptHash === promptHashFor(result.text, isCompact)
+    && validateRenderedPrompt(result) === undefined;
 }
 
 export function isPromptCompilerError(

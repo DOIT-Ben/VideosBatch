@@ -1,5 +1,6 @@
 import {
   buildShotExecutionPackageFromStoryboard,
+  hashShotExecutionPackage,
   type BuildShotExecutionPackageFromStoryboardInput,
   type ShotExecutionReferenceBindingInput
 } from "./shotExecutionPackage";
@@ -8,6 +9,10 @@ import type { ShotExecutionPackage, ShotExecutionStoryType } from "../../shared/
 export interface ShotExecutionPackageFixture {
   finalStoryboard: Record<string, unknown>;
   screenplay: Record<string, unknown>;
+  assetPlan: Record<string, unknown>;
+  assetPlanStage: Record<string, unknown>;
+  assetPlanRevision: number;
+  assetPlanHash: string;
   referenceBindings: ShotExecutionReferenceBindingInput[];
   package: ShotExecutionPackage;
 }
@@ -130,6 +135,47 @@ function makeFixture(definition: FixtureDefinition): ShotExecutionPackageFixture
     storyType: definition.storyType,
     scenes: [{ sequence: 1, knowledgeFocus: definition.knowledgeFocus, evidence: [{ source: "fixture教材页", quote: definition.knowledgeFocus }] }]
   };
+  const assetPlan: Record<string, unknown> = {
+    schemaVersion: "1",
+    kind: "VIDEO_ASSET_PLAN",
+    title: "执行包 fixture 资产计划",
+    subject: "数学",
+    gradeBand: "小学",
+    candidateAssets: ["fixture角色"],
+    candidateInventory: [{
+      assetKey: "CHARACTER-FIXTURE",
+      name: "fixture角色",
+      category: "CHARACTER",
+      required: true,
+      sourceEvidence: "fixture 故事中的主要角色。",
+      decision: "required"
+    }],
+    omissionCheck: "已按人物、场景、道具、生物完成二次核对；不存在场景、道具和生物。",
+    styleSpec: "影视级 3D 国漫 CG 风格，精致建模质感，画面干净。",
+    negativePrompt: "不要文字，不要水印，不要logo，不要主体裁切，不要主体缺失，不要多余人物，不要复杂背景，不要畸形肢体，不要低清模糊。",
+    items: [{
+      assetKey: "CHARACTER-FIXTURE",
+      category: "CHARACTER",
+      name: "fixture角色",
+      description: "fixture 故事中的主要角色。",
+      sourceEvidence: "fixture 故事中的主要角色。",
+      required: true,
+      usage: "用于执行包的参考图合同测试。",
+      prompt: "影视级 3D 国漫 CG 风格人物设定图，16:9，主体清晰；不要文字，不要水印，不要logo，不要主体裁切，不要主体缺失，不要多余人物，不要复杂背景，不要畸形肢体，不要低清模糊。",
+      negativePrompt: "不要文字，不要水印，不要logo，不要主体裁切，不要主体缺失，不要多余人物，不要复杂背景，不要畸形肢体，不要低清模糊。",
+      aspectRatio: "16:9",
+      continuityNotes: null,
+      variantNotes: null
+    }]
+  };
+  const assetPlanRevision = 1;
+  const assetPlanHash = hashShotExecutionPackage(assetPlan);
+  const assetPlanStage: Record<string, unknown> = {
+    status: "ready",
+    revision: assetPlanRevision,
+    contentHash: assetPlanHash,
+    artifact: assetPlan
+  };
   const referenceBindings: ShotExecutionReferenceBindingInput[] = [
     { referenceId: "ref-role", ordinal: 1, assetKey: `${definition.storyType}-ROLE`, semanticLabel: role, assetId: `asset_fixture_${definition.storyType.toLowerCase()}_role`, imageUrl: `https://fixture.invalid/${definition.storyType.toLowerCase()}/role.png` },
     { referenceId: "ref-scene", ordinal: 2, assetKey: `${definition.storyType}-SCENE`, semanticLabel: scene, assetId: `asset_fixture_${definition.storyType.toLowerCase()}_scene`, imageUrl: `https://fixture.invalid/${definition.storyType.toLowerCase()}/scene.png` },
@@ -140,9 +186,27 @@ function makeFixture(definition: FixtureDefinition): ShotExecutionPackageFixture
     segment: 1,
     sourceRevision: 1,
     screenplay,
+    assetPlan: assetPlanStage,
+    assetPlanRevision,
+    assetPlanHash,
+    expectedLineage: {
+      assetPlanRevision,
+      assetPlanHash,
+      assetPlanStyleSpec: assetPlan.styleSpec as string,
+      assetPlanNegativePrompt: assetPlan.negativePrompt as string
+    },
     referenceBindings
   };
-  return { finalStoryboard, screenplay, referenceBindings, package: buildShotExecutionPackageFromStoryboard(input) };
+  return {
+    finalStoryboard,
+    screenplay,
+    assetPlan,
+    assetPlanStage,
+    assetPlanRevision,
+    assetPlanHash,
+    referenceBindings,
+    package: buildShotExecutionPackageFromStoryboard(input)
+  };
 }
 
 const FIXTURES = {

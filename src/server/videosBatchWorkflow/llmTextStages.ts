@@ -39,6 +39,7 @@ const INTRO_IDS = ["A-01", "A-02", "A-03", "B-01", "B-02", "B-03", "C-01", "C-02
 const TRUTHFULNESS = new Set(["真实史实", "真实背景下的合理改编", "完全虚构的故事化情境"]);
 const STORY_TYPES = new Set(["故事叙事型", "现象科普型", "知识由来与应用型"]);
 const ASSET_CATEGORIES = new Set(["CHARACTER", "SCENE", "PROP", "CREATURE"]);
+const ASSET_PLAN_NEGATIVE_CONSTRAINTS = ["不要文字", "不要水印", "不要logo", "不要主体裁切", "不要主体缺失", "不要多余人物", "不要复杂背景", "不要畸形肢体", "不要低清模糊"] as const;
 const MAX_STAGE_ATTEMPTS = 3;
 // Contract repair is a separate, bounded operation. It must remain available
 // even when the initial provider sequence consumed all three submissions.
@@ -46,10 +47,14 @@ const MAX_CONTRACT_REPAIR_ATTEMPTS = 2;
 const OLD_STORYBOARD_FIELDS = ["visualPrompt", "narration", "subtitles", "teachingPurpose", "transition", "subshots"] as const;
 
 function result(errors: string[]): ValidationResult { return { ok: errors.length === 0, errors }; }
+function isRecord(value: unknown): value is Record<string, any> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
 function record(value: unknown): Record<string, any> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, any> : {};
 }
 function text(value: unknown): string { return String(value ?? "").trim(); }
+function assetText(value: unknown): string { return typeof value === "string" ? value.trim() : ""; }
 function textLength(value: unknown): number { return Array.from(text(value)).length; }
 function hasAny(value: unknown, terms: readonly string[]): boolean { return hasAnyText(value, terms); }
 function canonicalStoryType(value: unknown) { return normalizeStoryboardType(value); }
@@ -215,59 +220,72 @@ function validateAssetPlan(artifact: unknown): ValidationResult {
   const errors: string[] = [];
   if (value.schemaVersion !== "1") errors.push("ASSET_PLAN schemaVersion must be 1");
   if (value.kind !== "VIDEO_ASSET_PLAN") errors.push("ASSET_PLAN kind must be VIDEO_ASSET_PLAN");
-  for (const field of ["title", "subject", "gradeBand", "omissionCheck", "styleSpec", "negativePrompt"]) if (!text(value[field])) errors.push(`ASSET_PLAN requires ${field}`);
+  for (const field of ["title", "subject", "gradeBand", "omissionCheck", "styleSpec", "negativePrompt"]) if (!assetText(value[field])) errors.push(`ASSET_PLAN requires ${field}`);
   const items = Array.isArray(value.items) ? value.items : [];
   const inventory = Array.isArray(value.candidateInventory) ? value.candidateInventory : [];
   const candidateAssets = Array.isArray(value.candidateAssets) ? value.candidateAssets : [];
   if (!items.length) errors.push("ASSET_PLAN requires at least one item");
   if (!inventory.length) errors.push("ASSET_PLAN requires a candidateInventory containing required and optional objects");
   if (!candidateAssets.length) errors.push("ASSET_PLAN requires a complete candidateAssets inventory");
-  if (!hasAny(value.omissionCheck, ["二次核对", "遗漏检查", "四类", "逐段回看", "逐句回看", "再次回看", "再次核对", "完整回看", "全面核对"])) {
+  if (!hasAny(assetText(value.omissionCheck), ["二次核对", "遗漏检查", "四类", "逐段回看", "逐句回看", "再次回看", "再次核对", "完整回看", "全面核对"])) {
     errors.push("ASSET_PLAN omissionCheck must document the second pass across four asset classes");
   }
-  if (!hasAny(value.styleSpec, ["影视级3D国漫CG风格", "影视级 3D 国漫 CG 风格"])) errors.push("ASSET_PLAN styleSpec must lock the handbook visual style");
+  if (!hasAny(assetText(value.styleSpec), ["影视级3D国漫CG风格", "影视级 3D 国漫 CG 风格"])) errors.push("ASSET_PLAN styleSpec must lock the handbook visual style");
+  const globalNegativeText = assetText(value.negativePrompt).replace(/\s+/gu, "");
+  for (const negative of ASSET_PLAN_NEGATIVE_CONSTRAINTS) {
+    if (!globalNegativeText.includes(negative)) errors.push(`ASSET_PLAN negativePrompt must include negative constraint: ${negative}`);
+  }
   const inventoryKeys = new Set<string>();
-  for (const entry of inventory) {
-    const key = text(entry?.assetKey);
+  for (const [index, entry] of inventory.entries()) {
+    if (!isRecord(entry)) {
+      errors.push(`ASSET_PLAN candidateInventory[${index}] must be an object`);
+      continue;
+    }
+    const key = assetText(entry.assetKey);
     if (!key || inventoryKeys.has(key)) errors.push(`ASSET_PLAN candidateInventory assetKey must be unique: ${key || "<empty>"}`);
     inventoryKeys.add(key);
-    if (!ASSET_CATEGORIES.has(text(entry?.category))) errors.push(`ASSET_PLAN candidateInventory ${key || "<empty>"} has invalid category`);
-    for (const field of ["name", "sourceEvidence"]) if (!text(entry?.[field])) errors.push(`ASSET_PLAN candidateInventory ${key || "<empty>"} requires ${field}`);
+    if (!ASSET_CATEGORIES.has(assetText(entry.category))) errors.push(`ASSET_PLAN candidateInventory ${key || "<empty>"} has invalid category`);
+    for (const field of ["name", "sourceEvidence"]) if (!assetText(entry[field])) errors.push(`ASSET_PLAN candidateInventory ${key || "<empty>"} requires ${field}`);
     if (entry?.required !== true && entry?.required !== false) errors.push(`ASSET_PLAN candidateInventory ${key || "<empty>"} requires boolean required status`);
-    if (!["required", "optional", "omitted"].includes(text(entry?.decision))) errors.push(`ASSET_PLAN candidateInventory ${key || "<empty>"} has invalid decision`);
-    if (text(entry?.decision) === "omitted" && entry?.required === true) errors.push(`ASSET_PLAN omitted inventory item ${key || "<empty>"} cannot be required`);
+    if (!["required", "optional", "omitted"].includes(assetText(entry.decision))) errors.push(`ASSET_PLAN candidateInventory ${key || "<empty>"} has invalid decision`);
+    if (assetText(entry.decision) === "omitted" && entry.required === true) errors.push(`ASSET_PLAN omitted inventory item ${key || "<empty>"} cannot be required`);
   }
-  for (const candidate of candidateAssets) if (!text(candidate)) errors.push("ASSET_PLAN candidateAssets entries must be non-empty");
-  const keys = items.map((item: any) => text(item.assetKey));
+  for (const candidate of candidateAssets) if (!assetText(candidate)) errors.push("ASSET_PLAN candidateAssets entries must be non-empty strings");
+  const keys = items.map((item: any) => assetText(item?.assetKey));
   if (new Set(keys).size !== keys.length) errors.push("ASSET_PLAN assetKey values must be unique");
   for (const category of ASSET_CATEGORIES) {
-    if (items.some((item: any) => text(item.category) === category)) continue;
-    const explicitlyOmitted = inventory.some((item: any) => text(item?.category) === category && text(item?.decision) === "omitted");
+    if (items.some((item: any) => assetText(item?.category) === category)) continue;
+    const explicitlyOmitted = inventory.some((item: any) => assetText(item?.category) === category && assetText(item?.decision) === "omitted");
     if (!explicitlyOmitted && !explicitlyOmittedCategory(value.omissionCheck, category)) {
       errors.push(`ASSET_PLAN must cover asset category ${category} or explicitly record that it is absent`);
     }
   }
-  for (const item of items) {
-    const key = text(item.assetKey);
-    const category = text(item.category);
+  for (const [index, item] of items.entries()) {
+    if (!isRecord(item)) {
+      errors.push(`ASSET_PLAN items[${index}] must be an object`);
+      continue;
+    }
+    const key = assetText(item.assetKey);
+    const category = assetText(item.category);
     if (!/^(CHARACTER|PROP|SCENE|CREATURE)-[A-Z0-9][A-Z0-9_-]{1,63}$/.test(key)) errors.push(`ASSET_PLAN invalid assetKey ${key || "<empty>"}`);
     if (!ASSET_CATEGORIES.has(category)) errors.push(`ASSET_PLAN ${key} has invalid category ${category}`);
     if (key && category && !key.startsWith(`${category}-`)) errors.push(`ASSET_PLAN ${key} must use ${category}- prefix`);
-    for (const field of ["name", "description", "sourceEvidence", "usage", "prompt", "negativePrompt"]) if (!text(item[field])) errors.push(`ASSET_PLAN ${key} requires ${field}`);
+    for (const field of ["name", "description", "sourceEvidence", "usage", "prompt", "negativePrompt"]) if (!assetText(item[field])) errors.push(`ASSET_PLAN ${key} requires ${field}`);
     if (item.required !== true && item.required !== false) errors.push(`ASSET_PLAN ${key} requires boolean required status`);
-    if (text(item.aspectRatio) !== "16:9") errors.push(`ASSET_PLAN ${key} aspectRatio must be 16:9`);
-    if (!hasAny(item.prompt, ["影视级3D国漫CG风格", "影视级 3D 国漫 CG 风格"])) errors.push(`ASSET_PLAN ${key} prompt must preserve the canonical 3D Chinese animation style`);
-    const negativeText = `${text(item.negativePrompt)} ${text(item.prompt)}`.replace(/\s+/gu, "");
-    for (const negative of ["不要文字", "不要水印", "不要logo", "不要主体裁切", "不要主体缺失", "不要多余人物", "不要复杂背景", "不要畸形肢体", "不要低清模糊"]) {
+    if (assetText(item.aspectRatio) !== "16:9") errors.push(`ASSET_PLAN ${key} aspectRatio must be 16:9`);
+    if (!hasAny(assetText(item.prompt), ["影视级3D国漫CG风格", "影视级 3D 国漫 CG 风格"])) errors.push(`ASSET_PLAN ${key} prompt must preserve the canonical 3D Chinese animation style`);
+    const negativeText = `${assetText(item.negativePrompt)} ${assetText(item.prompt)}`.replace(/\s+/gu, "");
+    for (const negative of ASSET_PLAN_NEGATIVE_CONSTRAINTS) {
       if (!negativeText.includes(negative)) errors.push(`ASSET_PLAN ${key} must include negative constraint: ${negative}`);
     }
     for (const forbidden of ["assetId", "selectedAssetId", "generationIds", "candidateAssetIds", "referenceId", "publicAssetId"]) if (Object.hasOwn(item, forbidden)) errors.push(`ASSET_PLAN model output must not own ${forbidden}`);
   }
-  const inventoryByKey = new Map(inventory.map((item: any) => [text(item.assetKey), item]));
+  const inventoryByKey = new Map(inventory.filter(isRecord).map((item: any) => [assetText(item.assetKey), item]));
   for (const item of items) {
-    const inventoryItem = inventoryByKey.get(text(item.assetKey));
-    if (!inventoryItem) errors.push(`ASSET_PLAN ${text(item.assetKey)} must appear in candidateInventory`);
-    else if (Boolean(inventoryItem.required) !== Boolean(item.required)) errors.push(`ASSET_PLAN ${text(item.assetKey)} required status must match candidateInventory`);
+    if (!isRecord(item)) continue;
+    const inventoryItem = inventoryByKey.get(assetText(item.assetKey));
+    if (!inventoryItem) errors.push(`ASSET_PLAN ${assetText(item.assetKey)} must appear in candidateInventory`);
+    else if (Boolean(inventoryItem.required) !== Boolean(item.required)) errors.push(`ASSET_PLAN ${assetText(item.assetKey)} required status must match candidateInventory`);
   }
   return result(errors);
 }
@@ -942,6 +960,11 @@ function validationFor(stageId: VideosBatchTextStageId, artifact: unknown, ctx: 
   }
 }
 
+/** Reuse the full ASSET_PLAN business contract at non-stage execution boundaries. */
+export function validateVideosBatchAssetPlan(artifact: unknown): ValidationResult {
+  return validateAssetPlan(artifact);
+}
+
 async function executeStructuredStage(
   stageId: VideosBatchTextStageId,
   ctx: StageExecutionContext,
@@ -1166,7 +1189,10 @@ function createStage(stageId: VideosBatchTextStageId, executor: VideosBatchLlmEx
         const sourceRevision = Number(ctx.workflow.stages.FINAL_STORYBOARD?.revision) || 0;
         const projected = await projectFinalStoryboardIntoSeeReel(ctx.store, ctx.session.id, artifact, {
           sourceRevision,
-          sourceHash: canonicalStoryboardSourceHash(artifact)
+          sourceHash: canonicalStoryboardSourceHash(artifact),
+          assetPlan: ctx.workflow.stages.ASSET_PLAN,
+          screenplay: ctx.workflow.stages.SCREENPLAY?.artifact,
+          assetConfirmation: ctx.workflow.stages.ASSET_CONFIRMATION?.artifact
         });
         (artifact?.segments || []).forEach((segment: any, index: number) => { if (projected[index]) segment.nativeShotId = projected[index].id; });
       }
