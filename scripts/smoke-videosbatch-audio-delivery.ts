@@ -25,8 +25,9 @@ process.chdir(tmp);
 process.env.VIDEOSBATCH_MEDIA_MODE = "fake";
 
 try {
-  const [mediaModule] = await Promise.all([
-    import("../src/server/videosBatchWorkflow/nativeMediaStages")
+  const [mediaModule, canonicalModule] = await Promise.all([
+    import("../src/server/videosBatchWorkflow/nativeMediaStages"),
+    import("../src/server/videosBatchWorkflow/canonicalStoryboard")
   ]);
 
   const registry = mediaModule.createVideosBatchNativeMediaStageRegistry();
@@ -37,8 +38,10 @@ try {
 
   // The audio timeline must carry the current FINAL_STORYBOARD lineage. The
   // fixture therefore pins one stable hash for both the storyboard stage and
-  // the timeline, mirroring how the real runner stamps them.
-  const STORYBOARD_HASH = "storyboard-hash";
+  // the timeline, mirroring how the real runner stamps them: both sides use
+  // the canonical storyboard source hash (the stage wrapper's generic
+  // contentHash is NOT the identity the audio gates compare against).
+  const STORYBOARD_HASH = canonicalModule.canonicalStoryboardSourceHash({ targetDuration: 20 });
 
   const timelineWithEvents = () => ({
     schemaVersion: "1",

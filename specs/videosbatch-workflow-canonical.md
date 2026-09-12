@@ -3,12 +3,12 @@
 Status: active
 Last Reviewed: 2026-09-12
 Spec ID: `VIDEOSBATCH_WORKFLOW_CANONICAL`
-Canonical Version: `1.4.2`
+Canonical Version: `1.4.3`
 Owner: VideosBatch 产品与运行时
 
 > 本文件是 VideosBatch 课程视频工作流的唯一有效设计真源。所有阶段顺序、提示词材料、字段语义、输出格式、人工门禁、版本血缘、重试、资产和媒体规则均以本文件为准。
 >
-> 阶段 1 的文档治理和阶段 2 的归档已经完成；1.1.0 增加参考图绑定合同，1.2.0 增加音频就绪门禁与 PARTIAL 重试合同，1.3.0 增加凭据卫生守卫，1.4.0 增加可插拔语音合成 Provider（MiniMax T2A v2），1.4.1 将静态提示词骨架外置为 `src/server/prompts/*.md` 加载器注入，1.4.2 按结构化范式重写全部骨架文本（要求集合与合同不变），分别按对应落地文档执行。
+> 阶段 1 的文档治理和阶段 2 的归档已经完成；1.1.0 增加参考图绑定合同，1.2.0 增加音频就绪门禁与 PARTIAL 重试合同，1.3.0 增加凭据卫生守卫，1.4.0 增加可插拔语音合成 Provider（MiniMax T2A v2），1.4.1 将静态提示词骨架外置为 `src/server/prompts/*.md` 加载器注入，1.4.2 按结构化范式重写全部骨架文本（要求集合与合同不变），1.4.3 依据 Tier 1 真实模型验收补齐确定性归一化合同（机械违规 sanitize、两档资产引用解析、预算感知提示注入、编译器自然中文斜杠分界），分别按对应落地文档执行。
 >
 > JSON 只承担传输和持久化结构；它不能删减、替代或改写上游手册规定的字段语义和创作约束。模型输出是建议稿，服务端校验、用户确认和版本血缘才决定可继续的事实。
 
@@ -2389,6 +2389,8 @@ P001-A004：黄色小花（道具）
 - 每条前 2 秒必须有钩子/异常/问题，中段推进冲突或知识关系，最后 2–3 秒留下问题、悬念或课堂衔接点；每条 1–2 句旁白/台词，音效不超过十字并与画面同步。
 - 画面效果优先使用可制作的二维动画、课件动画、动态图解、简单动作、局部特写和轻量特效；禁止血腥、恐怖、低俗、成人化、压迫惊吓、复杂大场面和知识错误。
 - `FINAL_STORYBOARD` 的对象引用只使用语义标签；稳定公开资产 ID 不得进入正式分镜、模型输入或 `references`。
+- 1.4.3（Tier 1 真实模型验收结论）：Provider 产物在进入校验器前必须先经 `normalizeStoryboardProviderArtifact` 的确定性机械清理，骨架规则只对强模型有效，弱模型「写了也不执行」的违规类必须由代码层兜住：同段 `references` 按语义文本去重并截断到 7 个；段级 voice 预算按 `Math.max(1, sentenceCount)` 清点（纯提示 voice 零句读标记也占 1 句），超预算的 voice 置「无」或裁句，其问题/悬念提示挪入对应子镜头 `visual`；钩子与悬念注入必须在 sanitize 之后并感知剩余预算（预算不足时提示写进 `visual` 而非 voice）。voice 只保留要念出的文本：`旁白/字幕：`、`旁白：` 等已知元标签前缀在 sanitize 阶段剥离（TTS 会念出标签），角色对白前缀不在剥离范围。
+- 1.4.3：执行包对 `FINAL_STORYBOARD.references` 的解析采用两档匹配——先按名称级（assetKey、稳定 ID、资产名、标签）命中，命中恰好 1 个即采用；仅当 0 命中时才放宽到描述级匹配，≥2 命中仍按 `FINAL_STORYBOARD_REFERENCE_UNRESOLVED` 失败。资产描述里提到其他资产名不得造成名称级误判。
 
 ### 7.6 垫图副本、报价与执行
 
@@ -2396,6 +2398,7 @@ P001-A004：黄色小花（道具）
 - 不得新增、删除或改写正式分镜的字段、对白、旁白、字幕、音效、时间片段、镜头、动作、转场或教学目的；只生成派生文本和 `referenceAssetIds`。
 - 正式分镜、剧本或资产计划版本变化后副本立即 stale；报价必须重新从当前全祖先 hash 和资产顺序生成。
 - 执行按一对一十秒片段映射，不自动合并或拆分；拼接只读取 ready 片段和独立音频时间线，不能把视觉 prompt 当旁白或把旁白重复拼入视频。
+- 1.4.3：Shot Provider Prompt 编译器的结构化路径检查对自然中文留出明确分界——每个斜杠段都是纯汉字且只出现正斜杠的短语（如「旁白/字幕」「正面/侧面」）按自然语言放行；反斜杠、扩展名点、ASCII 或数字段组合仍按路径拦截。纯汉字相对路径（如「资料/角色」）因此不再拦截，属已记录的安全取舍；其余六类禁止模式（稳定编号、URL、media 目录、盘符、UNC、POSIX 目录、内部标识）不变。
 - `ShotExecutionPackage` 构造与校验必须接收当前 `FINAL_STORYBOARD` 血缘以及真实的 `ASSET_PLAN` ready stage wrapper（含 `status=ready`、正 revision、匹配的 `contentHash` 和 `artifact`）；必须重新执行 `ASSET_PLAN` 业务校验，只有 metadata 的 lineage 不得构造或执行。`sourceRevision/revision`、`sourceHash/hash` 等兼容别名出现冲突时必须拒绝，不能静默选择其一。
 
 ### 7.7 H3 参考图绑定
@@ -2422,6 +2425,8 @@ P001-A004：黄色小花（道具）
 - canonical fake 链路必须与 native 链路产生同构的 `AUDIO_DELIVERY` 产物，使离线合同验证能够覆盖音频门禁；fake 产物使用 `fake://` URL 且仅在 fake 注册表内被接受，native 链路不得放行该 scheme。
 - `AUDIO_DELIVERY` 的语音合成必须可插拔：`VIDEOSBATCH_TTS_PROVIDER` 取 `fake`（默认，本地等长静音，零成本）或 `minimax`（MiniMax T2A v2，按字符计费）。开关只影响 `synthesizeSpeech`；音效 `materializeSoundEffect` 与混音 `mixAudioTimeline` 始终为本地实现，因为 T2A 只做语音合成，且各音轨已是本机文件。`AUDIO_DELIVERY` 产物的 `provider` 字段必须如实反映本次语音的实际来源，使评审者能区分计费运行与零成本运行。
 - `VIDEOSBATCH_TTS_PROVIDER=minimax` 缺少 `MINIMAX_API_KEY` 时必须在运行时配置解析阶段失败关闭，不得静默降级为静音。TTS 开关独立于 `VIDEOSBATCH_MEDIA_MODE`：`tts=minimax` 与 `media=fake` 并存时必须只覆盖 `AUDIO_DELIVERY` 阶段，视觉链路保持 fake。
+- 1.4.3：音频时间线对 `FINAL_STORYBOARD` 的版本身份统一使用分镜规范化源哈希（canonical source hash），fake 与 native 两条链的盖章与全部音频门禁校验必须同口径。stage 包装的通用 `contentHash` 会随服务端字段（如投影注入的 `nativeShotId`）变化，不得作为音频时间线的血缘比对基准；否则 LLM 文本阶段 + 投影的真实运行会把新鲜时间线误判为 stale（Tier 1 真实验证发现）。
+- 1.4.3：本机捆绑的 ffmpeg 混音不得把 `apad,atrim` 追加在 `amix` 输出之后（老构建在该形态下死锁忙转、零输出）；每路输入先 `apad,atrim` 到时间线全长再等长 amix，输出自然达到目标时长（59 路实测从挂起 >20 分钟降至约 1 秒）。
 
 ### 7.10 语音合成 Provider（MiniMax T2A v2）
 
@@ -2455,6 +2460,7 @@ P001-A004：黄色小花（道具）
 ### 8.1 文本 Provider
 
 - 当前本地路由记录为主模型 `gpt-5.6-terra`、备用模型 `deepseek-v4-flash`；模型、端点和密钥只来自受保护运行时配置，本文不记录秘密。
+- 1.4.3（Tier 1 真实验收结论）：大 JSON 阶段（FINAL_STORYBOARD）经代理稳定出现 ~126s 网关超时（HTTP 524），主模型重试预算内每次尝试都先耗满超时才落到备用模型，验收与超时配置必须按该量级设计；stage 级模型覆盖只替换模型名、请求仍走主通道端点，备用模型只能经备用通道到达。弱模型产物的机械违规以 6.5 节确定性清理为准，不依赖提示词服从。
 - 首轮 Provider 操作（包括网络重试和主备切换）共享最多 3 次提交预算；同一用户操作中的阶段层和执行器不得再叠加隐藏的首轮请求。
 - 结构化结果通过 Provider 返回但未通过业务合同时，合同修复使用独立、最多 2 次的修复预算，不占用首轮 3 次预算。修复仍必须有明确上限、幂等键和可观测记录；修复预算耗尽后保留最后产物并标记阶段失败，可由显式重试接口重新开始。
 - 可重试条件：连接重置、`fetch failed`、超时、502/503/504、明确的结构化合同错误或截断；权限、版本冲突、资产归属、余额不足和未知提交不自动重试。

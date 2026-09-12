@@ -164,6 +164,9 @@ const storyboard = getVideosBatchTextStageSpec("FINAL_STORYBOARD" as any, workfl
 const storyboardPrompt = storyboard.systemPrompt + storyboard.buildUserPrompt(workflow);
 assert.ok(storyboardPrompt.includes("必须返回恰好"));
 assert.ok(storyboardPrompt.includes("必须返回恰好"));
+// 2026-09-12 Tier 1 真实验收发现的两个失败模式，必须显式禁止：
+assert.ok(storyboardPrompt.includes("每个语义标签只能出现一次"), "storyboard must forbid duplicate reference labels");
+assert.ok(storyboardPrompt.includes("其余子镜头 voice 一律写「无」"), "storyboard must pin the mechanical voice rule");
 const segmentSchema = (storyboard.jsonSchema as any).properties.segments.items;
 assert.equal(segmentSchema.oneOf, undefined, "provider schema must not use unsupported oneOf");
 assert.ok(segmentSchema.properties.characters, "STORY storyboard role field must be present");

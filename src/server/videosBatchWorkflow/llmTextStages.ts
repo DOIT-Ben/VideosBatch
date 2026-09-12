@@ -340,6 +340,79 @@ function semanticLabelValid(label: string, type: string): boolean {
   return prefixes.some((prefix) => label.startsWith(`【${prefix}：`) && label.endsWith("】") && semanticLabelText(label).length > 0);
 }
 
+const VOICE_CUE_PATTERN = /(?:问题|悬念)[：:][^。！？!?]*$/u;
+// Provider 会在 voice 里加「旁白/字幕：」「旁白：」这类元标签前缀（2026-09-12 Tier 1
+// 真实模型验收发现）。voice 只应包含要念出的文本；标签前缀交给 TTS 会被念出来，
+// 且「旁白/字幕」的斜杠形态会触发 prompt 编译器的路径检查。只剥已知元标签，
+// 不动「小明：…」这类角色对白前缀（那是 TTS 需要的说话人标注语境，交由上游处理）。
+const VOICE_META_LABEL_PATTERN = /^(?:(?:旁白|字幕|画外音|独白|解说|配音|VO)(?:[/／](?:旁白|字幕|画外音|独白|解说|配音|VO))*)(?:\s*[（(]?[^（）()]{0,12}[）)])?\s*[：:]\s*/u;
+
+function truncateVoiceSentences(value: string, keep: number): string {
+  const sentences = [...value.matchAll(/[^。！？!?]*[。！？!?]/gu)].map((match) => match[0]);
+  if (!sentences.length) return value;
+  return sentences.slice(0, Math.max(keep, 0)).join("");
+}
+
+/**
+ * Deterministic cleanup for the mechanical violation classes that providers
+ * repeat even when the skeleton and the repair checklist state the rule
+ * explicitly (found in the 2026-09-12 Tier 1 real-model acceptance):
+ *  - duplicate reference labels inside one segment
+ *  - more than 7 references per segment
+ *  - more than 2 voice sentences per segment (and per subshot)
+ * The validator remains authoritative; this only removes violations before it
+ * runs. Any voice it trims or blanks keeps its 问题/悬念 cue by moving it into
+ * the subshot `visual` field so the hook/suspense checks still pass.
+ */
+function sanitizeStoryboardMechanicalViolations(segment: Record<string, any>) {
+  if (Array.isArray(segment.references)) {
+    const seen = new Set<string>();
+    const deduped: any[] = [];
+    for (const reference of segment.references) {
+      if (!reference || typeof reference !== "object") continue;
+      const label = text(reference.label);
+      if (!label) continue;
+      const key = (semanticLabelText(label) || label).toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      deduped.push(reference);
+    }
+    segment.references = deduped.slice(0, 7);
+  }
+  if (!Array.isArray(segment.visualEffects)) return;
+  let spokenSentences = 0;
+  for (const effect of segment.visualEffects) {
+    if (!effect || typeof effect !== "object") continue;
+    const rawVoice = text(effect.voice);
+    const voice = rawVoice.replace(VOICE_META_LABEL_PATTERN, "");
+    if (voice !== rawVoice) effect.voice = voice;
+    if (!voice || voice === "无") continue;
+    const allowed = 2 - spokenSentences;
+    if (allowed <= 0) {
+      const cue = voice.match(VOICE_CUE_PATTERN)?.[0];
+      if (cue && !text(effect.visual).includes(cue)) effect.visual = `${text(effect.visual)}；${cue}`;
+      effect.voice = "无";
+      continue;
+    }
+    const marks = sentenceCount(voice);
+    if (Math.max(1, marks) <= allowed) {
+      spokenSentences += Math.max(1, marks);
+      continue;
+    }
+    if (marks > 0) {
+      const trimmedVoice = truncateVoiceSentences(voice, allowed);
+      const cue = voice.match(VOICE_CUE_PATTERN)?.[0];
+      const finalVoice = cue && !trimmedVoice.includes(cue) ? trimmedVoice + cue : trimmedVoice;
+      effect.voice = finalVoice;
+      spokenSentences += allowed;
+    } else {
+      const cue = voice.match(VOICE_CUE_PATTERN)?.[0];
+      if (cue && !text(effect.visual).includes(cue)) effect.visual = `${text(effect.visual)}；${cue}`;
+      effect.voice = "无";
+    }
+  }
+}
+
 /** Normalize a provider's plain `人物：...` label without changing its meaning. */
 function normalizeStoryboardProviderArtifact(value: unknown, ctx: StageExecutionContext): any {
   if (!value || typeof value !== "object" || Array.isArray(value)) return value;
@@ -373,6 +446,28 @@ function normalizeStoryboardProviderArtifact(value: unknown, ctx: StageExecution
     const previousSceneSequence = segmentIndex > 0 ? Number(copy.segments[segmentIndex - 1]?.screenplaySceneSequence) : undefined;
     if (segmentIndex === 0 || previousSceneSequence !== sceneSequence) segment.chapter = `第${sceneSequence}章`;
     else segment.chapter = null;
+    if (Array.isArray(segment.references)) {
+      for (const reference of segment.references) {
+        if (!reference || typeof reference.label !== "string") continue;
+        const label = reference.label.trim();
+        const match = label.match(new RegExp(`^【?(${prefixes.join("|")}|人物|道具|主体)[：:]\\s*(.+?)】?$`, "u"));
+        const semantic = match?.[2]?.trim() || label.replace(/^【[^：:]+[：:]/u, "").replace(/】$/u, "").trim();
+        const semanticKey = semanticLabelText(semantic);
+        const fact = facts.find((candidate: any) => normalizedFact(candidate).some((known) => known === semanticKey || known.includes(semanticKey) || semanticKey.includes(known)));
+        if (fact) {
+          reference.label = `【${prefixForFact(fact)}：${text(fact.name)}】`;
+        } else if (match) {
+          reference.label = `【${match[1]}：${semantic}】`;
+        }
+      }
+    }
+    // Must run AFTER label normalization (canonical labels dedupe correctly)
+    // and BEFORE the hook/suspense cue injection below: voice trimming can
+    // remove the only suspense/hook wording, so the cues must be decided on
+    // the post-sanitize text (found in the 2026-09-12 Tier 1 acceptance).
+    // The injected cues carry no 。！？!? marks, so they never break the
+    // 2-sentence voice budget enforced above.
+    sanitizeStoryboardMechanicalViolations(segment);
     if (Array.isArray(segment.visualEffects)) {
       for (const effect of segment.visualEffects) {
         if (!effect || typeof effect.timeRange !== "string") continue;
@@ -386,29 +481,31 @@ function normalizeStoryboardProviderArtifact(value: unknown, ctx: StageExecution
           if (typeof effect[field] === "string") effect[field] = removePositionalImageWording(effect[field]);
         }
       }
+      // Cue placement must respect the segment-wide 2-sentence voice budget:
+      // a cue-only voice still counts as 1 sentence for the validator
+      // (Math.max(1, sentenceCount)), so when the budget is exhausted the cue
+      // goes into `visual` instead — the hook/suspense checks accept it there
+      // (found in the 2026-09-12 Tier 1 real-model acceptance).
+      const voiceSentenceTotal = () => segment.visualEffects.reduce((total: number, effect: any) => {
+        const current = text(effect?.voice);
+        return total + (current && current !== "无" ? Math.max(1, sentenceCount(current)) : 0);
+      }, 0);
+      const canAppendVoiceCue = (effect: any) => {
+        const current = text(effect?.voice);
+        if (sentenceCount(current) >= 2) return false;
+        const occupiesNow = current && current !== "无" ? Math.max(1, sentenceCount(current)) : 0;
+        const afterAppend = current && current !== "无" ? occupiesNow : 1;
+        return voiceSentenceTotal() - occupiesNow + afterAppend <= 2;
+      };
       const first = segment.visualEffects[0];
       const last = segment.visualEffects[segment.visualEffects.length - 1];
       if (first && !hasAny([first.visual, first.action, first.voice].join(" "), ["？", "?", "为什么", "怎么", "怎样", "如何", "突然", "异常", "问题", "争议", "发现", "出错", "停住"])) {
-        if (sentenceCount(text(first.voice)) < 2) appendVoiceCue(first, "问题：接下来会怎样");
+        if (canAppendVoiceCue(first)) appendVoiceCue(first, "问题：接下来会怎样");
         else first.visual = `${text(first.visual)}；问题：接下来会怎样`;
       }
       if (last && !hasAny([last.visual, last.action, last.voice].join(" "), ["？", "?", "为什么", "怎么", "怎样", "如何", "悬念", "问题", "待解决", "思考", "接下来"])) {
-        if (sentenceCount(text(last.voice)) < 2) appendVoiceCue(last, "悬念：接下来如何判断");
+        if (canAppendVoiceCue(last)) appendVoiceCue(last, "悬念：接下来如何判断");
         else last.visual = `${text(last.visual)}；悬念：接下来如何判断`;
-      }
-    }
-    if (!Array.isArray(segment.references)) continue;
-    for (const reference of segment.references) {
-      if (!reference || typeof reference.label !== "string") continue;
-      const label = reference.label.trim();
-      const match = label.match(new RegExp(`^【?(${prefixes.join("|")}|人物|道具|主体)[：:]\\s*(.+?)】?$`, "u"));
-      const semantic = match?.[2]?.trim() || label.replace(/^【[^：:]+[：:]/u, "").replace(/】$/u, "").trim();
-      const semanticKey = semanticLabelText(semantic);
-      const fact = facts.find((candidate: any) => normalizedFact(candidate).some((known) => known === semanticKey || known.includes(semanticKey) || semanticKey.includes(known)));
-      if (fact) {
-        reference.label = `【${prefixForFact(fact)}：${text(fact.name)}】`;
-      } else if (match) {
-        reference.label = `【${match[1]}：${semantic}】`;
       }
     }
   }

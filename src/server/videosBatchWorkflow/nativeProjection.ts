@@ -274,7 +274,10 @@ type SelectedConfirmedAsset = {
   selectedAssetId: string;
   assetKey: string;
   asset: Asset;
+  /** Name-level identity: asset key, stable id, display name, tags. */
   labels: string[];
+  /** Free-text description; only consulted when the name tier finds nothing. */
+  descriptionLabels: string[];
 };
 
 function selectedConfirmedAssets(
@@ -314,7 +317,10 @@ function selectedConfirmedAssets(
         selectedAssetId,
         assetKey,
         asset,
-        labels: [item.assetKey, stableId, asset.name, asset.description, ...(asset.tags || [])]
+        labels: [item.assetKey, stableId, asset.name, ...(asset.tags || [])]
+          .map(semanticLabelText)
+          .filter(Boolean),
+        descriptionLabels: [asset.description]
           .map(semanticLabelText)
           .filter(Boolean)
       };
@@ -338,11 +344,27 @@ function resolveReferenceBindingsForSegment(
     const reference = rawReference as unknown as Record<string, unknown>;
     const explicitStableId = String(reference.publicAssetId || reference.assetId || "").trim();
     const label = semanticLabelText(reference.label);
-    const matches = explicitStableId
-      ? selectedAssets.filter((item) => item.stableId === explicitStableId)
-      : label
-        ? selectedAssets.filter((item) => item.labels.some((candidate) => candidate === label || candidate.includes(label) || label.includes(candidate)))
-        : [];
+    const matchLabelIn = (candidatesOf: (item: SelectedConfirmedAsset) => readonly string[]) =>
+      selectedAssets.filter((item) => candidatesOf(item).some((candidate) => candidate === label || candidate.includes(label) || label.includes(candidate)));
+    let matches: SelectedConfirmedAsset[];
+    if (explicitStableId) {
+      matches = selectedAssets.filter((item) => item.stableId === explicitStableId);
+    } else if (label) {
+      // Two-tier resolution. Name-level identity (asset key / stable id / name /
+      // tags) wins outright; the free-text description is only consulted when
+      // the name tier finds nothing. Descriptions routinely mention OTHER
+      // assets (e.g. a classmate's outfit note that contains 「数学老师」), so a
+      // flat substring pool mis-resolves one-of-many and kills projection
+      // (found in the 2026-09-12 Tier 1 real-model acceptance).
+      const nameTier = matchLabelIn((item) => item.labels);
+      matches = nameTier.length === 1
+        ? nameTier
+        : nameTier.length === 0
+          ? matchLabelIn((item) => item.descriptionLabels)
+          : nameTier;
+    } else {
+      matches = [];
+    }
     if (matches.length !== 1) {
       throw projectionFailure(
         `No unique confirmed native asset for semantic reference ${String(reference.label || explicitStableId || "<empty>")}`,

@@ -391,6 +391,26 @@ function stageSource(workflow: any, stageId: string) {
   };
 }
 
+/**
+ * Version identity of the FINAL_STORYBOARD as consumers of its DERIVED data
+ * must see it: the canonical storyboard source hash. The stage wrapper's
+ * generic `contentHash` changes whenever the artifact is mutated server-side
+ * (e.g. the projection step injects `nativeShotId` into segments), while the
+ * canonical hash deliberately excludes those server-owned fields. The audio
+ * timeline stamps the canonical hash when it is built, so every audio gate
+ * must compare against the same definition — comparing against the wrapper
+ * hash made real (LLM text stages + projection) runs report a fresh timeline
+ * as "stale" (2026-09-12 Tier 1 real-run finding; the fake validator in
+ * stages.ts already used the canonical definition).
+ */
+function storyboardSource(workflow: any) {
+  const state = workflow?.stages?.FINAL_STORYBOARD;
+  return {
+    revision: Number(state?.revision) || 0,
+    hash: canonicalStoryboardSourceHash(state?.artifact || { segments: [] })
+  };
+}
+
 function stageSources(workflow: any, stageIds: readonly string[]) {
   return Object.fromEntries(stageIds.map((stageId) => {
     const source = stageSource(workflow, stageId);
@@ -431,7 +451,10 @@ function voiceStream(voice: string): "narration" | "dialogue" {
 function buildAudioTimeline(workflow: any, storyboard: any): VideosBatchAudioTimeline {
   const canonical = normalizeStoryboardArtifact(storyboard);
   if (!canonical) throw new Error("FINAL_STORYBOARD must be canonical before building the audio timeline");
-  const source = stageSource(workflow, "FINAL_STORYBOARD");
+  // Stamp the canonical storyboard identity (see storyboardSource): stable
+  // across server-side artifact mutations such as projection-injected
+  // nativeShotIds, and the same definition every audio gate compares against.
+  const source = storyboardSource(workflow);
   const narration: VideosBatchAudioEvent[] = [];
   const dialogue: VideosBatchAudioEvent[] = [];
   const soundEffects: VideosBatchAudioEvent[] = [];
@@ -807,7 +830,7 @@ function validateAudioDelivery(artifact: any, ctx: StageExecutionContext) {
     || Number((ctx.workflow.stages.FINAL_STORYBOARD?.artifact as any)?.targetDuration)
     || 0;
   const audioErrorStart = errors.length;
-  validateAudioTimeline(artifact.audioTimeline, expectedDuration, stageSource(ctx.workflow, "FINAL_STORYBOARD"), errors, "delivery");
+  validateAudioTimeline(artifact.audioTimeline, expectedDuration, storyboardSource(ctx.workflow), errors, "delivery");
   const audioNotReady = errors.slice(audioErrorStart).some((message) => message.startsWith("AUDIO_TIMELINE_NOT_READY:"));
 
   if (artifact.status === "READY" && audioNotReady) {
@@ -1070,7 +1093,7 @@ async function stitchGateErrors(
   if (audioDeliveryState?.status !== "ready") {
     errors.push("AUDIO_TIMELINE_NOT_READY: STITCH requires a current READY AUDIO_DELIVERY artifact");
   }
-  validateAudioTimeline(audioTimeline, expectedDuration, stageSource(ctx.workflow, "FINAL_STORYBOARD"), errors, "delivery");
+  validateAudioTimeline(audioTimeline, expectedDuration, storyboardSource(ctx.workflow), errors, "delivery");
   return errors;
 }
 
@@ -1512,7 +1535,7 @@ export function createVideosBatchNativeMediaStageRegistry(
         errors.push("EXECUTION READY requires exactly one renderId for every nativeShotId");
       }
       const expectedDuration = Number(storyboard?.targetDuration) || nativeShotIds.length * EXPECTED_SHOT_DURATION_SEC;
-      validateAudioTimeline(artifact?.audioTimeline, expectedDuration, stageSource(ctx.workflow, "FINAL_STORYBOARD"), errors);
+      validateAudioTimeline(artifact?.audioTimeline, expectedDuration, storyboardSource(ctx.workflow), errors);
       const sources = sourceLineage(ctx.workflow, ["FINAL_STORYBOARD", "ASSET_CONFIRMATION", "QUOTE"]);
       for (const sourceId of ["FINAL_STORYBOARD", "ASSET_CONFIRMATION", "QUOTE"]) {
         if (text(artifact?.sourceHashes?.[sourceId]) !== sources.sourceHashes[sourceId]) errors.push(`EXECUTION source hash for ${sourceId} is stale or missing`);
@@ -1675,7 +1698,7 @@ export function createVideosBatchNativeMediaStageRegistry(
       }
       const audioErrorStart = errors.length;
       const expectedDuration = Number(storyboard?.targetDuration) || Number(deliveryTimeline?.durationSec) || 0;
-      validateAudioTimeline(deliveryTimeline, expectedDuration, stageSource(ctx.workflow, "FINAL_STORYBOARD"), errors, "delivery");
+      validateAudioTimeline(deliveryTimeline, expectedDuration, storyboardSource(ctx.workflow), errors, "delivery");
       const audioNotReady = errors.slice(audioErrorStart).some((message) => message.startsWith("AUDIO_TIMELINE_NOT_READY:"));
       return {
         ok: errors.length === 0,

@@ -503,8 +503,9 @@ for (const [label, value] of [
   ["dot relative path", "场景 ./private/config"],
   ["ordinary relative path", "场景 foo/bar"],
   ["duplicate ordinary relative path", "场景 foo//bar"],
-  ["unicode relative path", "场景 资料/角色"],
-  ["duplicate unicode relative path", "场景 资料//角色"],
+  ["unicode path with extension", "场景 资料/角色.png"],
+  ["unicode mixed ascii path", "场景 资料/file1"],
+  ["unicode numeric path", "场景 资料/2024"],
   ["windows relative path", "场景 foo\\bar"],
   ["unicode windows relative path", "场景 资料\\角色"],
   ["media path", "场景 /media/scene.png"],
@@ -520,7 +521,10 @@ for (const [label, value] of [
   ["fraction 3/4", "比例 3/4"],
   ["fraction 1/2", "概率 1/2"],
   ["calendar date", "日期 2026/09/03"],
-  ["non-padded calendar date", "日期 2026/9/3"]
+  ["non-padded calendar date", "日期 2026/9/3"],
+  ["unicode natural slash phrase", "分类 旁白/字幕"],
+  ["unicode natural slash phrase second", "视角 正面/侧面"],
+  ["unicode natural triple slash phrase", "层次 远/中/近"]
 ] as const) {
   const mathematicalText = rehashed(base, (candidate) => {
     (candidate.visual as Record<string, unknown>).role = value;

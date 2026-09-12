@@ -70,6 +70,12 @@ const UNC_PATH_PATTERN = /\\\\[A-Za-z0-9._-]+[\\/]/u;
 const POSIX_PATH_PATTERN = /(?:^|[\s(])\/(?:Users|user|home|tmp|var|mnt|workspace|data|private|opt|srv|media)(?:[\\/]|$)/iu;
 const STRUCTURED_PATH_PATTERN = /[\p{L}\p{N}._~-]+(?:[/\\]+[\p{L}\p{N}._~-]+)+/gu;
 const NUMERIC_SLASH_EXPRESSION_PATTERN = /^(?:\d+(?:\.\d+)?\/\d+(?:\.\d+)?|\d{4}\/\d{1,2}\/\d{1,2})$/u;
+// 「旁白/字幕」「正面/侧面」这类纯汉字正斜杠短语是自然语言，不是文件路径（2026-09-12
+// Tier 1 真实模型验收发现：12 段真实分镜里 1 处即导致整链失败）。路径与自然短语的分界：
+//  - 反斜杠、扩展名点、ASCII/数字段 → 一律按路径拦截（真实泄漏均为该形态）；
+//  - 每段都是纯汉字且只出现正斜杠 → 视为自然短语放行（中文不用反斜杠，自然短语
+//    不带扩展名）。由此「资料/角色」这类纯汉字相对路径不再拦截，属已知取舍。
+const HAN_SEGMENT_PATTERN = /^[\p{Script=Han}]+$/u;
 const PROMPT_ESCAPE_PATTERN = /\\(?:\\|n|u[0-9a-f]{4})/gu;
 const PROVIDER_PROMPT_SLASH_EXCEPTIONS = new Set([
   "保持人物/主体、场景、道具/辅助元素的身份连续。",
@@ -436,6 +442,12 @@ function packageValidationIssue(
   });
 }
 
+function isNaturalCjkSlashPhrase(match: string): boolean {
+  if (match.includes("\\")) return false;
+  const segments = match.split(/[/\\]+/u);
+  return segments.length >= 2 && segments.every((segment) => HAN_SEGMENT_PATTERN.test(segment));
+}
+
 function hasStructuredPath(
   value: string,
   allowedTokens: ReadonlySet<string> = new Set(),
@@ -447,7 +459,9 @@ function hasStructuredPath(
   );
   if (maskPromptEscapes) scanValue = scanValue.replace(PROMPT_ESCAPE_PATTERN, "");
   for (const match of scanValue.matchAll(STRUCTURED_PATH_PATTERN)) {
-    if (!allowedTokens.has(match[0]) && !NUMERIC_SLASH_EXPRESSION_PATTERN.test(match[0])) return true;
+    if (!allowedTokens.has(match[0])
+      && !NUMERIC_SLASH_EXPRESSION_PATTERN.test(match[0])
+      && !isNaturalCjkSlashPhrase(match[0])) return true;
   }
   return false;
 }

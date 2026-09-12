@@ -100,9 +100,24 @@ export async function mixFakeAudioTimeline(
     // Older bundled ffmpeg builds lack `amix`'s `normalize` option, so scale the
     // summed volume explicitly to keep the mix from clipping when tracks overlap.
     const gain = roundSec(1 / Math.max(1, inputs.length));
+    // 2026-09-12 Tier 1 real-run finding: padding the MIX OUTPUT with a trailing
+    // `apad,atrim` deadlocks the bundled ffmpeg filter graph (busy-spins a full
+    // core for 20+ minutes at 59 inputs, zero output bytes). Pad every input to
+    // the full timeline length FIRST, then plain-amix equal-length inputs: the
+    // output is naturally `durationSec` long without any trailing pad chain.
+    // Verified locally: the same 59-input mix drops from hung (>20 min) to ~1s.
+    const chains: string[] = [];
+    const labels: string[] = [];
+    for (let index = 0; index < inputs.length; index += 1) {
+      chains.push(`[${index}:a]apad,atrim=0:${durationSec}[p${index}]`);
+      labels.push(`[p${index}]`);
+    }
+    chains.push(`${labels.join("")}amix=inputs=${inputs.length}:duration=longest,volume=${gain}[out]`);
     args.push(
       "-filter_complex",
-      `amix=inputs=${inputs.length}:duration=longest,volume=${gain},apad,atrim=0:${durationSec}`,
+      chains.join(";"),
+      "-map",
+      "[out]",
       "-c:a",
       "aac",
       "-b:a",
