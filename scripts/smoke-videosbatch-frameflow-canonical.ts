@@ -21,6 +21,7 @@ const expectedStageOrder = [
   "COPYABLE_PROMPT",
   "QUOTE",
   "EXECUTION",
+  "AUDIO_DELIVERY",
   "STITCH"
 ];
 assert.deepEqual(

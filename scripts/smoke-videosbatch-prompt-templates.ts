@@ -41,7 +41,7 @@ const anchors: Record<string, string[]> = {
   "videosbatch-final-storyboard": ["FINAL_10_SECOND", "targetDuration/10"],
   "videosbatch-copyable-prompt": ["垫图可复制提示词副本", "referenceAssetIds"],
   "short-film-outline": ["短片大纲", "严格 JSON"],
-  "short-film-casting": ["选角助手", "JSON"]
+  "short-film-casting": ["选角导演", "JSON"]
 };
 for (const name of names) {
   const content = loadPromptTemplate(name);
