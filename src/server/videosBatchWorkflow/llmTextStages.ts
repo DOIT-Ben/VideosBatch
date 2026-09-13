@@ -904,7 +904,7 @@ function contractRepairPrompt(
         .map((fact: any) => `【${text(fact.category) === "SCENE" ? "场景" : text(fact.category) === "CHARACTER" || text(fact.category) === "CREATURE" ? rolePrefix : supportPrefix}：${text(fact.name)}】`)
         .filter(Boolean)
         .join("、");
-      return `\n<repair_checklist>\nFINAL_STORYBOARD 本次必须返回恰好 ${count} 条 segments（targetDuration=${target} 秒），sequence 从1连续到${count}，不能返回9条或子集；每条只保留3个 visualEffects，duration 固定为2、4、4，timeRange 固定为0-2秒、2-6秒、6-10秒；每条全部 voice 合计1句（其余 voice 填“无”），sound 每项不超过10个非标点字符；首个子镜头 duration 不超过2秒且包含问题/异常/发现，末个子镜头保留悬念问题；chapter 只用第N章或 null。references 只能从以下确认资产标签中选择，并使用 ${rolePrefix}/${supportPrefix}/场景前缀：${labels || "确认资产清单"}。\n</repair_checklist>`;
+      return `\n<repair_checklist>\nFINAL_STORYBOARD 本次必须返回恰好 ${count} 条 segments（targetDuration=${target} 秒），sequence 从1连续到${count}，不能返回9条或子集；每条只保留3个 visualEffects，duration 固定为2、4、4，timeRange 固定为0-2秒、2-6秒、6-10秒；每条全部 voice 合计1—2句（至多两个子镜头各一句，其余 voice 填“无”，不允许一个子镜头出现两句），sound 每项不超过10个非标点字符；首个子镜头 duration 不超过2秒且包含问题/异常/发现，末个子镜头保留悬念问题；chapter 只用第N章或 null。references 只能从以下确认资产标签中选择，并使用 ${rolePrefix}/${supportPrefix}/场景前缀：${labels || "确认资产清单"}。\n</repair_checklist>`;
     })()
     : "";
   const partialInstruction = options.partial
