@@ -38,6 +38,36 @@
   background: rgba(255, 255, 255, 0.97);
 }
 
+.vbs-v2-header-left {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.vbs-v2-back {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px 0 10px;
+  border: 1px solid var(--vbs-v2-border);
+  border-radius: 999px;
+  background: var(--vbs-v2-surface);
+  color: var(--vbs-v2-text-soft);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color var(--vbs-v2-transition), background var(--vbs-v2-transition), color var(--vbs-v2-transition);
+}
+
+.vbs-v2-back:hover {
+  border-color: var(--vbs-v2-border-strong);
+  background: var(--vbs-v2-surface-muted);
+  color: var(--vbs-v2-text);
+}
+
 .vbs-v2-brand-lockup {
   min-width: 0;
   display: flex;
@@ -131,6 +161,65 @@
   font-size: 11px;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
+}
+
+/* The project chip doubles as the session switcher, so it needs its own
+   reset when rendered as a button. */
+button.vbs-v2-project-meta {
+  padding: 5px 9px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+  transition: border-color var(--vbs-v2-transition), background var(--vbs-v2-transition);
+}
+
+button.vbs-v2-project-meta:hover {
+  border-color: var(--vbs-v2-border);
+  background: var(--vbs-v2-surface-muted);
+}
+
+.vbs-v2-project-meta-chevron {
+  flex: none;
+  color: #c5c0b7;
+}
+
+.vbs-v2-session-menu {
+  min-width: 250px;
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+.vbs-v2-menu-label {
+  padding: 6px 10px;
+  color: var(--vbs-v2-text-soft);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.vbs-v2-menu-separator {
+  height: 1px;
+  margin: 5px 4px;
+  background: var(--vbs-v2-border);
+}
+
+.vbs-v2-menu-slot {
+  flex: none;
+  width: 15px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--vbs-v2-accent-deep);
+}
+
+.vbs-v2-menu-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .vbs-v2-mode-switch {
@@ -373,6 +462,9 @@
   border: 1px solid var(--vbs-v2-border);
   border-radius: 12px;
   background: var(--vbs-v2-surface);
+  /* The menu is portalled onto <body>, where SeeReel's light-on-dark text
+     colour is inherited; restate the studio's own so nothing falls back. */
+  color: var(--vbs-v2-text);
   box-shadow: 0 18px 45px rgba(25, 28, 32, 0.14);
 }
 

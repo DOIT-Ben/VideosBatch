@@ -12,6 +12,10 @@
                source and the two sets can never drift apart.
    ============================================================================ */
 
+/* :root carries the same values because Radix portals (the step-actions menu,
+   dialogs, drawers) render into <body> — outside the studio subtree — and would
+   otherwise resolve every token to nothing, leaving a menu with no surface. */
+:root,
 .videosbatch-studio-v2,
 .app-shell.videosbatch-canvas-mode {
   --vbs-v2-canvas: #f6f4ef;

@@ -1074,6 +1074,21 @@ export function App() {
     writeGalleryToPath();
   };
 
+  /**
+   * Session switching from inside the VideosBatch header. SeeReel's own sidebar
+   * is hidden in this mode, so these are the only entries left; always land on
+   * the workflow shell rather than whichever shell the previous session used.
+   */
+  const switchStudioSession = (sessionId: string) => {
+    setVideosBatchMode("workflow");
+    openStudioSession(sessionId);
+  };
+
+  const createStudioSession = () => {
+    setVideosBatchMode("workflow");
+    createSession();
+  };
+
   const openCanvas = () => {
     openStudioSession(selectedSessionId || latestSession?.id || "");
   };
@@ -2464,6 +2479,10 @@ export function App() {
               }));
             }}
             onOpenCanvas={() => setVideosBatchMode("canvas")}
+            sessions={sessions.map((item) => ({ id: item.id, title: item.title }))}
+            onBackToSessions={openGallery}
+            onSelectSession={switchStudioSession}
+            onNewSession={createStudioSession}
           />
         ) : (
           <>
@@ -2475,7 +2494,12 @@ export function App() {
                   : 0}
                 totalSteps={VIDEOS_BATCH_PRODUCT_STEPS.length}
                 activeMode="canvas"
+                sessions={sessions.map((item) => ({ id: item.id, title: item.title }))}
+                sessionId={selectedSession.id}
                 onOpenWorkflow={() => setVideosBatchMode("workflow")}
+                onBackToSessions={openGallery}
+                onSelectSession={switchStudioSession}
+                onNewSession={createStudioSession}
               />
             )}
           <Suspense fallback={<div className="flow-loading" role="status">{lang === "en" ? "Loading canvas..." : "正在加载画布..."}</div>}>

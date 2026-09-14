@@ -6,7 +6,7 @@ import type {
   VideosBatchStageId,
   VideosBatchWorkflowState
 } from "../../shared/videosBatchWorkflow";
-import { VideosBatchHeader } from "./VideosBatchHeader";
+import { VideosBatchHeader, type VideosBatchSessionOption } from "./VideosBatchHeader";
 import { WorkflowFooter } from "./WorkflowFooter";
 import { ArtifactDebugDrawer } from "./components/ArtifactDebugDrawer";
 import { WorkflowProgressRail } from "./components/WorkflowProgressRail";
@@ -81,7 +81,11 @@ export function VideosBatchStudio({
   nativeShots = [],
   workflow,
   onWorkflowChange,
-  onOpenCanvas
+  onOpenCanvas,
+  sessions = [],
+  onBackToSessions,
+  onSelectSession,
+  onNewSession
 }: {
   sessionId: string;
   sessionTitle: string;
@@ -91,6 +95,11 @@ export function VideosBatchStudio({
   workflow?: VideosBatchWorkflowState;
   onWorkflowChange: (workflow: VideosBatchWorkflowState) => void;
   onOpenCanvas: () => void;
+  /** The studio hides SeeReel's sidebar, so it carries its own session list. */
+  sessions?: VideosBatchSessionOption[];
+  onBackToSessions?: () => void;
+  onSelectSession?: (sessionId: string) => void;
+  onNewSession?: () => void;
 }) {
   const currentStepId = workflow ? deriveCurrentProductStep(workflow) : "lesson";
   const [selectedStepId, setSelectedStepId] = useState<VideosBatchProductStepId>(currentStepId);
@@ -297,7 +306,12 @@ export function VideosBatchStudio({
         totalSteps={VIDEOS_BATCH_PRODUCT_STEPS.length}
         headline={!workflow ? "从一份教案，开始制作课程视频" : undefined}
         activeMode="workflow"
+        sessions={sessions}
+        sessionId={sessionId}
         onOpenCanvas={onOpenCanvas}
+        onBackToSessions={onBackToSessions}
+        onSelectSession={onSelectSession}
+        onNewSession={onNewSession}
       />
       <WorkflowProgressRail
         steps={VIDEOS_BATCH_PRODUCT_STEPS}
