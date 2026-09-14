@@ -498,7 +498,6 @@
 }
 
 /* Shared Editorial surface language */
-.videosbatch-studio-v2 .vbs-form-card,
 .videosbatch-studio-v2 .vbs-note-card,
 .videosbatch-studio-v2 .vbs-empty-card,
 .videosbatch-studio-v2 .vbs-intro-card,
@@ -515,7 +514,6 @@
   box-shadow: none;
 }
 
-.videosbatch-studio-v2 .vbs-form-card,
 .videosbatch-studio-v2 .vbs-screenplay-scene,
 .videosbatch-studio-v2 .vbs-shot-card {
   padding: 20px;
@@ -583,10 +581,6 @@
 .videosbatch-studio-v2 .vbs-task-row,
 .videosbatch-studio-v2 .vbs-teaching-purpose {
   border-color: var(--vbs-v2-border);
-  background: var(--vbs-v2-surface-muted);
-}
-
-.videosbatch-studio-v2 .vbs-asset-preview {
   background: var(--vbs-v2-surface-muted);
 }
 
