@@ -1,9 +1,11 @@
-import { Check, ChevronDown, Plus, Rows3, Sparkles } from "lucide-react";
+import { BarChart3, Check, ChevronDown, Download, Languages, MoreHorizontal, Plus, Rows3, Sparkles } from "lucide-react";
 import { DropdownMenu } from "radix-ui";
 
 export interface VideosBatchSessionOption {
   id: string;
   title: string;
+  /** Short progress label such as "4 / 9 步", so the switcher can be scanned at a glance. */
+  progress?: string;
 }
 
 /**
@@ -22,11 +24,15 @@ export function VideosBatchHeader({
   activeMode = "workflow",
   sessions = [],
   sessionId,
+  language = "zh",
   onOpenWorkflow,
   onOpenCanvas,
   onBackToSessions,
   onSelectSession,
-  onNewSession
+  onNewSession,
+  onDownloadSession,
+  onToggleUsage,
+  onToggleLanguage
 }: {
   sessionTitle: string;
   completedCount: number;
@@ -35,11 +41,16 @@ export function VideosBatchHeader({
   activeMode?: "workflow" | "canvas";
   sessions?: VideosBatchSessionOption[];
   sessionId?: string;
+  language?: "zh" | "en";
   onOpenWorkflow?: () => void;
   onOpenCanvas?: () => void;
   onBackToSessions?: () => void;
   onSelectSession?: (sessionId: string) => void;
   onNewSession?: () => void;
+  /** SeeReel's topbar holds these but the studio hides it, so the header offers them itself. */
+  onDownloadSession?: () => void;
+  onToggleUsage?: () => void;
+  onToggleLanguage?: () => void;
 }) {
   const title = sessionTitle || "未命名课程视频";
   const ariaLabel = `当前项目 ${title}，已完成 ${completedCount} / ${totalSteps}`;
@@ -107,6 +118,7 @@ export function VideosBatchHeader({
                     {item.id === sessionId ? <Check size={13} /> : null}
                   </span>
                   <span className="vbs-v2-menu-title">{item.title || "未命名课程视频"}</span>
+                  {item.progress ? <span className="vbs-v2-menu-progress">{item.progress}</span> : null}
                 </DropdownMenu.Item>
               )) : (
                 <DropdownMenu.Item className="vbs-v2-menu-item" disabled>
@@ -148,6 +160,43 @@ export function VideosBatchHeader({
           制作画布
         </button>
       </div>
+
+      {/* SeeReel's topbar carries these, but the studio hides the topbar — so they live here now,
+          otherwise download / usage / language are simply unreachable inside the workbench. */}
+      {(onDownloadSession || onToggleUsage || onToggleLanguage) ? (
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger asChild>
+            <button type="button" className="vbs-v2-more" aria-label="更多功能" title="更多功能">
+              <MoreHorizontal size={16} />
+            </button>
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Portal>
+            <DropdownMenu.Content className="vbs-v2-menu vbs-v2-more-menu" align="end" sideOffset={8}>
+              {onToggleUsage ? (
+                <DropdownMenu.Item className="vbs-v2-menu-item" onSelect={onToggleUsage}>
+                  <span className="vbs-v2-menu-slot" aria-hidden="true"><BarChart3 size={13} /></span>
+                  <span className="vbs-v2-menu-title">查看用量</span>
+                </DropdownMenu.Item>
+              ) : null}
+              {onDownloadSession ? (
+                <DropdownMenu.Item className="vbs-v2-menu-item" onSelect={onDownloadSession}>
+                  <span className="vbs-v2-menu-slot" aria-hidden="true"><Download size={13} /></span>
+                  <span className="vbs-v2-menu-title">下载 Session</span>
+                </DropdownMenu.Item>
+              ) : null}
+              {onToggleLanguage ? (
+                <>
+                  <DropdownMenu.Separator className="vbs-v2-menu-separator" />
+                  <DropdownMenu.Item className="vbs-v2-menu-item" onSelect={onToggleLanguage}>
+                    <span className="vbs-v2-menu-slot" aria-hidden="true"><Languages size={13} /></span>
+                    <span className="vbs-v2-menu-title">{language === "en" ? "切换为中文" : "Switch to English"}</span>
+                  </DropdownMenu.Item>
+                </>
+              ) : null}
+            </DropdownMenu.Content>
+          </DropdownMenu.Portal>
+        </DropdownMenu.Root>
+      ) : null}
     </header>
   );
 }

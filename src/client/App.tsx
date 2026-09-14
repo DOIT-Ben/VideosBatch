@@ -7,6 +7,7 @@ import { VIDEOS_BATCH_PRODUCT_STEPS, deriveProductStepStatus } from "./videosBat
 import "./videosBatchStudio/videosBatchStudio.css";
 import "./videosBatchStudio/contentUx.css";
 import type { AdminAgentPlanStatus, AdminSecurityStatus, AdminUserAgentPlanCredentialList, AgentPlanCredentialStatus, ApiKeyCredentialStatus, Asset, AssetType, CreateSessionPayload, GalleryItem, Session, SessionPackage, Shot, StandardApiKeyRoute, StitchJob, StoreSnapshot, TokenUsageEvent, TokenUsageModelFamily } from "../shared/types";
+import { normalizeSessionTitle } from "../shared/sessionTitle";
 import { PendingGenerationsProvider } from "./flow/PendingGenerations";
 import { useUndoKeyboardShortcut, useUndoStack } from "./flow/useUndoStack";
 import { useI18n } from "./i18n";
@@ -445,18 +446,31 @@ function clientId(prefix: string) {
 }
 
 function makeLocalSession(payload: CreateSessionPayload & { id: string; language: Session["language"] }): Session {
-  const now = new Date().toISOString();
+  const createdAt = new Date().toISOString();
   return {
     id: payload.id,
-    title: payload.title?.trim() || "unnamed session",
+    // Same rule the store applies, so the optimistic row does not briefly disagree with it.
+    title: normalizeSessionTitle(payload.title, createdAt),
     logline: payload.logline?.trim() || "",
     style: payload.style?.trim() || "cinematic, emotionally grounded, coherent visual continuity",
     language: payload.language,
     targetDurationSec: Math.max(15, Number(payload.targetDurationSec) || 60),
     tokenUsageEvents: [],
-    createdAt: now,
-    updatedAt: now
+    createdAt,
+    updatedAt: createdAt
   };
+}
+
+/**
+ * A row in the session list should say how far along the course is. Shot count is a canvas
+ * concept; every session here runs the same nine-step flow, so "4 / 9 步" is what actually tells
+ * one session apart from another.
+ */
+function sessionProgressLabel(session: Session) {
+  const workflow = session.videosBatchWorkflow;
+  if (!workflow) return "未开始";
+  const done = VIDEOS_BATCH_PRODUCT_STEPS.filter((step) => deriveProductStepStatus(workflow, step) === "ready").length;
+  return `${done} / ${VIDEOS_BATCH_PRODUCT_STEPS.length} 步`;
 }
 
 function useStableEvent<T extends (...args: any[]) => any>(fn: T): T {
@@ -1969,7 +1983,7 @@ export function App() {
                 >
                   <span>📽</span>
                   <span>{latestSession.title || t.app.unnamed}</span>
-                  <small>{t.app.shotCount(state.shots.filter((s) => s.sessionId === latestSession.id).length)}</small>
+                  <small>{sessionProgressLabel(latestSession)}</small>
                 </button>
                 <button
                   className="session-delete danger"
@@ -1998,7 +2012,7 @@ export function App() {
                 >
                   <span>📂</span>
                   <span>{session.title || t.app.unnamed}</span>
-                  <small>{t.app.shotCount(state.shots.filter((s) => s.sessionId === session.id).length)}</small>
+                  <small>{sessionProgressLabel(session)}</small>
                 </button>
                 <button
                   className="session-oneclick"
@@ -2470,6 +2484,7 @@ export function App() {
             nativeAssets={state.assets.filter((asset) => asset.ownerSessionId === selectedSession.id)}
             nativeShots={state.shots.filter((shot) => shot.sessionId === selectedSession.id)}
             workflow={selectedSession.videosBatchWorkflow}
+            runtime={state.runtime?.videosBatch}
             onWorkflowChange={(workflow) => {
               setState((prev) => ({
                 ...prev,
@@ -2479,10 +2494,14 @@ export function App() {
               }));
             }}
             onOpenCanvas={() => setVideosBatchMode("canvas")}
-            sessions={sessions.map((item) => ({ id: item.id, title: item.title }))}
+            sessions={sessions.map((item) => ({ id: item.id, title: item.title, progress: sessionProgressLabel(item) }))}
+            language={lang}
             onBackToSessions={openGallery}
             onSelectSession={switchStudioSession}
             onNewSession={createStudioSession}
+            onDownloadSession={downloadSelectedSessionPackage}
+            onToggleUsage={() => setShowTokenUsage((value) => !value)}
+            onToggleLanguage={toggleLang}
           />
         ) : (
           <>
@@ -2494,12 +2513,16 @@ export function App() {
                   : 0}
                 totalSteps={VIDEOS_BATCH_PRODUCT_STEPS.length}
                 activeMode="canvas"
-                sessions={sessions.map((item) => ({ id: item.id, title: item.title }))}
+                sessions={sessions.map((item) => ({ id: item.id, title: item.title, progress: sessionProgressLabel(item) }))}
                 sessionId={selectedSession.id}
+                language={lang}
                 onOpenWorkflow={() => setVideosBatchMode("workflow")}
                 onBackToSessions={openGallery}
                 onSelectSession={switchStudioSession}
                 onNewSession={createStudioSession}
+                onDownloadSession={downloadSelectedSessionPackage}
+                onToggleUsage={() => setShowTokenUsage((value) => !value)}
+                onToggleLanguage={toggleLang}
               />
             )}
           <Suspense fallback={<div className="flow-loading" role="status">{lang === "en" ? "Loading canvas..." : "正在加载画布..."}</div>}>

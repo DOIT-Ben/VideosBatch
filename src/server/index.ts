@@ -13,7 +13,8 @@ import type {
   NarrationSubtitlePosition,
   AssetImageSize,
   AssetImageModel,
-  StandardApiKeyRoute
+  StandardApiKeyRoute,
+  VideosBatchRuntimeSummary
 } from "../shared/types";
 import type { VideosBatchReferenceBinding } from "../shared/videosBatchNativeProjection";
 import {
@@ -59,7 +60,11 @@ import {
 } from "./volcAsr";
 import { CinemaStore } from "./store";
 import { registerVideosBatchWorkflowApi } from "./videosBatchWorkflow/api";
-import { createVideosBatchRuntimeStageRegistry } from "./videosBatchWorkflow/runtimeProvider";
+import {
+  createVideosBatchRuntimeStageRegistry,
+  getVideosBatchProviderReadiness,
+  resolveVideosBatchRuntimeConfig
+} from "./videosBatchWorkflow/runtimeProvider";
 import { inferTokenUsageModelFamily, tokenUsageEventFromRaw } from "./tokenUsage";
 import { publishAssetImageToTos, publishLocalMediaToTos, hasTosConfig } from "./tos";
 import {
@@ -808,8 +813,41 @@ function runtimeInfo() {
     seedreamDefaultModel: defaultSeedreamAssetImageModel(),
     apiKeyCredential: requestApiKeyStatus(),
     agentPlanCredential: requestAgentPlanStatus(),
-    freeTrial: freeTrialStatus()
+    freeTrial: freeTrialStatus(),
+    videosBatch: videosBatchRuntimeInfo()
   };
+}
+
+/**
+ * The studio's fake/native switches decide whether anything is really generated, but they only
+ * ever lived in `.env`. The UI showed "waiting for image" forever and the user had no way to tell
+ * a stub run from a broken one. Publish the resolved modes so the workbench can say so out loud.
+ *
+ * `resolveVideosBatchRuntimeConfig` throws on a malformed environment; that must not take down
+ * `/api/state`, so a bad config degrades into an `error` field the UI can surface instead.
+ */
+function videosBatchRuntimeInfo(): VideosBatchRuntimeSummary {
+  try {
+    const readiness = getVideosBatchProviderReadiness(resolveVideosBatchRuntimeConfig());
+    return {
+      executorMode: readiness.executorMode,
+      mediaMode: readiness.mediaMode,
+      textReady: readiness.text.enabled && readiness.text.ready,
+      mediaReady: readiness.media.enabled,
+      ttsProvider: readiness.tts.provider,
+      ttsReady: readiness.tts.enabled && readiness.tts.ready
+    };
+  } catch (error) {
+    return {
+      executorMode: "fake",
+      mediaMode: "fake",
+      textReady: false,
+      mediaReady: false,
+      ttsProvider: "fake",
+      ttsReady: false,
+      error: error instanceof Error ? error.message : String(error)
+    };
+  }
 }
 
 function parseCookieHeader(header: string | undefined) {

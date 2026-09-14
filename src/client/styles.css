@@ -5451,3 +5451,222 @@ body {
     0 0 0 2px rgba(200, 247, 243, 0.25),
     0 0 16px rgba(76, 199, 191, 0.32) !important;
 }
+
+/* ---- Usage panel inside the VideosBatch studio ----------------------------------------------
+   SeeReel renders this panel as an inline, near-black block. Inside the studio that pushed the
+   whole workbench down and dropped a dark sheet onto the cream page, so scope it into a floating
+   sheet that speaks the studio's own language and never moves the layout. */
+.app-shell:has(.videosbatch-studio-v2) .token-usage-panel {
+  position: fixed;
+  top: 84px;
+  right: 24px;
+  z-index: 1100;
+  width: min(400px, calc(100vw - 48px));
+  max-height: calc(100vh - 132px);
+  overflow: auto;
+  margin: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--vbs-v2-border);
+  border-radius: 16px;
+  background: var(--vbs-v2-surface);
+  box-shadow: 0 24px 60px rgba(25, 28, 32, 0.16);
+}
+
+.app-shell:has(.videosbatch-studio-v2) .token-usage-head strong {
+  color: var(--vbs-v2-text);
+}
+
+.app-shell:has(.videosbatch-studio-v2) .token-usage-head small,
+.app-shell:has(.videosbatch-studio-v2) .token-usage-row small,
+.app-shell:has(.videosbatch-studio-v2) .token-usage-empty {
+  color: var(--vbs-v2-text-soft);
+}
+
+.app-shell:has(.videosbatch-studio-v2) .token-usage-row,
+.app-shell:has(.videosbatch-studio-v2) .token-family-card {
+  border-color: var(--vbs-v2-border);
+  border-radius: 10px;
+  background: var(--vbs-v2-surface-muted);
+}
+
+.app-shell:has(.videosbatch-studio-v2) .token-usage-row strong {
+  color: var(--vbs-v2-text);
+}
+
+.app-shell:has(.videosbatch-studio-v2) .token-usage-row span {
+  color: var(--vbs-v2-accent-deep);
+}
+
+.app-shell:has(.videosbatch-studio-v2) .token-usage-panel button {
+  border-color: var(--vbs-v2-border);
+  background: var(--vbs-v2-surface-muted);
+  color: var(--vbs-v2-text);
+}
+
+.app-shell:has(.videosbatch-studio-v2) .token-usage-panel button:hover {
+  border-color: var(--vbs-v2-border-strong);
+  background: var(--vbs-v2-surface);
+}
+
+.app-shell:has(.videosbatch-studio-v2) .token-usage-close:hover {
+  color: var(--vbs-v2-text);
+}
+
+/* ---- The course-video product's entry shell ---------------------------------------------------
+   SeeReel's shell is a near-black agent console and the studio is cream, so arriving at the studio
+   through the shell made one product read as two. Whenever the session list is on screen the
+   shell now speaks the studio's language. Only the palette changes — layout and copy stay
+   SeeReel's — because almost every shell rule already reads a --focus-* token. */
+.app-shell:has(.gallery-page) {
+  --focus-bg: var(--vbs-v2-canvas);
+  --focus-panel: var(--vbs-v2-surface);
+  --focus-panel-soft: rgba(255, 255, 255, 0.92);
+  --focus-line: var(--vbs-v2-border);
+  --focus-line-bright: var(--vbs-v2-border-strong);
+  --focus-text: var(--vbs-v2-text);
+  --focus-muted: var(--vbs-v2-text-soft);
+  --focus-teal: var(--vbs-v2-accent);
+  --focus-teal-soft: var(--vbs-v2-accent-soft);
+  --focus-warn: var(--vbs-v2-accent-deep);
+  /* The studio palette is a second dark set that the shell also reads. */
+  --studio-line: var(--vbs-v2-border);
+  --studio-text: var(--vbs-v2-text);
+  --studio-muted: var(--vbs-v2-text-soft);
+  --studio-amber: var(--vbs-v2-accent);
+  color: var(--vbs-v2-text);
+}
+
+.app-shell:has(.gallery-page) .archive-toggle,
+.app-shell:has(.gallery-page) .empty-session {
+  border-color: var(--vbs-v2-border);
+  background: var(--vbs-v2-surface-muted);
+  color: var(--vbs-v2-text);
+}
+
+.app-shell:has(.gallery-page) .archive-toggle:hover {
+  background: var(--vbs-v2-accent-soft);
+  color: var(--vbs-v2-text);
+}
+
+.app-shell:has(.gallery-page) .sidebar {
+  border-right-color: var(--vbs-v2-border);
+  background: var(--vbs-v2-surface);
+}
+
+.app-shell:has(.gallery-page) .brand-logo {
+  box-shadow: 0 0 0 1px var(--vbs-v2-border), 0 10px 22px rgba(25, 28, 32, 0.08);
+}
+
+.app-shell:has(.gallery-page) .sidebar > button.primary {
+  border-color: var(--vbs-v2-text);
+  background: var(--vbs-v2-text);
+  color: var(--vbs-v2-surface);
+}
+
+.app-shell:has(.gallery-page) .session-import-button,
+.app-shell:has(.gallery-page) .gallery-nav-button {
+  border-color: var(--vbs-v2-border);
+  background: var(--vbs-v2-surface-muted);
+  color: var(--vbs-v2-text);
+}
+
+.app-shell:has(.gallery-page) .gallery-nav-button.active {
+  border-color: var(--vbs-v2-accent);
+  background: var(--vbs-v2-accent-soft);
+}
+
+.app-shell:has(.gallery-page) .session {
+  border-color: var(--vbs-v2-border);
+  background: var(--vbs-v2-surface-muted);
+  color: var(--vbs-v2-text);
+}
+
+.app-shell:has(.gallery-page) .session span:first-child {
+  background: var(--vbs-v2-surface);
+}
+
+.app-shell:has(.gallery-page) .session.active {
+  border-color: var(--vbs-v2-accent);
+  background: var(--vbs-v2-accent-soft);
+  box-shadow: inset 3px 0 0 var(--vbs-v2-accent);
+}
+
+.app-shell:has(.gallery-page) .session.active span:first-child {
+  background: var(--vbs-v2-surface);
+  box-shadow: 0 0 0 1px var(--vbs-v2-accent);
+}
+
+.app-shell:has(.gallery-page) .topbar {
+  border-bottom-color: var(--vbs-v2-border);
+}
+
+.app-shell:has(.gallery-page) .topbar h1 {
+  color: var(--vbs-v2-text);
+}
+
+.app-shell:has(.gallery-page) .ai-use-me-link,
+.app-shell:has(.gallery-page) .top-actions > button,
+.app-shell:has(.gallery-page) .agent-plan-button,
+.app-shell:has(.gallery-page) .admin-button,
+.app-shell:has(.gallery-page) .language-toggle {
+  color: var(--vbs-v2-text-soft);
+}
+
+.app-shell:has(.gallery-page) .top-actions > button:hover,
+.app-shell:has(.gallery-page) .ai-use-me-link:hover,
+.app-shell:has(.gallery-page) .agent-plan-button:hover,
+.app-shell:has(.gallery-page) .admin-button:hover,
+.app-shell:has(.gallery-page) .language-toggle:hover {
+  border-color: var(--vbs-v2-border);
+  background: var(--vbs-v2-surface-muted);
+  color: var(--vbs-v2-text);
+}
+
+.app-shell:has(.gallery-page) .workspace,
+.app-shell:has(.gallery-page) .gallery-page {
+  background: var(--vbs-v2-canvas);
+}
+
+.app-shell:has(.gallery-page) .gallery-hero {
+  border-bottom-color: var(--vbs-v2-border);
+  background: linear-gradient(135deg, rgba(216, 166, 64, 0.13), rgba(216, 166, 64, 0.03));
+}
+
+.app-shell:has(.gallery-page) .gallery-hero h2 {
+  color: var(--vbs-v2-text);
+}
+
+.app-shell:has(.gallery-page) .gallery-hero button {
+  border-color: var(--vbs-v2-border);
+  background: var(--vbs-v2-surface);
+  color: var(--vbs-v2-text);
+}
+
+.app-shell:has(.gallery-page) .gallery-card {
+  border-color: var(--vbs-v2-border);
+  background: var(--vbs-v2-surface);
+}
+
+.app-shell:has(.gallery-page) .gallery-preview {
+  background: var(--vbs-v2-surface-muted);
+}
+
+.app-shell:has(.gallery-page) .gallery-tags span {
+  border-color: var(--vbs-v2-border);
+  color: var(--vbs-v2-text-soft);
+}
+
+.app-shell:has(.gallery-page) .gallery-card small,
+.app-shell:has(.gallery-page) .gallery-card p,
+.app-shell:has(.gallery-page) .gallery-card-footer span,
+.app-shell:has(.gallery-page) .gallery-empty,
+.app-shell:has(.gallery-page) .gallery-preview-empty {
+  color: var(--vbs-v2-text-soft);
+}
+
+/* The session row defines two columns but emits three children, so the progress label was
+   squeezed into a narrow implicit column and clipped to "未开…". Pin it under the title. */
+.app-shell:has(.gallery-page) .session small {
+  grid-column: 2;
+  color: var(--vbs-v2-text-soft);
+}

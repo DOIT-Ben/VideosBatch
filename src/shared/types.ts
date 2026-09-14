@@ -889,7 +889,27 @@ export interface StoreSnapshot {
     apiKeyCredential?: ApiKeyCredentialStatus;
     agentPlanCredential?: AgentPlanCredentialStatus;
     freeTrial?: FreeTrialStatus;
+    videosBatch?: VideosBatchRuntimeSummary;
   };
+}
+
+/**
+ * Which VideosBatch stages actually run for real, resolved from the environment at request time.
+ *
+ * Text and media are independent switches. `fake` media never produces an image or a video, which
+ * is easy to mistake for a broken pipeline, so the workbench publishes this and says so plainly.
+ */
+export interface VideosBatchRuntimeSummary {
+  executorMode: "fake" | "llm";
+  mediaMode: "fake" | "native";
+  /** True only when real text execution is on and its key/model resolved. */
+  textReady: boolean;
+  /** True only when native media (paid Seedream / Seedance) is on. */
+  mediaReady: boolean;
+  ttsProvider: string;
+  ttsReady: boolean;
+  /** Set when the environment is malformed; the UI explains it instead of failing silently. */
+  error?: string;
 }
 
 export interface ApiKeyCredentialStatus {

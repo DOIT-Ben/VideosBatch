@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api";
-import type { Asset, Session, Shot } from "../../shared/types";
+import type { Asset, Session, Shot, VideosBatchRuntimeSummary } from "../../shared/types";
 import type {
   VideosBatchLessonSource,
   VideosBatchStageId,
@@ -9,6 +9,7 @@ import type {
 import { VideosBatchHeader, type VideosBatchSessionOption } from "./VideosBatchHeader";
 import { WorkflowFooter } from "./WorkflowFooter";
 import { ArtifactDebugDrawer } from "./components/ArtifactDebugDrawer";
+import { ModeBanner } from "./components/ModeBanner";
 import { WorkflowProgressRail } from "./components/WorkflowProgressRail";
 import { StageWorkspace } from "./stages/StageWorkspace";
 import type { VideosBatchLessonDraft } from "./stages/LessonStage";
@@ -80,12 +81,17 @@ export function VideosBatchStudio({
   nativeAssets = [],
   nativeShots = [],
   workflow,
+  runtime,
   onWorkflowChange,
   onOpenCanvas,
   sessions = [],
+  language = "zh",
   onBackToSessions,
   onSelectSession,
-  onNewSession
+  onNewSession,
+  onDownloadSession,
+  onToggleUsage,
+  onToggleLanguage
 }: {
   sessionId: string;
   sessionTitle: string;
@@ -93,13 +99,20 @@ export function VideosBatchStudio({
   nativeAssets?: Asset[];
   nativeShots?: Shot[];
   workflow?: VideosBatchWorkflowState;
+  /** Resolved fake/native switches, so the studio can say when nothing is really generated. */
+  runtime?: VideosBatchRuntimeSummary;
   onWorkflowChange: (workflow: VideosBatchWorkflowState) => void;
   onOpenCanvas: () => void;
   /** The studio hides SeeReel's sidebar, so it carries its own session list. */
   sessions?: VideosBatchSessionOption[];
+  language?: "zh" | "en";
   onBackToSessions?: () => void;
   onSelectSession?: (sessionId: string) => void;
   onNewSession?: () => void;
+  /** The studio hides SeeReel's topbar, so its actions are surfaced through the header instead. */
+  onDownloadSession?: () => void;
+  onToggleUsage?: () => void;
+  onToggleLanguage?: () => void;
 }) {
   const currentStepId = workflow ? deriveCurrentProductStep(workflow) : "lesson";
   const [selectedStepId, setSelectedStepId] = useState<VideosBatchProductStepId>(currentStepId);
@@ -308,11 +321,16 @@ export function VideosBatchStudio({
         activeMode="workflow"
         sessions={sessions}
         sessionId={sessionId}
+        language={language}
         onOpenCanvas={onOpenCanvas}
         onBackToSessions={onBackToSessions}
         onSelectSession={onSelectSession}
         onNewSession={onNewSession}
+        onDownloadSession={onDownloadSession}
+        onToggleUsage={onToggleUsage}
+        onToggleLanguage={onToggleLanguage}
       />
+      <ModeBanner runtime={runtime} />
       <WorkflowProgressRail
         steps={VIDEOS_BATCH_PRODUCT_STEPS}
         selectedStepId={selectedStepId}

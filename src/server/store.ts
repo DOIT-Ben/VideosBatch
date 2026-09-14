@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Asset, CreateSessionPayload, GalleryItem, GalleryPublishPayload, Session, Shot, ShotRender, StitchJob, StoreSnapshot, TokenUsageEvent } from "../shared/types";
+import { AUTO_SESSION_TITLE, autoSessionTitle, normalizeSessionTitle } from "../shared/sessionTitle";
 import { observeStoreSave } from "./metrics";
 
 export const DATA_DIR = path.resolve(process.cwd(), "data");
@@ -34,6 +35,16 @@ export class CinemaStore {
       };
     } catch {
       this.data = emptyStore();
+    }
+
+    // Older sessions carry the store-generated "unnamed session N" title, which makes a list of
+    // them impossible to tell apart. Derive those names from each session's creation time.
+    // Derived in memory rather than written back: the input (`createdAt`) never changes, so the
+    // result is stable across boots, and the user's own titles are never touched.
+    for (const session of this.data.sessions) {
+      if (session.title && AUTO_SESSION_TITLE.test(session.title.trim())) {
+        session.title = autoSessionTitle(session.createdAt, new Date());
+      }
     }
   }
 
@@ -119,7 +130,7 @@ export class CinemaStore {
     const session: Session = {
       id: requestedId && !this.data.sessions.some((item) => item.id === requestedId) ? requestedId : id("ses"),
       ownerUserId,
-      title: normalizeSessionTitle(payload.title, this.data.sessions),
+      title: normalizeSessionTitle(payload.title, ts),
       logline: payload.logline?.trim() || "",
       style: payload.style?.trim() || "cinematic, emotionally grounded, coherent visual continuity",
       language: payload.language === "en" ? "en" : "zh",
@@ -1126,20 +1137,6 @@ export class CinemaStore {
   }
 }
 
-function normalizeSessionTitle(title: string | undefined, sessions: Session[]) {
-  const trimmed = title?.trim();
-  if (trimmed) return trimmed;
-
-  const used = new Set<number>();
-  sessions.forEach((session) => {
-    const match = session.title.trim().match(/^un(?:n)?amed session\s+(\d+)$/i);
-    if (match) used.add(Number(match[1]));
-  });
-
-  let index = 1;
-  while (used.has(index)) index += 1;
-  return `unnamed session ${index}`;
-}
 
 function normalizeTags(tags: string[] | undefined) {
   return Array.from(new Set((tags || []).map((tag) => tag.trim()).filter(Boolean))).slice(0, 8);
