@@ -77,6 +77,8 @@ const mainSource = readFileSync(new URL("../src/client/main.tsx", import.meta.ur
 const headerSource = readFileSync(new URL("../src/client/videosBatchStudio/VideosBatchHeader.tsx", import.meta.url), "utf8");
 const railSource = readFileSync(new URL("../src/client/videosBatchStudio/components/WorkflowProgressRail.tsx", import.meta.url), "utf8");
 const v2CssSource = readFileSync(new URL("../src/client/videosBatchStudio/guidedStudioV2.css", import.meta.url), "utf8");
+const tokensCssSource = readFileSync(new URL("../src/client/videosBatchStudio/tokens.css", import.meta.url), "utf8");
+const focusCssSource = readFileSync(new URL("../src/client/videosBatchStudio/guidedStudioV2Focus.css", import.meta.url), "utf8");
 const finalStageSource = readFileSync(new URL("../src/client/videosBatchStudio/stages/FinalVideoStage.tsx", import.meta.url), "utf8");
 const lessonClientUrl = new URL("../src/client/videosBatchStudio/lessonDocumentClient.ts", import.meta.url);
 const focusCssUrl = new URL("../src/client/videosBatchStudio/guidedStudioV2Focus.css", import.meta.url);
@@ -91,6 +93,7 @@ assert.ok(lessonSource.includes("保存草稿"), "parsed lesson edits must expos
 assert.ok(lessonSource.includes('role="status"'), "draft persistence state must be announced as a live status");
 assert.ok(lessonSource.includes("event.ctrlKey || event.metaKey"), "parsed lesson editor must support the platform save shortcut");
 assert.ok(studioSource.includes("sessionStorage"), "unconfirmed lesson drafts must persist in the browser session scope");
+assert.ok(mainSource.includes('import "./videosBatchStudio/tokens.css"'), "browser entry must load the shared VideosBatch design tokens");
 assert.ok(mainSource.includes('import "./videosBatchStudio/guidedStudioV2.css"'), "browser entry must load Guided Studio V2 visual styles");
 assert.ok(mainSource.includes('import "./videosBatchStudio/guidedStudioV2Focus.css"'), "browser entry must load workflow focus styles");
 assert.ok(existsSync(lessonClientUrl), "lesson parsing must live in a focused client adapter instead of patching the giant api.ts");
@@ -98,10 +101,15 @@ assert.ok(existsSync(focusCssUrl), "workflow focus mode must live in a scoped CS
 
 assert.ok(headerSource.includes("AI 课程视频工作室"), "product header must use the consolidated Editorial AI Studio identity");
 assert.ok(railSource.includes("vbs-v2-progress-node"), "progress rail must expose a timeline node instead of only pill-style step content");
-assert.ok(v2CssSource.includes("--vbs-v2-radius-card"), "Guided Studio V2 must define one canonical card radius token");
-assert.ok(v2CssSource.includes("--vbs-v2-shadow-raised"), "Guided Studio V2 must define one canonical raised-surface shadow token");
+assert.ok(tokensCssSource.includes("--vbs-v2-radius-card:"), "the shared tokens must define one canonical card radius");
+assert.ok(tokensCssSource.includes("--vbs-v2-shadow-raised:"), "the shared tokens must define one canonical raised-surface shadow");
 assert.match(v2CssSource, /\.vbs-v2-parse-editor textarea,[\s\S]*?min-height:\s*560px;[\s\S]*?font-weight:\s*400;/, "parsed lesson text must be tall and use normal reading weight");
-assert.ok(v2CssSource.includes("--vbs-bg: var(--vbs-v2-canvas)"), "legacy stage surfaces must inherit the canonical V2 palette inside Guided Studio");
+assert.ok(tokensCssSource.includes("--vbs-bg: var(--vbs-v2-canvas)"), "legacy stage surfaces must alias the canonical palette instead of restating it");
+// One palette, one definition site: none of the stylesheets may restate the raw
+// values the shared tokens already own.
+assert.ok(!/--vbs-v2-[a-z-]+:\s*#/.test(v2CssSource), "guidedStudioV2.css must consume the shared tokens instead of restating the palette");
+assert.ok(!/--vbs-canvas-/.test(focusCssSource), "the focus adapter must use the shared tokens, not a parallel --vbs-canvas-* scale");
+assert.ok(!/--vbs-v2-[a-z-]+:\s*#/.test(focusCssSource), "the focus adapter must not restate tokens the shared file already defines");
 assert.ok(finalStageSource.includes("vbs-final-delivery"), "final step must expose a dedicated delivery surface while preserving native playback behavior");
 
 // Status-language contract: the footer run controls and the stage body must not

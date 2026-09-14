@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { I18nProvider } from "./i18n";
 import "./styles.css";
+import "./videosBatchStudio/tokens.css";
 import "./videosBatchStudio/storyboardPrompt.css";
 import "./videosBatchStudio/guidedStudioV2.css";
 import "./videosBatchStudio/guidedStudioV2Focus.css";

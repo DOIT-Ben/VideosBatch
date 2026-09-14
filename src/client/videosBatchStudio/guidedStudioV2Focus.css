@@ -44,16 +44,6 @@ body:has(.videosbatch-studio-v2) {
 
 /* Canvas mode keeps the same VideosBatch navigation shell for node editing. */
 .app-shell.videosbatch-canvas-mode {
-  --vbs-v2-canvas: #f6f4ef;
-  --vbs-v2-surface: #ffffff;
-  --vbs-v2-surface-muted: #f8f6f1;
-  --vbs-v2-text: #191c20;
-  --vbs-v2-text-soft: #74716a;
-  --vbs-v2-border: #e8e4da;
-  --vbs-v2-border-strong: #d9d3c7;
-  --vbs-v2-accent: #d8a640;
-  --vbs-v2-accent-soft: #fbf4df;
-  --vbs-v2-transition: 170ms ease;
   grid-template-columns: minmax(0, 1fr);
   min-height: 100vh;
   height: auto;
@@ -170,49 +160,40 @@ body:has(.videosbatch-studio-v2) {
    ============================================================================ */
 
 .app-shell.videosbatch-canvas-mode {
-  --vbs-canvas-bg: #f6f4ef;
-  --vbs-canvas-surface: #ffffff;
-  --vbs-canvas-surface-muted: #f8f6f1;
-  --vbs-canvas-text: #191c20;
-  --vbs-canvas-text-soft: #74716a;
-  --vbs-canvas-line: #e8e4da;
-  --vbs-canvas-line-strong: #d9d3c7;
-  --vbs-canvas-accent: #c18b2f;
-  --vbs-canvas-accent-soft: #fff7e5;
-  background: var(--vbs-canvas-bg);
-  color: var(--vbs-canvas-text);
+  background: var(--vbs-v2-canvas);
+  color: var(--vbs-v2-text);
 }
 
 .app-shell.videosbatch-canvas-mode > .workspace {
-  background: var(--vbs-canvas-bg);
+  background: var(--vbs-v2-canvas);
 }
 
 .app-shell.videosbatch-canvas-mode .flow-view {
-  border: 1px solid var(--vbs-canvas-line);
-  background: var(--vbs-canvas-surface);
+  border: 1px solid var(--vbs-v2-border);
+  background: var(--vbs-v2-surface);
   box-shadow: 0 12px 30px rgba(25, 28, 32, 0.08);
 }
 
 .app-shell.videosbatch-canvas-mode .flow-toolbar {
-  border-bottom: 1px solid var(--vbs-canvas-line);
-  background: var(--vbs-canvas-surface);
+  border-bottom: 1px solid var(--vbs-v2-border);
+  background: var(--vbs-v2-surface);
 }
 
 .app-shell.videosbatch-canvas-mode .flow-toolbar-section strong {
-  color: var(--vbs-canvas-text);
+  color: var(--vbs-v2-text);
 }
 
 .app-shell.videosbatch-canvas-mode .flow-toolbar-actions button:not(.primary),
 .app-shell.videosbatch-canvas-mode .flow-toolbar-actions .flow-toolbar-undo {
-  border-color: var(--vbs-canvas-line-strong);
-  background: var(--vbs-canvas-surface);
-  color: var(--vbs-canvas-text);
+  border-color: var(--vbs-v2-border-strong);
+  background: var(--vbs-v2-surface);
+  color: var(--vbs-v2-text);
 }
 
 .app-shell.videosbatch-canvas-mode .flow-toolbar-actions button:not(.primary):hover:not(:disabled),
 .app-shell.videosbatch-canvas-mode .flow-toolbar-actions .flow-toolbar-undo:hover:not(:disabled) {
   border-color: #d5a84e;
-  background: var(--vbs-canvas-accent-soft);
+  background: var(--vbs-v2-accent-soft);
   color: #78591c;
 }
 
@@ -237,12 +218,12 @@ body:has(.videosbatch-studio-v2) {
 }
 
 .app-shell.videosbatch-canvas-mode .flow-workflow-status {
-  color: var(--vbs-canvas-text-soft);
+  color: var(--vbs-v2-text-soft);
 }
 
 .app-shell.videosbatch-canvas-mode .flow-canvas-row {
-  border-color: var(--vbs-canvas-line);
-  background: var(--vbs-canvas-bg);
+  border-color: var(--vbs-v2-border);
+  background: var(--vbs-v2-canvas);
 }
 
 .app-shell.videosbatch-canvas-mode .flow-canvas {
@@ -264,23 +245,23 @@ body:has(.videosbatch-studio-v2) {
 
 .app-shell.videosbatch-canvas-mode .react-flow__edge.selected .react-flow__edge-path,
 .app-shell.videosbatch-canvas-mode .react-flow__connection-path {
-  stroke: var(--vbs-canvas-accent);
+  stroke: var(--vbs-v2-accent);
   stroke-width: 2.3;
 }
 
 .app-shell.videosbatch-canvas-mode .react-flow__controls {
-  border-color: var(--vbs-canvas-line-strong) !important;
+  border-color: var(--vbs-v2-border-strong) !important;
   background: rgba(255, 255, 255, 0.96) !important;
   box-shadow: 0 5px 14px rgba(25, 28, 32, 0.12) !important;
 }
 
 .app-shell.videosbatch-canvas-mode .react-flow__controls-button {
-  border-bottom-color: var(--vbs-canvas-line) !important;
+  border-bottom-color: var(--vbs-v2-border) !important;
   color: #59636d !important;
 }
 
 .app-shell.videosbatch-canvas-mode .react-flow__controls-button:hover {
-  background: var(--vbs-canvas-accent-soft) !important;
+  background: var(--vbs-v2-accent-soft) !important;
   color: #78591c !important;
 }
 
@@ -291,9 +272,9 @@ body:has(.videosbatch-studio-v2) {
 }
 
 .app-shell.videosbatch-canvas-mode .flow-node {
-  border-color: var(--vbs-canvas-line-strong);
-  background: var(--vbs-canvas-surface);
-  color: var(--vbs-canvas-text);
+  border-color: var(--vbs-v2-border-strong);
+  background: var(--vbs-v2-surface);
+  color: var(--vbs-v2-text);
   box-shadow: 0 10px 24px rgba(25, 28, 32, 0.14), 0 0 0 1px rgba(255, 255, 255, 0.8);
 }
 
@@ -304,7 +285,7 @@ body:has(.videosbatch-studio-v2) {
 
 .app-shell.videosbatch-canvas-mode .flow-node-head,
 .app-shell.videosbatch-canvas-mode .flow-node-foot {
-  border-color: var(--vbs-canvas-line);
+  border-color: var(--vbs-v2-border);
   background: rgba(248, 250, 251, 0.96);
   box-shadow: none;
 }
@@ -332,8 +313,8 @@ body:has(.videosbatch-studio-v2) {
 
 .app-shell.videosbatch-canvas-mode .flow-node-thumb,
 .app-shell.videosbatch-canvas-mode .flow-node-thumb.fit-contain {
-  border-top-color: var(--vbs-canvas-line);
-  border-bottom-color: var(--vbs-canvas-line);
+  border-top-color: var(--vbs-v2-border);
+  border-bottom-color: var(--vbs-v2-border);
   background:
     linear-gradient(135deg, rgba(25, 28, 32, 0.05) 0 25%, transparent 25% 50%, rgba(25, 28, 32, 0.035) 50% 75%, transparent 75%),
     #f1ede4;
@@ -341,13 +322,13 @@ body:has(.videosbatch-studio-v2) {
 }
 
 .app-shell.videosbatch-canvas-mode .flow-node-foot {
-  color: var(--vbs-canvas-text-soft);
+  color: var(--vbs-v2-text-soft);
 }
 
 .app-shell.videosbatch-canvas-mode .flow-node-model,
 .app-shell.videosbatch-canvas-mode .flow-node-download,
 .app-shell.videosbatch-canvas-mode .flow-review-button {
-  border-color: var(--vbs-canvas-line-strong);
+  border-color: var(--vbs-v2-border-strong);
   background-color: #ffffff;
   color: #59636d;
 }
@@ -357,7 +338,7 @@ body:has(.videosbatch-studio-v2) {
 .app-shell.videosbatch-canvas-mode .flow-node-download:hover,
 .app-shell.videosbatch-canvas-mode .flow-review-button:hover {
   border-color: #d2a24b;
-  background-color: var(--vbs-canvas-accent-soft);
+  background-color: var(--vbs-v2-accent-soft);
   color: #78591c;
 }
 
@@ -371,25 +352,25 @@ body:has(.videosbatch-studio-v2) {
 .app-shell.videosbatch-canvas-mode .flow-status,
 .app-shell.videosbatch-canvas-mode .flow-review-badge,
 .app-shell.videosbatch-canvas-mode .flow-node-info {
-  color: var(--vbs-canvas-text-soft);
+  color: var(--vbs-v2-text-soft);
 }
 
 .app-shell.videosbatch-canvas-mode .inspector {
   width: 400px;
-  border-left-color: var(--vbs-canvas-line);
-  background: var(--vbs-canvas-surface);
+  border-left-color: var(--vbs-v2-border);
+  background: var(--vbs-v2-surface);
   box-shadow: -12px 0 28px rgba(25, 28, 32, 0.08);
-  color: var(--vbs-canvas-text);
+  color: var(--vbs-v2-text);
 }
 
 .app-shell.videosbatch-canvas-mode .inspector header {
-  border-bottom-color: var(--vbs-canvas-line);
+  border-bottom-color: var(--vbs-v2-border);
   background: rgba(255, 255, 255, 0.97);
 }
 
 .app-shell.videosbatch-canvas-mode .inspector-tag {
   border-color: #ead49a;
-  background: var(--vbs-canvas-accent-soft);
+  background: var(--vbs-v2-accent-soft);
   color: #78591c;
 }
 
@@ -409,7 +390,7 @@ body:has(.videosbatch-studio-v2) {
 .app-shell.videosbatch-canvas-mode .inspector input,
 .app-shell.videosbatch-canvas-mode .inspector textarea,
 .app-shell.videosbatch-canvas-mode .inspector select {
-  border-color: var(--vbs-canvas-line-strong);
+  border-color: var(--vbs-v2-border-strong);
   background: #ffffff;
   color: #27313a;
 }
@@ -422,7 +403,7 @@ body:has(.videosbatch-studio-v2) {
 }
 
 .app-shell.videosbatch-canvas-mode .inspector-section {
-  border-top-color: var(--vbs-canvas-line);
+  border-top-color: var(--vbs-v2-border);
 }
 
 .app-shell.videosbatch-canvas-mode .inspector-section strong,
@@ -435,12 +416,12 @@ body:has(.videosbatch-studio-v2) {
 .app-shell.videosbatch-canvas-mode .inspector-empty,
 .app-shell.videosbatch-canvas-mode .inspector-ref-meta small,
 .app-shell.videosbatch-canvas-mode .inspector-review-summary small {
-  color: var(--vbs-canvas-text-soft);
+  color: var(--vbs-v2-text-soft);
 }
 
 .app-shell.videosbatch-canvas-mode .inspector-empty {
-  border-color: var(--vbs-canvas-line-strong);
-  background: var(--vbs-canvas-surface-muted);
+  border-color: var(--vbs-v2-border-strong);
+  background: var(--vbs-v2-surface-muted);
 }
 
 .app-shell.videosbatch-canvas-mode .inspector-fold,
@@ -449,9 +430,9 @@ body:has(.videosbatch-studio-v2) {
 .app-shell.videosbatch-canvas-mode .inspector-history-item,
 .app-shell.videosbatch-canvas-mode .inspector-ref-item,
 .app-shell.videosbatch-canvas-mode .inspector-generating-preview {
-  border-color: var(--vbs-canvas-line);
-  background: var(--vbs-canvas-surface-muted);
-  color: var(--vbs-canvas-text);
+  border-color: var(--vbs-v2-border);
+  background: var(--vbs-v2-surface-muted);
+  color: var(--vbs-v2-text);
 }
 
 .app-shell.videosbatch-canvas-mode .inspector-fold summary {
@@ -460,7 +441,7 @@ body:has(.videosbatch-studio-v2) {
 
 .app-shell.videosbatch-canvas-mode .inspector-ref-item.active {
   border-color: #d2a24b;
-  background: var(--vbs-canvas-accent-soft);
+  background: var(--vbs-v2-accent-soft);
 }
 
 .app-shell.videosbatch-canvas-mode .inspector-actions {
@@ -468,19 +449,19 @@ body:has(.videosbatch-studio-v2) {
 }
 
 .app-shell.videosbatch-canvas-mode .inspector-actions button:not(.primary) {
-  border-color: var(--vbs-canvas-line-strong);
+  border-color: var(--vbs-v2-border-strong);
   background: #ffffff;
   color: #59636d;
 }
 
 .app-shell.videosbatch-canvas-mode .create-node-menu {
-  border-color: var(--vbs-canvas-line-strong);
+  border-color: var(--vbs-v2-border-strong);
   background: #ffffff;
   box-shadow: 0 14px 32px rgba(25, 28, 32, 0.16);
 }
 
 .app-shell.videosbatch-canvas-mode .create-node-menu header {
-  border-bottom-color: var(--vbs-canvas-line);
+  border-bottom-color: var(--vbs-v2-border);
   background: #ffffff;
   color: #59636d;
 }
@@ -490,7 +471,7 @@ body:has(.videosbatch-studio-v2) {
 }
 
 .app-shell.videosbatch-canvas-mode .create-node-menu-item:hover {
-  background: var(--vbs-canvas-accent-soft);
+  background: var(--vbs-v2-accent-soft);
 }
 
 .app-shell.videosbatch-canvas-mode .create-node-menu-item .cnm-icon {
@@ -504,12 +485,12 @@ body:has(.videosbatch-studio-v2) {
 
 .app-shell.videosbatch-canvas-mode .create-node-menu-item .cnm-label small,
 .app-shell.videosbatch-canvas-mode .create-node-menu-item .cnm-key {
-  color: var(--vbs-canvas-text-soft);
+  color: var(--vbs-v2-text-soft);
 }
 
 .app-shell.videosbatch-canvas-mode .flow-node-duration-badge {
   border-color: #ead49a;
-  background: var(--vbs-canvas-accent-soft);
+  background: var(--vbs-v2-accent-soft);
   color: #78591c;
 }
 

@@ -1,0 +1,54 @@
+/* ============================================================================
+   VideosBatch design tokens.
+
+   The guided studio and the node canvas render the same product, so the palette
+   is defined here once instead of being restated by every stylesheet that needs
+   it.
+
+   --vbs-v2-*  the scale: canvas / surface / text / border / accent, plus the
+               control and card radii, the shadows and the transition.
+   --vbs-*     the older semantic names that the stage stylesheets still read.
+               They alias the scale above, so every colour has exactly one
+               source and the two sets can never drift apart.
+   ============================================================================ */
+
+.videosbatch-studio-v2,
+.app-shell.videosbatch-canvas-mode {
+  --vbs-v2-canvas: #f6f4ef;
+  --vbs-v2-surface: #ffffff;
+  --vbs-v2-surface-muted: #f8f6f1;
+  --vbs-v2-text: #191c20;
+  --vbs-v2-text-soft: #74716a;
+  --vbs-v2-border: #e8e4da;
+  --vbs-v2-border-strong: #d9d3c7;
+  --vbs-v2-accent: #d8a640;
+  --vbs-v2-accent-deep: #866315;
+  --vbs-v2-accent-soft: #fbf4df;
+  --vbs-v2-success: #557761;
+  --vbs-v2-danger: #ad5a50;
+  --vbs-v2-radius-control: 10px;
+  --vbs-v2-radius-card: 18px;
+  --vbs-v2-radius-focus: 22px;
+  --vbs-v2-shadow-raised: 0 12px 34px rgba(25, 28, 32, 0.055);
+  --vbs-v2-shadow-selected: 0 10px 28px rgba(25, 28, 32, 0.08);
+  --vbs-v2-transition: 170ms ease;
+
+  --vbs-bg: var(--vbs-v2-canvas);
+  --vbs-surface: var(--vbs-v2-surface);
+  --vbs-surface-subtle: var(--vbs-v2-surface-muted);
+  --vbs-text: var(--vbs-v2-text);
+  --vbs-muted: var(--vbs-v2-text-soft);
+  --vbs-border: var(--vbs-v2-border);
+  --vbs-accent: var(--vbs-v2-accent);
+  --vbs-accent-soft: var(--vbs-v2-accent-soft);
+  --vbs-success: var(--vbs-v2-success);
+  --vbs-danger: var(--vbs-v2-danger);
+}
+
+/* The node canvas reads a slightly deeper accent than the studio. That is the
+   one deliberate difference between the two shells, so it is stated here
+   instead of hiding inside a per-selector override. */
+.app-shell.videosbatch-canvas-mode {
+  --vbs-v2-accent: #c18b2f;
+  --vbs-v2-accent-soft: #fff7e5;
+}
