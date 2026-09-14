@@ -706,6 +706,31 @@ label {
   gap: 12px;
 }
 
+.token-usage-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.token-usage-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(226, 232, 240, 0.72);
+  cursor: pointer;
+}
+
+.token-usage-close:hover {
+  border-color: rgba(148, 163, 184, 0.45);
+  color: #f8fafc;
+}
+
 .token-usage-head strong {
   color: #f8fafc;
   font-size: 16px;

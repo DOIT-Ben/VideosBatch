@@ -1,4 +1,4 @@
-import { Archive, BarChart3, CircleHelp, Copy, Download, FileUp, Github, Images, KeyRound, Loader2, Plus, RefreshCw, ShieldCheck, Trash2, UploadCloud } from "lucide-react";
+import { Archive, BarChart3, CircleHelp, Copy, Download, FileUp, Github, Images, KeyRound, Loader2, Plus, RefreshCw, ShieldCheck, Trash2, UploadCloud, X } from "lucide-react";
 import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { api } from "./api";
 import { VideosBatchStudio } from "./videosBatchStudio/VideosBatchStudio";
@@ -184,12 +184,14 @@ function TokenUsagePanel({
   sessions,
   selectedSessionId,
   onClear,
+  onClose,
   busy
 }: {
   events?: TokenUsageEvent[];
   sessions: Session[];
   selectedSessionId?: string;
   onClear: () => void;
+  onClose: () => void;
   busy: boolean;
 }) {
   const { t } = useI18n();
@@ -213,15 +215,26 @@ function TokenUsagePanel({
           <strong>{formatMTokens(trackedTokenTotal(events))} tracked tokens</strong>
           <small>{t.token.summary(formatMTokens(trackedInput), formatMTokens(trackedOutput), trackedEvents)}</small>
         </div>
-        <button
-          type="button"
-          className="danger"
-          onClick={onClear}
-          disabled={busy || !events?.length}
-          title={t.token.clearTitle}
-        >
-          {t.token.clear}
-        </button>
+        <div className="token-usage-head-actions">
+          <button
+            type="button"
+            className="danger"
+            onClick={onClear}
+            disabled={busy || !events?.length}
+            title={t.token.clearTitle}
+          >
+            {t.token.clear}
+          </button>
+          <button
+            type="button"
+            className="token-usage-close"
+            onClick={onClose}
+            title={t.token.closeTitle}
+            aria-label={t.token.closeTitle}
+          >
+            <X size={16} />
+          </button>
+        </div>
       </div>
       <div className="token-family-grid">
         {tokenUsageFamilies.map((family) => {
@@ -2421,6 +2434,7 @@ export function App() {
             selectedSessionId={selectedSession.id}
             busy={busy === `clear-token-usage-${selectedSession.id}`}
             onClear={clearTokenUsage}
+            onClose={() => setShowTokenUsage(false)}
           />
         )}
 
