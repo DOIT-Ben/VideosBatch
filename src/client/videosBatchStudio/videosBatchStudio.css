@@ -1,6 +1,9 @@
-.vbs-stage-page { width: min(940px, calc(100% - 48px)); margin: 0 auto; padding: 38px 0 30px; }
-.vbs-stage-kicker { color: #99751d; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; margin-bottom: 8px; }
-.vbs-stage-page h2 { margin: 0; font-size: 28px; line-height: 1.2; letter-spacing: -.03em; }
+/* The stage shell. The shared measure, the gutter and the slate heading are
+   owned by the design layer in guidedStudioV2.css, which knows about
+   --vbs-v2-measure; what stays here is only the base shape. */
+.vbs-stage-page { width: 100%; margin: 0; padding: 0; }
+.vbs-stage-kicker { color: var(--vbs-muted); font-size: 10px; font-weight: 700; letter-spacing: .14em; margin: 0 0 6px; }
+.vbs-stage-page h2 { margin: 0; font-size: 27px; font-weight: 600; line-height: 1.22; letter-spacing: -.02em; }
 
 .vbs-note-card, .vbs-empty-card, .vbs-intro-card, .vbs-asset-plan-card, .vbs-shot-card, .vbs-screenplay-scene, .vbs-progress-card {
   border: 1px solid var(--vbs-border); border-radius: 14px; background: var(--vbs-surface);
@@ -12,7 +15,7 @@
 .vbs-primary, .vbs-secondary, .vbs-link-button, .vbs-confirmed {
   display: inline-flex; align-items: center; justify-content: center; gap: 7px; border-radius: 9px; padding: 9px 13px; font: inherit; font-size: 12px; cursor: pointer; text-decoration: none;
 }
-.vbs-primary { border: 1px solid #d3a62d; background: var(--vbs-accent); color: #2f260f; font-weight: 700; }
+.vbs-primary { border: 1px solid var(--vbs-text); background: var(--vbs-text); color: var(--vbs-surface); font-weight: 600; }
 .vbs-primary:hover { filter: brightness(.98); }
 .vbs-secondary { border: 1px solid var(--vbs-border); background: var(--vbs-surface); color: var(--vbs-text); }
 .vbs-link-button { border: 0; background: transparent; color: #7b642d; padding-left: 0; justify-content: flex-start; }
@@ -28,12 +31,11 @@
 .vbs-intro-card p { margin: 0; color: #4c4943; line-height: 1.65; font-size: 13px; }
 .vbs-intro-card blockquote { margin: 0; padding: 9px 10px; border-left: 3px solid var(--vbs-accent); background: var(--vbs-surface-subtle); font-size: 12px; }
 .vbs-card-topline, .vbs-section-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.vbs-code { color: #8a6b21; font-size: 11px; font-weight: 700; }
-.vbs-recommend, .vbs-native-pill { border-radius: 999px; padding: 3px 7px; background: var(--vbs-accent-soft); color: #725716; font-size: 10px; }
+.vbs-code { color: var(--vbs-muted); font-size: 11px; font-weight: 700; }
+.vbs-recommend, .vbs-native-pill { border-radius: 999px; padding: 3px 7px; background: var(--vbs-surface-subtle); color: var(--vbs-muted); font-size: 10px; }
 .vbs-reason { color: var(--vbs-muted); font-size: 11px; line-height: 1.5; }
 
-.vbs-document-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; margin-bottom: 22px; }
-.vbs-document-header p { color: var(--vbs-muted); }
+/* StagePage now renders .vbs-stage-slate; .vbs-document-header is gone. */
 .vbs-document-facts { display: flex; gap: 8px; flex-shrink: 0; }
 .vbs-note-card { padding: 14px 16px; margin: 14px 0; }
 .vbs-note-card p { margin: 5px 0 0; color: var(--vbs-muted); line-height: 1.7; }
@@ -62,7 +64,7 @@
 
 .vbs-screenplay-list { display: grid; gap: 14px; }
 .vbs-screenplay-scene { padding: 18px; display: grid; grid-template-columns: 42px minmax(0,1fr); gap: 14px; }
-.vbs-scene-number { width: 38px; height: 38px; display: grid; place-items: center; background: var(--vbs-accent-soft); border-radius: 10px; font-size: 12px; }
+.vbs-scene-number { width: 38px; height: 38px; display: grid; place-items: center; background: var(--vbs-surface-subtle); color: var(--vbs-muted); border-radius: 10px; font-size: 12px; font-variant-numeric: tabular-nums; }
 .vbs-screenplay-scene h3 { margin: 2px 0 10px; }
 .vbs-screenplay-scene p { line-height: 1.65; }
 .vbs-screenplay-scene blockquote { margin: 12px 0; padding: 10px 12px; border-left: 3px solid var(--vbs-accent); background: var(--vbs-surface-subtle); }
@@ -76,7 +78,7 @@
 .vbs-teaching-purpose { display: flex; gap: 8px; padding: 9px 10px; background: #fffbf2; border-radius: 8px; font-size: 11px; }
 .vbs-subshot-list { display: grid; gap: 8px; margin-top: 14px; }
 .vbs-subshot { display: grid; grid-template-columns: 42px minmax(0,1fr); gap: 10px; padding: 10px; border: 1px solid var(--vbs-border); border-radius: 9px; background: var(--vbs-surface-subtle); }
-.vbs-subshot > span { color: #8a6b21; font-weight: 700; }
+.vbs-subshot > span { color: var(--vbs-muted); font-weight: 700; font-variant-numeric: tabular-nums; }
 .vbs-subshot p { margin: 3px 0; color: var(--vbs-muted); }
 .vbs-subshot small { color: var(--vbs-muted); }
 .vbs-reference-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 12px; }
@@ -86,7 +88,7 @@
 .vbs-progress-card { padding: 16px; display: flex; align-items: center; gap: 11px; }
 .vbs-progress-card > div { display: grid; gap: 3px; }
 .vbs-progress-card small { color: var(--vbs-muted); }
-.vbs-progress-dot { width: 11px; height: 11px; border-radius: 50%; background: #c99d32; }
+.vbs-progress-dot { width: 11px; height: 11px; border-radius: 50%; background: var(--vbs-muted); }
 .vbs-progress-dot.ready { background: var(--vbs-success); }
 .vbs-task-list { display: grid; gap: 7px; }
 .vbs-task-row { display: grid; grid-template-columns: 38px 1fr auto; gap: 10px; align-items: center; padding: 11px 13px; border: 1px solid var(--vbs-border); border-radius: 10px; background: #fff; }
@@ -116,8 +118,5 @@
 .vbs-debug-actions { display: flex; gap: 8px; margin-top: 10px; }
 
 @media (max-width: 899px) {
-  .vbs-stage-page { width: calc(100% - 28px); padding-top: 24px; }
   .vbs-intro-grid, .vbs-asset-gallery, .vbs-asset-plan-list { grid-template-columns: 1fr; }
-  .vbs-document-header { flex-direction: column; }
-  .vbs-footer { width: calc(100% - 28px); }
 }

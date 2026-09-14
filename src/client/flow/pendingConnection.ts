@@ -2,6 +2,15 @@ import type { Connection, Edge } from "@xyflow/react";
 import type { Asset, SessionWithShots, StoreSnapshot } from "../../shared/types";
 import type { FlowNodeData } from "./buildGraph";
 
+/**
+ * The optimistic wire drawn the instant a person completes a drag, before the
+ * server round-trip that turns it into real data. Every edge here is "a wire in
+ * someone's hand", so they all share one look instead of the five hues they used
+ * to: the `edge-pending` class paints them brass, and only the wire's shape
+ * (dash, opacity) distinguishes the kind of connection being made.
+ */
+const PENDING_EDGE_CLASS = "edge-pending";
+
 export interface PendingConnectInput {
   connection: Connection;
   session: SessionWithShots;
@@ -44,8 +53,9 @@ export function buildPendingConnectEdge(input: PendingConnectInput): Edge | unde
         source,
         target,
         animated: true,
+        className: PENDING_EDGE_CLASS,
         data: { canDisconnectAssetReference: true, sourceAssetId: sourceAsset.id, targetAssetId: targetAsset.id },
-        style: { stroke: "#f59e0b", strokeWidth: 2, strokeDasharray: "5 3", opacity: 0.8 }
+        style: { strokeWidth: 2, strokeDasharray: "5 3", opacity: 0.8 }
       };
     }
     const targetShotId = target.slice("storyboard-".length);
@@ -56,8 +66,9 @@ export function buildPendingConnectEdge(input: PendingConnectInput): Edge | unde
       source,
       target,
       animated: true,
+      className: PENDING_EDGE_CLASS,
       data: { canDisconnect: true, assetId: sourceAsset.id, shotId: targetShot.id },
-      style: { stroke: "#fbbf24", strokeWidth: 2, opacity: 0.8 }
+      style: { strokeWidth: 2, opacity: 0.8 }
     };
   }
 
@@ -76,8 +87,9 @@ export function buildPendingConnectEdge(input: PendingConnectInput): Edge | unde
         source,
         target: `shot-${targetShot.id}`,
         animated: true,
+        className: PENDING_EDGE_CLASS,
         data: { canDisconnectFirstFrame: true, tailframeAssetId: asset.id, targetShotId: targetShot.id },
-        style: { stroke: "#38bdf8", strokeWidth: 2, opacity: 0.8 }
+        style: { strokeWidth: 2, opacity: 0.8 }
       };
     }
     return {
@@ -85,8 +97,9 @@ export function buildPendingConnectEdge(input: PendingConnectInput): Edge | unde
       source,
       target: `shot-${targetShot.id}`,
       animated: true,
+      className: PENDING_EDGE_CLASS,
       data: { canDisconnect: true, assetId: asset.id, shotId: targetShot.id },
-      style: { stroke: "#fbbf24", strokeWidth: 2, opacity: 0.8 }
+      style: { strokeWidth: 2, opacity: 0.8 }
     };
   }
 
@@ -103,9 +116,9 @@ export function buildPendingConnectEdge(input: PendingConnectInput): Edge | unde
       source,
       target: `shot-${targetShot.id}`,
       animated: true,
+      className: PENDING_EDGE_CLASS,
       data: { canDisconnectStoryboard: true, storyboardAssetId, targetShotId: targetShot.id, isPrimary },
       style: {
-        stroke: "#a78bfa",
         strokeWidth: 2,
         opacity: 0.8,
         ...(isPrimary ? {} : { strokeDasharray: "4 3" })
@@ -128,8 +141,9 @@ export function buildPendingConnectEdge(input: PendingConnectInput): Edge | unde
       source,
       target: `shot-${targetShot.id}`,
       animated: true,
+      className: PENDING_EDGE_CLASS,
       data: { canDisconnectRefVideo: true, refVideoAssetId: refAsset.id, targetShotId: targetShot.id },
-      style: { stroke: "#34d399", strokeWidth: 2, opacity: 0.8 }
+      style: { strokeWidth: 2, opacity: 0.8 }
     };
   }
 
@@ -143,8 +157,9 @@ export function buildPendingConnectEdge(input: PendingConnectInput): Edge | unde
       source,
       target: `shot-${targetShot.id}`,
       animated: true,
+      className: PENDING_EDGE_CLASS,
       data: { canDisconnectFirstFrame: true, tailframeAssetId, targetShotId: targetShot.id },
-      style: { stroke: "#38bdf8", strokeWidth: 2, opacity: 0.8 }
+      style: { strokeWidth: 2, opacity: 0.8 }
     };
   }
 
@@ -156,9 +171,9 @@ export function buildPendingConnectEdge(input: PendingConnectInput): Edge | unde
       source,
       target,
       animated: true,
+      className: PENDING_EDGE_CLASS,
       data: { canDisconnectAudioTrack: true, stitchJobId: job.id },
       style: {
-        stroke: "#f472b6",
         strokeWidth: 2,
         opacity: 0.8,
         ...(job.finalVideoUrl ? {} : { strokeDasharray: "6 4" })
@@ -177,8 +192,9 @@ export function buildPendingConnectEdge(input: PendingConnectInput): Edge | unde
       source,
       target,
       animated: true,
+      className: PENDING_EDGE_CLASS,
       data: { canDisconnectShotRef: true, sourceShotId: sourceShot.id, targetShotId: targetShot.id },
-      style: { stroke: "#34d399", strokeWidth: 2, strokeDasharray: "4 3", opacity: 0.8 }
+      style: { strokeWidth: 2, strokeDasharray: "4 3", opacity: 0.8 }
     };
   }
 

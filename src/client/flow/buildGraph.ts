@@ -322,7 +322,11 @@ export function buildSessionGraph(snapshot: StoreSnapshot, session: SessionWithS
         target: procNodeId,
         animated: false,
         data: { canDisconnectDerivedClip: true, sourceAssetId: sourceAsset.id, derivedAssetId: asset.id },
-        style: { stroke: "#60a5fa", strokeWidth: 2 }
+        // No stroke here on purpose: an inline stroke lands on the <path> itself and beats any
+        // stylesheet rule, which is why every wire on the canvas used to be the same hardcoded
+        // amber. Colour belongs to the canvas block in guidedStudioV2Focus.css; what is decided
+        // per-edge is only its shape — weight, dash, opacity.
+        style: { strokeWidth: 2 }
       });
     }
   });
@@ -436,7 +440,6 @@ export function buildSessionGraph(snapshot: StoreSnapshot, session: SessionWithS
         // ids so the handler doesn't have to reverse-parse node ids.
         data: { canDisconnectStoryboard: true, storyboardAssetId: assetId, targetShotId: shot.id, isPrimary },
         style: {
-          stroke: "#a78bfa",
           strokeWidth: 2,
           ...(isPrimary ? {} : { strokeDasharray: "4 3", opacity: 0.85 })
         }
@@ -467,7 +470,7 @@ export function buildSessionGraph(snapshot: StoreSnapshot, session: SessionWithS
           target: shotNodeId,
           animated: shot.status === "generating",
           data: { canDisconnectRefVideo: true, refVideoAssetId: shot.referenceVideoAssetId, targetShotId: shot.id },
-          style: { stroke: "#34d399", strokeWidth: 2 }
+          style: { strokeWidth: 2 }
         });
       }
     }
@@ -486,7 +489,7 @@ export function buildSessionGraph(snapshot: StoreSnapshot, session: SessionWithS
           target: shotNodeId,
           animated: shot.status === "generating",
           data: { canDisconnectShotRef: true, sourceShotId: sourceShot.id, targetShotId: shot.id },
-          style: { stroke: "#34d399", strokeWidth: 2, strokeDasharray: "4 3" }
+          style: { strokeWidth: 2, strokeDasharray: "4 3" }
         });
       }
     }
@@ -502,7 +505,7 @@ export function buildSessionGraph(snapshot: StoreSnapshot, session: SessionWithS
           target: shotNodeId,
           animated: shot.status === "generating",
           data: { canDisconnectFirstFrame: true, tailframeAssetId: tailframe.id, targetShotId: shot.id },
-          style: { stroke: "#38bdf8", strokeWidth: 2 }
+          style: { strokeWidth: 2 }
         });
       }
     }
@@ -536,7 +539,7 @@ export function buildSessionGraph(snapshot: StoreSnapshot, session: SessionWithS
         target: assetEdgeTargetId,
         animated: false,
         data: { canDisconnect: true, assetId, shotId: shot.id },
-        style: { stroke: "#fbbf24", strokeWidth: 2 }
+        style: { strokeWidth: 2 }
       });
     });
     // Audit-only edges only make sense when the storyboard node is showing — they describe a
@@ -557,7 +560,7 @@ export function buildSessionGraph(snapshot: StoreSnapshot, session: SessionWithS
           target: storyboardNodeId,
           animated: false,
           data: { canDisconnect: true, assetId, shotId: shot.id, auditOnly: true, storyboardAssetId: storyboardAsset.id },
-          style: { stroke: "#fbbf24", strokeWidth: 1.5, strokeDasharray: "6 4", opacity: 0.6 }
+          style: { strokeWidth: 1.5, strokeDasharray: "6 4", opacity: 0.6 }
         });
       });
     }
@@ -580,7 +583,7 @@ export function buildSessionGraph(snapshot: StoreSnapshot, session: SessionWithS
         target: visualNodeIdForAsset(asset) || `asset-${asset.id}`,
         animated: false,
         data: { canDisconnectAssetReference: true, sourceAssetId, targetAssetId: asset.id },
-        style: { stroke: "#f59e0b", strokeWidth: 2, strokeDasharray: "5 3" }
+        style: { strokeWidth: 2, strokeDasharray: "5 3" }
       });
     });
   });

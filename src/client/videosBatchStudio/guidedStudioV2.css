@@ -745,8 +745,8 @@ button.vbs-v2-project-meta:hover {
 }
 
 .videosbatch-studio-v2 .vbs-stage-confirm-bar {
-  border-color: #ead9a8;
-  background: #fffaf0;
+  border-color: rgba(176, 125, 20, 0.34);
+  background: var(--vbs-v2-accent-soft);
 }
 
 .videosbatch-studio-v2 .vbs-asset-gallery-detailed,
@@ -1391,12 +1391,11 @@ button.vbs-v2-project-meta:hover {
 .vbs-final-delivery {
   overflow: hidden;
   display: grid;
-  gap: 24px;
-  padding: 28px;
+  gap: 22px;
+  padding: 24px;
   border: 1px solid var(--vbs-v2-border);
-  border-radius: var(--vbs-v2-radius-focus);
-  background: linear-gradient(180deg, rgba(251, 244, 223, 0.52), rgba(255, 255, 255, 0.96) 34%, #ffffff 100%);
-  box-shadow: var(--vbs-v2-shadow-raised);
+  border-radius: var(--vbs-v2-radius-card);
+  background: var(--vbs-v2-surface);
 }
 
 .vbs-final-delivery-copy {
@@ -1415,7 +1414,8 @@ button.vbs-v2-project-meta:hover {
 }
 
 .videosbatch-studio-v2 .vbs-final-hero h2 {
-  font-size: clamp(28px, 2vw, 34px);
+  font-size: 22px;
+  letter-spacing: -0.02em;
 }
 
 .videosbatch-studio-v2 .vbs-final-hero p {
@@ -1702,11 +1702,12 @@ button.vbs-v2-project-meta:hover {
   background-clip: padding-box;
 }
 
-/* Long-form lesson reading: cap measure for comfortable line lengths while
-   keeping the document card centered in the stage column. */
+/* Long-form lesson reading: the line length is capped for comfort, but the
+   sheet stays on the stage's left edge. Centring it put the document 90px to
+   the right of the slate, the rail and the footer, so every stage jittered. */
 .videosbatch-studio-v2 .vbs-v2-lesson-document {
-  max-width: 900px;
-  margin-left: auto;
+  max-width: 820px;
+  margin-left: 0;
   margin-right: auto;
 }
 
@@ -1777,5 +1778,470 @@ button.vbs-v2-project-meta:hover {
   .videosbatch-studio-v2 .vbs-candidate-tile:hover .vbs-candidate-preview,
   .videosbatch-studio-v2 .vbs-candidate-tile:focus-within .vbs-candidate-preview {
     opacity: 1;
+  }
+}
+
+/* ==========================================================================
+   Design pass — one measure, one slate, one scarce signal.
+
+   Three ideas, and nothing else:
+
+   1. ONE MEASURE. The mode strip, the progress rail and every stage body now
+      sit on --vbs-v2-gutter, so the nine steps stop having nine different
+      left edges and nine different content widths.
+
+   2. ONE SLATE. Every stage opens the same way: the step number large in the
+      data face, the step name above a plain-language title, the stage facts on
+      the right, all resting on a single hairline that spans the measure.
+
+   3. BRASS IS SCARCE. It marks the gate that is waiting on a person, plus the
+      mode notice. Structure and interaction are ink on paper. When one colour
+      does twelve jobs it communicates nothing.
+   ========================================================================== */
+
+/* --- Measure -------------------------------------------------------------- */
+
+/* Siblings of the workspace, so these carry the gutter themselves. */
+.vbs-mode-banner,
+.vbs-v2-progress-wrap {
+  padding-left: var(--vbs-v2-gutter);
+  padding-right: var(--vbs-v2-gutter);
+}
+
+/* Children of the workspace, which already supplies the gutter. */
+.videosbatch-studio-v2 .vbs-v2-stage-frame,
+.videosbatch-studio-v2 .vbs-v2-workspace > .vbs-inline-error,
+.videosbatch-studio-v2 .vbs-footer,
+.videosbatch-studio-v2 .workflow-footer,
+.videosbatch-studio-v2 .vbs-workflow-footer {
+  width: 100%;
+  max-width: none;
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.vbs-v2-progress {
+  width: 100%;
+  min-width: 0;
+}
+
+/* --- Header --------------------------------------------------------------- */
+.videosbatch-studio-v2 .vbs-v2-header {
+  gap: 20px;
+  border-bottom-color: var(--vbs-v2-border);
+  background: var(--vbs-v2-surface);
+}
+
+/* --- The mode notice: a slim band, not a banner --------------------------- */
+.vbs-mode-banner {
+  margin: 0;
+  padding-top: 10px;
+  padding-bottom: 10px;
+  border: 0;
+  border-bottom: 1px solid #e3d4ae;
+  border-radius: 0;
+  background: var(--vbs-v2-accent-soft);
+}
+
+.vbs-mode-banner-body strong {
+  font-size: var(--vbs-v2-size-label);
+  font-weight: 650;
+}
+
+.vbs-mode-banner-body span {
+  color: #6a6047;
+  font-size: var(--vbs-v2-size-micro);
+  line-height: 1.6;
+  /* Two lines are unavoidable here; balancing them beats an orphan. */
+  text-wrap: balance;
+}
+
+.vbs-mode-banner-body code {
+  background: rgba(111, 79, 13, 0.12);
+  font-family: var(--vbs-v2-mono);
+}
+
+/* --- The rail: one continuous line, nine stops ---------------------------- */
+.vbs-v2-progress-wrap {
+  padding-top: 13px;
+  padding-bottom: 11px;
+  border-bottom: 1px solid var(--vbs-v2-border);
+  background: var(--vbs-v2-surface);
+}
+
+.vbs-v2-progress-step {
+  min-height: 56px;
+  grid-template-rows: 24px auto;
+  gap: 6px;
+  padding: 3px 6px 4px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--vbs-v2-text-faint);
+}
+
+.vbs-v2-progress-step::after {
+  top: 15px;
+  height: 1px;
+  background: var(--vbs-v2-border-strong);
+}
+
+.vbs-v2-progress-node {
+  width: 24px;
+  height: 24px;
+  border-color: var(--vbs-v2-border-strong);
+  background: var(--vbs-v2-surface);
+  color: var(--vbs-v2-text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.vbs-v2-progress-copy {
+  gap: 5px;
+}
+
+.vbs-v2-progress-index {
+  color: var(--vbs-v2-text-faint);
+  font-family: var(--vbs-v2-mono);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+}
+
+.vbs-v2-progress-label {
+  color: var(--vbs-v2-text-soft);
+  font-size: var(--vbs-v2-size-micro);
+  font-weight: 500;
+}
+
+/* Hover changes the stop, never the box. */
+.vbs-v2-progress-step:hover {
+  border-color: transparent;
+  background: transparent;
+}
+
+.vbs-v2-progress-step:hover .vbs-v2-progress-node {
+  transform: none;
+  border-color: var(--vbs-v2-text-soft);
+  color: var(--vbs-v2-text);
+}
+
+.vbs-v2-progress-step:hover .vbs-v2-progress-label {
+  color: var(--vbs-v2-text);
+}
+
+/* Looking at a step is shown by an ink underline, not by a filled pill. */
+.vbs-v2-progress-step.selected {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.vbs-v2-progress-step.selected .vbs-v2-progress-label {
+  color: var(--vbs-v2-text);
+  font-weight: 700;
+}
+
+.vbs-v2-progress-step.selected .vbs-v2-progress-index {
+  color: var(--vbs-v2-text-soft);
+}
+
+.vbs-v2-progress-step.selected::before {
+  content: "";
+  position: absolute;
+  left: 22%;
+  right: 22%;
+  bottom: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--vbs-v2-text);
+}
+
+/* States. Order matters: current and confirm must beat ready. */
+.vbs-v2-progress-step.ready .vbs-v2-progress-node {
+  border-color: var(--vbs-v2-success);
+  background: var(--vbs-v2-success-soft);
+  color: var(--vbs-v2-success);
+}
+
+.vbs-v2-progress-step.ready::after {
+  background: var(--vbs-v2-border-strong);
+}
+
+.vbs-v2-progress-step.stale .vbs-v2-progress-node {
+  border-color: var(--vbs-v2-accent);
+  background: var(--vbs-v2-accent-soft);
+  color: var(--vbs-v2-accent-deep);
+}
+
+.vbs-v2-progress-step.failed .vbs-v2-progress-node {
+  border-color: var(--vbs-v2-danger);
+  background: var(--vbs-v2-danger-soft);
+  color: var(--vbs-v2-danger);
+}
+
+/* Where the pipeline actually stands: a solid ink stop. */
+.vbs-v2-progress-step.current .vbs-v2-progress-node {
+  border-color: var(--vbs-v2-text);
+  background: var(--vbs-v2-text);
+  color: var(--vbs-v2-surface);
+}
+
+.vbs-v2-progress-step.running .vbs-v2-progress-node {
+  border-color: var(--vbs-v2-text);
+  background: var(--vbs-v2-surface);
+  color: var(--vbs-v2-text);
+}
+
+/* The gate is waiting on a person — the one place brass appears. */
+.vbs-v2-progress-step.confirm .vbs-v2-progress-node {
+  border-color: var(--vbs-v2-accent);
+  background: var(--vbs-v2-accent);
+  color: #fffaf0;
+  box-shadow: 0 0 0 4px var(--vbs-v2-accent-soft);
+}
+
+/* --- Workspace and the stage slate ---------------------------------------- */
+.videosbatch-studio-v2 .vbs-v2-workspace {
+  padding: 30px var(--vbs-v2-gutter) 64px;
+}
+
+.videosbatch-studio-v2 .vbs-stage-page {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+
+.videosbatch-studio-v2 .vbs-stage-slate,
+.videosbatch-studio-v2 .vbs-v2-lesson-panel-heading {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 0 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--vbs-v2-border-strong);
+}
+
+.videosbatch-studio-v2 .vbs-stage-slate {
+  margin-bottom: 26px;
+}
+
+.videosbatch-studio-v2 .vbs-stage-numeral {
+  font-family: var(--vbs-v2-mono);
+  font-size: 40px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.05em;
+  font-variant-numeric: tabular-nums;
+  color: var(--vbs-v2-text-faint);
+  user-select: none;
+}
+
+.videosbatch-studio-v2 .vbs-stage-heading {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  padding-top: 2px;
+}
+
+.videosbatch-studio-v2 .vbs-stage-kicker {
+  margin: 0;
+  color: var(--vbs-v2-text-soft);
+  font-size: var(--vbs-v2-size-eyebrow);
+  font-weight: 700;
+  letter-spacing: var(--vbs-v2-tracking-eyebrow);
+  text-transform: none;
+}
+
+.videosbatch-studio-v2 .vbs-stage-page h2 {
+  margin: 0;
+  font-size: var(--vbs-v2-size-display);
+  font-weight: 600;
+  line-height: 1.22;
+  letter-spacing: -0.02em;
+}
+
+.videosbatch-studio-v2 .vbs-stage-lead,
+.videosbatch-studio-v2 .vbs-stage-heading > p {
+  margin: 0;
+  max-width: 68ch;
+  color: var(--vbs-v2-text-soft);
+  font-size: var(--vbs-v2-size-body);
+  line-height: var(--vbs-v2-leading-body);
+}
+
+.videosbatch-studio-v2 .vbs-document-aside {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+  padding-top: 2px;
+}
+
+/* --- Surfaces: sheets on a desk, not floating glass ----------------------- */
+.videosbatch-studio-v2 .vbs-note-card,
+.videosbatch-studio-v2 .vbs-empty-card,
+.videosbatch-studio-v2 .vbs-intro-card,
+.videosbatch-studio-v2 .vbs-asset-plan-card,
+.videosbatch-studio-v2 .vbs-asset-card,
+.videosbatch-studio-v2 .vbs-candidate-tile,
+.videosbatch-studio-v2 .vbs-screenplay-scene,
+.videosbatch-studio-v2 .vbs-shot-card,
+.videosbatch-studio-v2 .vbs-video-shot-card,
+.videosbatch-studio-v2 .vbs-storyboard-item,
+.videosbatch-studio-v2 .vbs-progress-card {
+  border-color: var(--vbs-v2-border);
+  background: var(--vbs-v2-surface);
+}
+
+/* Hover changes the edge and leaves the card where it is: nine identical
+   cards all lifting on hover reads as decoration, not as information. */
+.videosbatch-studio-v2 .vbs-intro-card:hover,
+.videosbatch-studio-v2 .vbs-candidate-tile:hover {
+  transform: none;
+  border-color: var(--vbs-v2-border-strong);
+  box-shadow: none;
+}
+
+/* Chosen reads as ink. Brass belongs to the gate and nowhere else. */
+.videosbatch-studio-v2 .vbs-intro-card.selected,
+.videosbatch-studio-v2 .vbs-candidate-tile.selected {
+  border-color: var(--vbs-v2-text);
+  box-shadow: 0 0 0 1px var(--vbs-v2-text);
+}
+
+.videosbatch-studio-v2 .vbs-selected-badge {
+  background: var(--vbs-v2-text);
+  color: var(--vbs-v2-surface);
+}
+
+/* Per-card counters, code labels and "synced" pills are structure and status.
+   They were brass in the old palette, which put twenty amber chips on one
+   screen and left the one amber chip that mattered invisible. */
+.videosbatch-studio-v2 .vbs-recommend,
+.videosbatch-studio-v2 .vbs-native-pill {
+  background: var(--vbs-v2-surface-muted);
+  color: var(--vbs-v2-text-soft);
+}
+
+.videosbatch-studio-v2 .vbs-code {
+  color: var(--vbs-v2-text-soft);
+}
+
+.videosbatch-studio-v2 .vbs-empty-card {
+  padding: 22px 24px;
+  border-style: dashed;
+  border-color: var(--vbs-v2-border-strong);
+  background: transparent;
+  color: var(--vbs-v2-text-soft);
+  font-size: var(--vbs-v2-size-label);
+  text-align: left;
+}
+
+/* --- Controls ------------------------------------------------------------- */
+.videosbatch-studio-v2 .vbs-primary {
+  border-color: var(--vbs-v2-text);
+  background: var(--vbs-v2-text);
+  color: var(--vbs-v2-surface);
+  font-weight: 600;
+}
+
+.videosbatch-studio-v2 .vbs-primary:hover:not(:disabled) {
+  border-color: #2b2f34;
+  background: #2b2f34;
+  filter: none;
+}
+
+.videosbatch-studio-v2 .vbs-secondary {
+  border-color: var(--vbs-v2-border);
+  background: var(--vbs-v2-surface);
+  color: var(--vbs-v2-text);
+}
+
+.videosbatch-studio-v2 .vbs-secondary:hover:not(:disabled) {
+  border-color: var(--vbs-v2-border-strong);
+  background: var(--vbs-v2-surface-muted);
+}
+
+.videosbatch-studio-v2 .vbs-link-button {
+  color: var(--vbs-v2-text-soft);
+}
+
+.videosbatch-studio-v2 .vbs-link-button:hover:not(:disabled) {
+  color: var(--vbs-v2-text);
+}
+
+.videosbatch-studio-v2 .vbs-v2-more-button,
+.videosbatch-studio-v2 .vbs-icon-button {
+  color: var(--vbs-v2-text-soft);
+}
+
+.videosbatch-studio-v2 .vbs-v2-menu-item {
+  color: var(--vbs-v2-text);
+}
+
+.videosbatch-studio-v2 .vbs-v2-menu {
+  box-shadow: var(--vbs-v2-shadow-popover);
+}
+
+/* --- Footer --------------------------------------------------------------- */
+.videosbatch-studio-v2 .vbs-footer,
+.videosbatch-studio-v2 .workflow-footer,
+.videosbatch-studio-v2 .vbs-workflow-footer {
+  margin: 28px 0 0;
+  border-top: 1px solid var(--vbs-v2-border);
+}
+
+/* --- Type grounding ------------------------------------------------------- */
+.videosbatch-studio-v2,
+.videosbatch-studio-v2 button,
+.videosbatch-studio-v2 input,
+.videosbatch-studio-v2 textarea,
+.videosbatch-studio-v2 select {
+  font-family: var(--vbs-v2-sans);
+}
+
+/* Figures the user compares must not shift width as they change. */
+.videosbatch-studio-v2 .vbs-document-facts strong,
+.videosbatch-studio-v2 .vbs-asset-selection-state,
+.videosbatch-studio-v2 .vbs-v2-lesson-document > header > span,
+.videosbatch-studio-v2 .vbs-task-row > span {
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Quality floor -------------------------------------------------------- */
+.videosbatch-studio-v2 :focus-visible {
+  outline: 2px solid var(--vbs-v2-text);
+  outline-offset: 2px;
+}
+
+.vbs-v2-progress-step:focus-visible {
+  outline: none;
+  border-radius: 6px;
+  box-shadow: var(--vbs-v2-ring);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .videosbatch-studio-v2 * {
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (max-width: 900px) {
+  .videosbatch-studio-v2 .vbs-stage-slate,
+  .videosbatch-studio-v2 .vbs-v2-lesson-panel-heading {
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0 14px;
+  }
+
+  .videosbatch-studio-v2 .vbs-stage-numeral {
+    font-size: 30px;
+  }
+
+  .videosbatch-studio-v2 .vbs-document-aside,
+  .videosbatch-studio-v2 .vbs-v2-tab-list {
+    grid-column: 2;
+    align-items: flex-start;
+    justify-content: flex-start;
   }
 }

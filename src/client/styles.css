@@ -5571,8 +5571,10 @@ body {
 }
 
 .app-shell:has(.gallery-page) .gallery-nav-button.active {
-  border-color: var(--vbs-v2-accent);
-  background: var(--vbs-v2-accent-soft);
+  border-color: var(--vbs-v2-border-strong);
+  background: var(--vbs-v2-surface);
+  color: var(--vbs-v2-text);
+  font-weight: 650;
 }
 
 .app-shell:has(.gallery-page) .session {
@@ -5585,15 +5587,17 @@ body {
   background: var(--vbs-v2-surface);
 }
 
+/* Selection is ink here, exactly as it is in the studio: brass is reserved for
+   a gate that is waiting on a person, and nothing in this list is waiting. */
 .app-shell:has(.gallery-page) .session.active {
-  border-color: var(--vbs-v2-accent);
-  background: var(--vbs-v2-accent-soft);
-  box-shadow: inset 3px 0 0 var(--vbs-v2-accent);
+  border-color: var(--vbs-v2-text);
+  background: var(--vbs-v2-surface);
+  box-shadow: inset 3px 0 0 var(--vbs-v2-text);
 }
 
 .app-shell:has(.gallery-page) .session.active span:first-child {
   background: var(--vbs-v2-surface);
-  box-shadow: 0 0 0 1px var(--vbs-v2-accent);
+  box-shadow: 0 0 0 1px var(--vbs-v2-text);
 }
 
 .app-shell:has(.gallery-page) .topbar {
@@ -5668,5 +5672,98 @@ body {
    squeezed into a narrow implicit column and clipped to "未开…". Pin it under the title. */
 .app-shell:has(.gallery-page) .session small {
   grid-column: 2;
+  color: var(--vbs-v2-text-soft);
+}
+
+/* ---- Entry shell -------------------------------------------------------------------------------
+   The session list is the only view that still shows SeeReel's shell, so it is the only place the
+   palette override has to reach. On top of the token swap above, three things made it read as a
+   different product from the studio:
+
+     1. a 128px teal-and-amber gradient band on top of an otherwise empty page;
+     2. a 30px headline against the studio's 27px, with different tracking;
+     3. a 280px-tall centred empty state for two lines of text.
+
+   All three now use the studio's own numbers. Layout and copy stay SeeReel's. */
+
+.app-shell:has(.gallery-page) .gallery-hero {
+  min-height: 0;
+  align-items: center;
+  padding: 22px 24px 20px;
+  border-bottom: 1px solid var(--vbs-v2-border);
+  background: var(--vbs-v2-surface);
+}
+
+.app-shell:has(.gallery-page) .gallery-hero p {
+  margin: 0 0 6px;
+  color: var(--vbs-v2-text-soft);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+.app-shell:has(.gallery-page) .gallery-hero h2 {
+  margin: 0;
+  font-size: 27px;
+  font-weight: 600;
+  line-height: 1.22;
+  letter-spacing: -0.02em;
+}
+
+.app-shell:has(.gallery-page) .gallery-hero > div > span {
+  max-width: 68ch;
+  margin-top: 6px;
+  color: var(--vbs-v2-text-soft);
+  font-size: 14px;
+  line-height: 1.75;
+}
+
+.app-shell:has(.gallery-page) .gallery-hero button {
+  border-color: var(--vbs-v2-border);
+  background: var(--vbs-v2-surface);
+  color: var(--vbs-v2-text);
+}
+
+.app-shell:has(.gallery-page) .gallery-hero button:hover {
+  border-color: var(--vbs-v2-border-strong);
+  background: var(--vbs-v2-surface-muted);
+}
+
+/* An empty screen is an invitation to act, not a monument. */
+.app-shell:has(.gallery-page) .gallery-empty {
+  min-height: 0;
+  place-items: start;
+  justify-items: start;
+  gap: 6px;
+  padding: 44px 24px;
+  text-align: left;
+}
+
+.app-shell:has(.gallery-page) .gallery-empty button {
+  border-color: var(--vbs-v2-border);
+  background: var(--vbs-v2-surface);
+  color: var(--vbs-v2-text);
+}
+
+.app-shell:has(.gallery-page) .gallery-grid {
+  padding: 20px 24px 48px;
+}
+
+.app-shell:has(.gallery-page) .gallery-card {
+  border-radius: var(--vbs-v2-radius-card);
+}
+
+/* The credential button is the one control in this shell that can be waiting on the user, so it
+   keeps the brass treatment — but read from the scale, in the light palette, rather than the
+   pale-on-amber pair the dark console used. Configured means nothing is waiting, so it goes quiet. */
+.app-shell:has(.gallery-page) .agent-plan-button:not(.configured) {
+  border-color: rgba(176, 125, 20, 0.4);
+  background: var(--vbs-v2-accent-soft);
+  color: var(--vbs-v2-accent-deep);
+}
+
+.app-shell:has(.gallery-page) .agent-plan-button.configured {
+  border-color: var(--vbs-v2-border);
+  background: var(--vbs-v2-surface-muted);
   color: var(--vbs-v2-text-soft);
 }

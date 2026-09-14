@@ -1,15 +1,32 @@
 /* ============================================================================
-   VideosBatch design tokens.
+   VideosBatch design tokens — the one place colour, type, space and form are
+   decided.
 
-   The guided studio and the node canvas render the same product, so the palette
-   is defined here once instead of being restated by every stylesheet that needs
-   it.
+   The guided studio and the node canvas render the same product, so the
+   palette is defined here once instead of being restated by every stylesheet
+   that needs it.
 
-   --vbs-v2-*  the scale: canvas / surface / text / border / accent, plus the
-               control and card radii, the shadows and the transition.
-   --vbs-*     the older semantic names that the stage stylesheets still read.
-               They alias the scale above, so every colour has exactly one
-               source and the two sets can never drift apart.
+   Three rules hold this file together:
+
+   1. BRASS IS A SIGNAL, NOT A SKIN. Amber used to be the product's default
+      paint — hero bands, selected cards, the current step, the canvas edges,
+      the final-cut panel. When one colour does twelve jobs it stops meaning
+      anything. Here it survives in exactly one role: "this gate is waiting on
+      a person". Structural and interactive work is ink on paper.
+
+   2. THE PAPER IS COOLER AND DEEPER THAN A DEFAULT CREAM. Cards only read as
+      cards when the desk behind them is far enough away in value; #f6f4ef sat
+      four percent below white, which is why the old screens read as one flat
+      wash.
+
+   3. NO WEBFONT IS FETCHED. This is a local tool, CJK webfonts run to
+      megabytes, and font CDNs are unreliable from the mainland — so character
+      comes from scale, weight, tracking, tabular figures and a deliberate
+      sans/mono pairing rather than from a novel face.
+
+   --vbs-v2-*  the scale: colour roles, type, space, form, motion.
+   --vbs-*     the older semantic names the stage stylesheets still read. They
+               alias the scale above, so every colour has exactly one source.
    ============================================================================ */
 
 /* :root carries the same values because Radix portals (the step-actions menu,
@@ -18,24 +35,87 @@
 :root,
 .videosbatch-studio-v2,
 .app-shell.videosbatch-canvas-mode {
-  --vbs-v2-canvas: #f6f4ef;
+  /* --- Surfaces: a desk, a sheet, a well ---------------------------------- */
+  --vbs-v2-canvas: #eae9e3;
   --vbs-v2-surface: #ffffff;
-  --vbs-v2-surface-muted: #f8f6f1;
-  --vbs-v2-text: #191c20;
-  --vbs-v2-text-soft: #74716a;
-  --vbs-v2-border: #e8e4da;
-  --vbs-v2-border-strong: #d9d3c7;
-  --vbs-v2-accent: #d8a640;
-  --vbs-v2-accent-deep: #866315;
-  --vbs-v2-accent-soft: #fbf4df;
-  --vbs-v2-success: #557761;
-  --vbs-v2-danger: #ad5a50;
-  --vbs-v2-radius-control: 10px;
-  --vbs-v2-radius-card: 18px;
-  --vbs-v2-radius-focus: 22px;
-  --vbs-v2-shadow-raised: 0 12px 34px rgba(25, 28, 32, 0.055);
-  --vbs-v2-shadow-selected: 0 10px 28px rgba(25, 28, 32, 0.08);
-  --vbs-v2-transition: 170ms ease;
+  --vbs-v2-surface-muted: #f3f2ed;
+  --vbs-v2-surface-sunken: #e3e2db;
+
+  /* --- Ink ---------------------------------------------------------------- */
+  --vbs-v2-text: #16181c;
+  --vbs-v2-text-soft: #6c7075;
+  --vbs-v2-text-faint: #9c9e9c;
+
+  /* --- Hairlines ---------------------------------------------------------- */
+  --vbs-v2-border: #d9d8d0;
+  --vbs-v2-border-strong: #c2c1b7;
+
+  /* --- Signal: brass, reserved for the human gate ------------------------- */
+  --vbs-v2-accent: #b07d14;
+  --vbs-v2-accent-deep: #6f4f0d;
+  --vbs-v2-accent-soft: #faf1da;
+  --vbs-v2-success: #3e7355;
+  --vbs-v2-success-soft: #ebf2ec;
+  --vbs-v2-danger: #a6483c;
+  --vbs-v2-danger-soft: #fbefed;
+
+  /* --- Canvas wiring -------------------------------------------------------
+     The node canvas's wires are structure, so they are ink — the weight and the
+     dash pattern carry the hierarchy (solid = primary, dashed = extra/audit).
+     Brass appears on exactly one thing: the wire a person is holding, i.e. a
+     connection being dragged or the one they clicked.
+     Edge colour is owned here rather than by the graph builder so a single
+     stylesheet can retheme every wire. */
+  --vbs-v2-edge: rgba(22, 24, 28, 0.34);
+  --vbs-v2-edge-strong: rgba(22, 24, 28, 0.78);
+  --vbs-v2-edge-faint: rgba(22, 24, 28, 0.13);
+
+  /* --- Type --------------------------------------------------------------- */
+  /* Latin first so the platform's best Latin face wins, CJK after so the
+     Chinese still resolves to a designed family rather than a fallback. */
+  --vbs-v2-sans: system-ui, -apple-system, "Segoe UI", "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --vbs-v2-mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+  --vbs-v2-size-display: 27px;
+  --vbs-v2-size-title: 19px;
+  --vbs-v2-size-section: 15px;
+  --vbs-v2-size-body: 14px;
+  --vbs-v2-size-label: 12px;
+  --vbs-v2-size-micro: 11px;
+  --vbs-v2-size-eyebrow: 10px;
+  --vbs-v2-tracking-eyebrow: 0.14em;
+  --vbs-v2-leading-body: 1.75;
+
+  /* --- Space -------------------------------------------------------------- */
+  --vbs-v2-space-1: 4px;
+  --vbs-v2-space-2: 8px;
+  --vbs-v2-space-3: 12px;
+  --vbs-v2-space-4: 16px;
+  --vbs-v2-space-5: 24px;
+  --vbs-v2-space-6: 32px;
+  --vbs-v2-space-7: 48px;
+
+  /* --- Measure: the one column the header, rail, stages and footer share ---
+     The gutter is derived from it, so widening the measure widens every
+     surface that uses the gutter at the same time. */
+  --vbs-v2-measure: 1080px;
+  --vbs-v2-gutter: max(28px, calc((100% - var(--vbs-v2-measure)) / 2));
+
+  /* The node canvas is an editing surface, not a document: a graph wants the
+     width, so canvas mode keeps one compact inset for its header, canvas card
+     and inspector instead of the reading measure. One inset per surface — what
+     was wrong before was a header at 32px sitting above a card at 28px. */
+  --vbs-v2-canvas-inset: 28px;
+
+  /* --- Form --------------------------------------------------------------- */
+  --vbs-v2-radius-control: 9px;
+  --vbs-v2-radius-card: 14px;
+  --vbs-v2-radius-focus: 20px;
+  --vbs-v2-shadow-raised: 0 12px 34px rgba(22, 24, 28, 0.06);
+  --vbs-v2-shadow-selected: 0 10px 28px rgba(22, 24, 28, 0.09);
+  --vbs-v2-shadow-popover: 0 18px 44px rgba(22, 24, 28, 0.15);
+  --vbs-v2-ring: 0 0 0 3px rgba(22, 24, 28, 0.12);
+  --vbs-v2-transition: 160ms ease;
 
   --vbs-bg: var(--vbs-v2-canvas);
   --vbs-surface: var(--vbs-v2-surface);
@@ -53,6 +133,6 @@
    one deliberate difference between the two shells, so it is stated here
    instead of hiding inside a per-selector override. */
 .app-shell.videosbatch-canvas-mode {
-  --vbs-v2-accent: #c18b2f;
-  --vbs-v2-accent-soft: #fff7e5;
+  --vbs-v2-accent: #9c6f10;
+  --vbs-v2-accent-soft: #fbf3e0;
 }

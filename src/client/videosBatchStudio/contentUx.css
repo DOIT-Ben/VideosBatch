@@ -15,8 +15,8 @@
 }
 
 .vbs-story-editor:focus {
-  border-color: #d6b24d;
-  box-shadow: 0 0 0 3px rgba(229, 184, 75, 0.16);
+  border-color: var(--vbs-text);
+  box-shadow: 0 0 0 3px rgba(22, 24, 28, 0.1);
 }
 
 .vbs-document-actions {
@@ -84,8 +84,8 @@
 
 .vbs-structured-editor-grid input:focus,
 .vbs-structured-editor-grid textarea:focus {
-  border-color: #d6b24d;
-  box-shadow: 0 0 0 3px rgba(229, 184, 75, 0.14);
+  border-color: var(--vbs-text);
+  box-shadow: 0 0 0 3px rgba(22, 24, 28, 0.1);
 }
 
 .vbs-screenplay-scene.editing {
@@ -139,7 +139,7 @@
 
 .vbs-candidate-tile.selected {
   border-color: #cfa438;
-  box-shadow: 0 0 0 2px rgba(229, 184, 75, 0.24);
+  box-shadow: 0 0 0 2px rgba(22, 24, 28, 0.14);
 }
 
 .vbs-candidate-select {

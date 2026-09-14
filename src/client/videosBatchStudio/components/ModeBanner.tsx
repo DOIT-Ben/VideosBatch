@@ -49,9 +49,9 @@ export function ModeBanner({ runtime }: { runtime?: VideosBatchRuntimeSummary })
           <span>环境配置无法解析：{runtime.error}</span>
         ) : (
           <span>
-            所以这一步的成果是示例数据，资产卡会一直停在「等待图片」。要真实出片，需把
+            这一步的成果是示例数据，资产卡会停在「等待图片」。要真实出片，在 <code>.env</code> 里把
             <code>VIDEOSBATCH_EXECUTOR_MODE</code> 设为 <code>llm</code>、
-            <code>VIDEOSBATCH_MEDIA_MODE</code> 设为 <code>native</code>（真实调用是付费的）。
+            <code>VIDEOSBATCH_MEDIA_MODE</code> 设为 <code>native</code>；真实调用是付费的。
           </span>
         )}
       </div>

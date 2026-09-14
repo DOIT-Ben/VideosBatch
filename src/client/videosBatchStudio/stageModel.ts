@@ -102,8 +102,18 @@ export function productStepById(stepId: VideosBatchProductStepId): VideosBatchPr
   return step;
 }
 
+/** "05" — the step position on its own, for the slate numeral. */
+export function productStepIndexLabel(stepId: VideosBatchProductStepId): string {
+  const index = VIDEOS_BATCH_PRODUCT_STEPS.findIndex((step) => step.id === stepId);
+  return String(index + 1).padStart(2, "0");
+}
+
+/** "资产图片" — the step name without its number. */
+export function productStepName(stepId: VideosBatchProductStepId): string {
+  return productStepById(stepId).label;
+}
+
 /** "03 · 故事文稿" — the one place a step number and label are joined. */
 export function productStepKicker(stepId: VideosBatchProductStepId): string {
-  const index = VIDEOS_BATCH_PRODUCT_STEPS.findIndex((step) => step.id === stepId);
-  return `${String(index + 1).padStart(2, "0")} · ${productStepById(stepId).label}`;
+  return `${productStepIndexLabel(stepId)} · ${productStepName(stepId)}`;
 }

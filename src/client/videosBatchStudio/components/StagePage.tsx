@@ -1,11 +1,17 @@
 import type { ReactNode } from "react";
-import { productStepKicker, type VideosBatchProductStepId } from "../stageModel";
+import { productStepIndexLabel, productStepName, type VideosBatchProductStepId } from "../stageModel";
 
 /**
  * One shared stage shell for every step of the workflow.
  *
- * The step number and label come from stageModel, so the "03 · 故事文稿" kicker
- * exists once instead of being re-typed inside nine stage components.
+ * Every stage opens with the same slate: the step number set large in the data
+ * face, the step name above a plain-language title, and the stage's facts on
+ * the right — all resting on one hairline that spans the shared measure. The
+ * nine steps read as nine passes over the same document rather than as nine
+ * differently laid-out pages.
+ *
+ * The step number and label come from stageModel, so neither is re-typed
+ * inside nine stage components.
  */
 export function StagePage({
   stepId,
@@ -36,14 +42,15 @@ export function StagePage({
 
   return (
     <section className={`vbs-stage-page${className ? ` ${className}` : ""}`}>
-      <p className="vbs-stage-kicker">{productStepKicker(stepId)}</p>
-      <div className="vbs-document-header">
-        <div>
+      <header className="vbs-stage-slate">
+        <span className="vbs-stage-numeral" aria-hidden="true">{productStepIndexLabel(stepId)}</span>
+        <div className="vbs-stage-heading">
+          <p className="vbs-stage-kicker">{productStepName(stepId)}</p>
           <h2>{title}</h2>
-          {lead ? <p>{lead}</p> : null}
+          {lead ? <p className="vbs-stage-lead">{lead}</p> : null}
         </div>
         {asideContent ? <div className="vbs-document-aside">{asideContent}</div> : null}
-      </div>
+      </header>
       {children}
     </section>
   );

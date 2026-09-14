@@ -7,7 +7,7 @@ body:has(.videosbatch-studio-v2),
 }
 
 body:has(.videosbatch-studio-v2) {
-  background: #f6f4ef;
+  background: var(--vbs-v2-canvas);
 }
 
 .app-shell:has(.videosbatch-studio-v2) {
@@ -15,7 +15,7 @@ body:has(.videosbatch-studio-v2) {
   min-height: 100vh;
   height: auto;
   overflow: visible;
-  background: #f6f4ef;
+  background: var(--vbs-v2-canvas);
 }
 
 .app-shell:has(.videosbatch-studio-v2) > .sidebar {
@@ -29,7 +29,7 @@ body:has(.videosbatch-studio-v2) {
   height: auto;
   padding: 0;
   overflow: visible;
-  background: #f6f4ef;
+  background: var(--vbs-v2-canvas);
 }
 
 .app-shell:has(.videosbatch-studio-v2) .topbar {
@@ -48,7 +48,7 @@ body:has(.videosbatch-studio-v2) {
   min-height: 100vh;
   height: auto;
   overflow: visible;
-  background: #f6f4ef;
+  background: var(--vbs-v2-canvas);
 }
 
 .app-shell.videosbatch-canvas-mode > .sidebar,
@@ -65,11 +65,14 @@ body:has(.videosbatch-studio-v2) {
   overflow: visible;
   display: flex;
   flex-direction: column;
-  background: #f6f4ef;
+  background: var(--vbs-v2-canvas);
 }
 
 .app-shell.videosbatch-canvas-mode .vbs-v2-header {
   flex: 0 0 auto;
+  /* Same inset as the canvas card below it. These two used to disagree (32px
+     header, 28px frame), which is what made the canvas look un-aligned. */
+  padding-inline: var(--vbs-v2-canvas-inset);
 }
 
 .app-shell.videosbatch-canvas-mode .flow-view {
@@ -77,9 +80,9 @@ body:has(.videosbatch-studio-v2) {
   height: calc(100vh - 112px);
   min-height: 620px;
   flex: 1 0 auto;
-  margin: 0 28px 28px;
-  border-color: rgba(156, 171, 188, 0.16);
-  border-radius: 14px;
+  margin: 0 var(--vbs-v2-canvas-inset) var(--vbs-v2-canvas-inset);
+  border-color: var(--vbs-v2-border);
+  border-radius: var(--vbs-v2-radius-card);
 }
 
 .videosbatch-studio-v2 {
@@ -89,19 +92,21 @@ body:has(.videosbatch-studio-v2) {
   display: block;
 }
 
+/* Horizontal padding is the shared measure's gutter, not a local constant —
+   the header, rail and stage bodies have to land on the same column. */
 .videosbatch-studio-v2 .vbs-v2-header {
   min-height: 68px;
-  padding: 9px 28px;
+  padding: 9px var(--vbs-v2-gutter);
 }
 
 .videosbatch-studio-v2 .vbs-v2-progress-wrap {
-  padding: 10px 28px 9px;
+  padding: 10px var(--vbs-v2-gutter) 9px;
 }
 
 .videosbatch-studio-v2 .vbs-v2-workspace {
   min-height: auto;
   overflow: visible;
-  padding: 30px 32px 56px;
+  padding: 30px var(--vbs-v2-gutter) 56px;
 }
 
 .videosbatch-studio-v2 .vbs-v2-lesson-onboarding {
@@ -145,21 +150,35 @@ body:has(.videosbatch-studio-v2) {
 }
 
 @media (max-width: 640px) {
+  .app-shell.videosbatch-canvas-mode {
+    /* Narrow widths tighten the one inset rather than hardcoding a second one,
+       so the header and the card still share an edge. */
+    --vbs-v2-canvas-inset: 12px;
+  }
+
   .app-shell.videosbatch-canvas-mode .flow-view {
     height: calc(100vh - 132px);
     min-height: 520px;
-    margin: 0 12px 12px;
   }
 }
 
 /* ============================================================================
-   VideosBatch canvas light theme
-   The workflow studio is the visual source of truth for this product. Keep the
-   legacy canvas selectors intact for SeeReel routes, then override them only
-   inside the VideosBatch canvas shell.
+   VideosBatch canvas — one ink field
+   The studio is a reading surface (the 1080 measure); the canvas is an editing
+   surface and keeps its own compact inset, because a graph wants the width.
+   What both obey is the rule that matters: one inset per surface, never two.
+   On the canvas every standing line is ink — wires, handles, node rules,
+   buttons, selection. Brass is spent on one thing only: the wire currently in
+   a person's hand (the optimistic edge a drag creates, the live connection
+   path, the edge just clicked). Node-kind colour survives as a muted family on
+   the type strip, because a graph needs wayfinding — but no kind is brass.
    ============================================================================ */
 
 .app-shell.videosbatch-canvas-mode {
+  /* xyflow resolves its own edge colours from these, so the retheme also covers
+     paths the app does not render itself. */
+  --xy-edge-stroke: var(--vbs-v2-edge);
+  --xy-edge-stroke-selected: var(--vbs-v2-accent);
   background: var(--vbs-v2-canvas);
   color: var(--vbs-v2-text);
 }
@@ -168,12 +187,7 @@ body:has(.videosbatch-studio-v2) {
   background: var(--vbs-v2-canvas);
 }
 
-.app-shell.videosbatch-canvas-mode .flow-view {
-  border: 1px solid var(--vbs-v2-border);
-  background: var(--vbs-v2-surface);
-  box-shadow: 0 12px 30px rgba(25, 28, 32, 0.08);
-}
-
+/* --- Toolbar: the studio's ink primary, not a brass slab ------------------ */
 .app-shell.videosbatch-canvas-mode .flow-toolbar {
   border-bottom: 1px solid var(--vbs-v2-border);
   background: var(--vbs-v2-surface);
@@ -192,35 +206,36 @@ body:has(.videosbatch-studio-v2) {
 
 .app-shell.videosbatch-canvas-mode .flow-toolbar-actions button:not(.primary):hover:not(:disabled),
 .app-shell.videosbatch-canvas-mode .flow-toolbar-actions .flow-toolbar-undo:hover:not(:disabled) {
-  border-color: #d5a84e;
-  background: var(--vbs-v2-accent-soft);
-  color: #78591c;
+  border-color: var(--vbs-v2-text);
+  background: var(--vbs-v2-surface-muted);
+  color: var(--vbs-v2-text);
 }
 
 .app-shell.videosbatch-canvas-mode .flow-toolbar-actions button.primary,
 .app-shell.videosbatch-canvas-mode .inspector-actions button.primary,
 .app-shell.videosbatch-canvas-mode .inspector-actions button:not(.danger):first-child {
-  border-color: #c18b2f;
-  background: #d8a640;
-  color: #2b2417;
+  border-color: var(--vbs-v2-text);
+  background: var(--vbs-v2-text);
+  color: #ffffff;
 }
 
 .app-shell.videosbatch-canvas-mode .flow-toolbar-actions button.primary:hover:not(:disabled),
 .app-shell.videosbatch-canvas-mode .inspector-actions button.primary:hover:not(:disabled),
 .app-shell.videosbatch-canvas-mode .inspector-actions button:not(.danger):first-child:hover:not(:disabled) {
-  background: #c99232;
+  background: #000000;
 }
 
 .app-shell.videosbatch-canvas-mode .flow-toolbar-actions .workflow-run-button {
   border-color: #b7dccb;
-  background: #edf8f2;
-  color: #1c6849;
+  background: var(--vbs-v2-success-soft);
+  color: var(--vbs-v2-success);
 }
 
 .app-shell.videosbatch-canvas-mode .flow-workflow-status {
   color: var(--vbs-v2-text-soft);
 }
 
+/* --- The field ------------------------------------------------------------ */
 .app-shell.videosbatch-canvas-mode .flow-canvas-row {
   border-color: var(--vbs-v2-border);
   background: var(--vbs-v2-canvas);
@@ -230,78 +245,110 @@ body:has(.videosbatch-studio-v2) {
   background:
     repeating-linear-gradient(90deg, rgba(25, 28, 32, 0.045) 0 1px, transparent 1px 40px),
     repeating-linear-gradient(0deg, rgba(25, 28, 32, 0.035) 0 1px, transparent 1px 40px),
-    linear-gradient(180deg, #faf8f3 0%, #f3f0e8 100%);
+    linear-gradient(180deg, #fcfcfa 0%, var(--vbs-v2-surface-muted) 100%);
 }
 
 .app-shell.videosbatch-canvas-mode .react-flow__background-pattern line,
 .app-shell.videosbatch-canvas-mode .react-flow__background-pattern path {
-  stroke: #e2dcd0 !important;
+  stroke: rgba(25, 28, 32, 0.05) !important;
 }
 
+/* --- Wires ---------------------------------------------------------------
+   One ink, three weights: solid = the lineage that decides a shot, dashed =
+   a reference, faint dot = an audit-only leftover. Per-edge inline styles keep
+   only shape (width / dash / opacity) — colour is owned here, which is why
+   every wire used to render full-strength amber: an inline stroke lands on the
+   <path> itself and beats any stylesheet. */
 .app-shell.videosbatch-canvas-mode .react-flow__edge-path {
-  stroke: rgba(134, 99, 21, 0.38);
-  stroke-width: 1.8;
+  stroke: var(--vbs-v2-edge);
 }
 
+.app-shell.videosbatch-canvas-mode .react-flow__edge:hover .react-flow__edge-path {
+  stroke: var(--vbs-v2-edge-strong);
+}
+
+/* Brass: a hand is on the wire. Selected and mid-drag are the same thing. */
 .app-shell.videosbatch-canvas-mode .react-flow__edge.selected .react-flow__edge-path,
+.app-shell.videosbatch-canvas-mode .react-flow__edge.edge-pending .react-flow__edge-path,
 .app-shell.videosbatch-canvas-mode .react-flow__connection-path {
   stroke: var(--vbs-v2-accent);
-  stroke-width: 2.3;
+  stroke-width: 2.4 !important;
+}
+
+/* Focus: selecting a node answers "what does this one touch?" */
+.app-shell.videosbatch-canvas-mode .react-flow__edge.edge-linked .react-flow__edge-path {
+  stroke: var(--vbs-v2-edge-strong);
+  stroke-width: 2.4 !important;
+}
+
+.app-shell.videosbatch-canvas-mode .react-flow__edge.edge-dimmed .react-flow__edge-path {
+  stroke: var(--vbs-v2-edge-faint);
 }
 
 .app-shell.videosbatch-canvas-mode .react-flow__controls {
   border-color: var(--vbs-v2-border-strong) !important;
   background: rgba(255, 255, 255, 0.96) !important;
-  box-shadow: 0 5px 14px rgba(25, 28, 32, 0.12) !important;
+  box-shadow: 0 5px 14px rgba(25, 28, 32, 0.1) !important;
 }
 
 .app-shell.videosbatch-canvas-mode .react-flow__controls-button {
   border-bottom-color: var(--vbs-v2-border) !important;
-  color: #59636d !important;
+  color: var(--vbs-v2-text-soft) !important;
 }
 
 .app-shell.videosbatch-canvas-mode .react-flow__controls-button:hover {
-  background: var(--vbs-v2-accent-soft) !important;
-  color: #78591c !important;
+  background: var(--vbs-v2-surface-muted) !important;
+  color: var(--vbs-v2-text) !important;
 }
 
+/* A handle is where a wire starts: ink at rest, brass only while you pull. */
 .app-shell.videosbatch-canvas-mode .react-flow__handle {
-  border-color: #ffffff !important;
-  background: #d8a640 !important;
-  box-shadow: 0 0 0 2px rgba(216, 166, 64, 0.24) !important;
+  border-color: var(--vbs-v2-surface) !important;
+  background: var(--vbs-v2-text-soft) !important;
+  box-shadow: 0 0 0 1px var(--vbs-v2-border-strong) !important;
 }
 
+.app-shell.videosbatch-canvas-mode .react-flow__handle:hover,
+.app-shell.videosbatch-canvas-mode .react-flow__handle.connecting,
+.app-shell.videosbatch-canvas-mode .react-flow__handle.connectingfrom,
+.app-shell.videosbatch-canvas-mode .react-flow__handle.connectingto {
+  background: var(--vbs-v2-accent) !important;
+  box-shadow: 0 0 0 2px var(--vbs-v2-accent-soft) !important;
+}
+
+/* --- Nodes ---------------------------------------------------------------- */
 .app-shell.videosbatch-canvas-mode .flow-node {
   border-color: var(--vbs-v2-border-strong);
   background: var(--vbs-v2-surface);
   color: var(--vbs-v2-text);
-  box-shadow: 0 10px 24px rgba(25, 28, 32, 0.14), 0 0 0 1px rgba(255, 255, 255, 0.8);
+  box-shadow: 0 10px 24px rgba(25, 28, 32, 0.13), 0 0 0 1px rgba(255, 255, 255, 0.8);
 }
 
+/* Selection is ink here, exactly as the studio's selected card is. */
 .app-shell.videosbatch-canvas-mode .flow-node.selected {
-  border-color: #d2a24b;
-  box-shadow: 0 0 0 2px rgba(193, 139, 47, 0.25), 0 14px 30px rgba(25, 28, 32, 0.18);
+  border-color: var(--vbs-v2-text);
+  box-shadow: 0 0 0 2px rgba(22, 24, 28, 0.14), 0 14px 30px rgba(25, 28, 32, 0.18);
 }
 
 .app-shell.videosbatch-canvas-mode .flow-node-head,
 .app-shell.videosbatch-canvas-mode .flow-node-foot {
   border-color: var(--vbs-v2-border);
-  background: rgba(248, 250, 251, 0.96);
+  background: var(--vbs-v2-surface-muted);
   box-shadow: none;
 }
 
 .app-shell.videosbatch-canvas-mode .flow-node-title {
-  color: #27313a;
+  color: var(--vbs-v2-text);
   text-shadow: none;
 }
 
 .app-shell.videosbatch-canvas-mode .flow-tag {
-  color: #48535d;
-  background: #f1f4f6;
-  border-color: #d3dbe1;
+  color: var(--vbs-v2-text-soft);
+  background: var(--vbs-v2-surface-muted);
+  border-color: var(--vbs-v2-border);
 }
 
-.app-shell.videosbatch-canvas-mode .tag-character { color: #86621e; background: #fff5d9; border-color: #ead49a; }
+.app-shell.videosbatch-canvas-mode .tag-character { color: #7a6a55; background: #f6f3ed; border-color: #ddd5c7; }
 .app-shell.videosbatch-canvas-mode .tag-scene { color: #35668f; background: #eef6ff; border-color: #bdd7f1; }
 .app-shell.videosbatch-canvas-mode .tag-prop { color: #934b68; background: #fff0f5; border-color: #efbfd0; }
 .app-shell.videosbatch-canvas-mode .tag-style,
@@ -317,7 +364,7 @@ body:has(.videosbatch-studio-v2) {
   border-bottom-color: var(--vbs-v2-border);
   background:
     linear-gradient(135deg, rgba(25, 28, 32, 0.05) 0 25%, transparent 25% 50%, rgba(25, 28, 32, 0.035) 50% 75%, transparent 75%),
-    #f1ede4;
+    var(--vbs-v2-surface-sunken);
   background-size: 18px 18px, auto;
 }
 
@@ -329,22 +376,22 @@ body:has(.videosbatch-studio-v2) {
 .app-shell.videosbatch-canvas-mode .flow-node-download,
 .app-shell.videosbatch-canvas-mode .flow-review-button {
   border-color: var(--vbs-v2-border-strong);
-  background-color: #ffffff;
-  color: #59636d;
+  background-color: var(--vbs-v2-surface);
+  color: var(--vbs-v2-text-soft);
 }
 
 .app-shell.videosbatch-canvas-mode .flow-node-model:hover,
 .app-shell.videosbatch-canvas-mode .flow-node-model:focus,
 .app-shell.videosbatch-canvas-mode .flow-node-download:hover,
 .app-shell.videosbatch-canvas-mode .flow-review-button:hover {
-  border-color: #d2a24b;
-  background-color: var(--vbs-v2-accent-soft);
-  color: #78591c;
+  border-color: var(--vbs-v2-text);
+  background-color: var(--vbs-v2-surface-muted);
+  color: var(--vbs-v2-text);
 }
 
 .app-shell.videosbatch-canvas-mode .flow-node-pending-overlay {
-  background: rgba(255, 255, 255, 0.86);
-  color: #4d5963;
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--vbs-v2-text-soft);
 }
 
 .app-shell.videosbatch-canvas-mode .flow-empty,
@@ -355,51 +402,52 @@ body:has(.videosbatch-studio-v2) {
   color: var(--vbs-v2-text-soft);
 }
 
+/* --- Inspector ------------------------------------------------------------ */
 .app-shell.videosbatch-canvas-mode .inspector {
   width: 400px;
   border-left-color: var(--vbs-v2-border);
   background: var(--vbs-v2-surface);
-  box-shadow: -12px 0 28px rgba(25, 28, 32, 0.08);
+  box-shadow: -12px 0 28px rgba(25, 28, 32, 0.07);
   color: var(--vbs-v2-text);
 }
 
 .app-shell.videosbatch-canvas-mode .inspector header {
   border-bottom-color: var(--vbs-v2-border);
-  background: rgba(255, 255, 255, 0.97);
+  background: var(--vbs-v2-surface);
 }
 
 .app-shell.videosbatch-canvas-mode .inspector-tag {
-  border-color: #ead49a;
-  background: var(--vbs-v2-accent-soft);
-  color: #78591c;
+  border-color: var(--vbs-v2-border);
+  background: var(--vbs-v2-surface-muted);
+  color: var(--vbs-v2-text-soft);
 }
 
 .app-shell.videosbatch-canvas-mode .inspector-close {
-  color: #76818b;
+  color: var(--vbs-v2-text-faint);
 }
 
 .app-shell.videosbatch-canvas-mode .inspector-close:hover {
-  color: #27313a;
-  background: #f1f4f6;
+  color: var(--vbs-v2-text);
+  background: var(--vbs-v2-surface-muted);
 }
 
 .app-shell.videosbatch-canvas-mode .inspector label {
-  color: #64717c;
+  color: var(--vbs-v2-text-soft);
 }
 
 .app-shell.videosbatch-canvas-mode .inspector input,
 .app-shell.videosbatch-canvas-mode .inspector textarea,
 .app-shell.videosbatch-canvas-mode .inspector select {
   border-color: var(--vbs-v2-border-strong);
-  background: #ffffff;
-  color: #27313a;
+  background: var(--vbs-v2-surface);
+  color: var(--vbs-v2-text);
 }
 
 .app-shell.videosbatch-canvas-mode .inspector input:focus,
 .app-shell.videosbatch-canvas-mode .inspector textarea:focus,
 .app-shell.videosbatch-canvas-mode .inspector select:focus {
-  border-color: #d2a24b;
-  box-shadow: 0 0 0 3px rgba(193, 139, 47, 0.14);
+  border-color: var(--vbs-v2-text);
+  box-shadow: var(--vbs-v2-ring);
 }
 
 .app-shell.videosbatch-canvas-mode .inspector-section {
@@ -409,7 +457,7 @@ body:has(.videosbatch-studio-v2) {
 .app-shell.videosbatch-canvas-mode .inspector-section strong,
 .app-shell.videosbatch-canvas-mode .inspector-review-summary-head strong,
 .app-shell.videosbatch-canvas-mode .inspector-ref-meta strong {
-  color: #27313a;
+  color: var(--vbs-v2-text);
 }
 
 .app-shell.videosbatch-canvas-mode .inspector-hint,
@@ -436,12 +484,12 @@ body:has(.videosbatch-studio-v2) {
 }
 
 .app-shell.videosbatch-canvas-mode .inspector-fold summary {
-  color: #59636d;
+  color: var(--vbs-v2-text-soft);
 }
 
 .app-shell.videosbatch-canvas-mode .inspector-ref-item.active {
-  border-color: #d2a24b;
-  background: var(--vbs-v2-accent-soft);
+  border-color: var(--vbs-v2-text);
+  background: var(--vbs-v2-surface);
 }
 
 .app-shell.videosbatch-canvas-mode .inspector-actions {
@@ -450,37 +498,37 @@ body:has(.videosbatch-studio-v2) {
 
 .app-shell.videosbatch-canvas-mode .inspector-actions button:not(.primary) {
   border-color: var(--vbs-v2-border-strong);
-  background: #ffffff;
-  color: #59636d;
+  background: var(--vbs-v2-surface);
+  color: var(--vbs-v2-text-soft);
 }
 
 .app-shell.videosbatch-canvas-mode .create-node-menu {
   border-color: var(--vbs-v2-border-strong);
-  background: #ffffff;
-  box-shadow: 0 14px 32px rgba(25, 28, 32, 0.16);
+  background: var(--vbs-v2-surface);
+  box-shadow: var(--vbs-v2-shadow-popover);
 }
 
 .app-shell.videosbatch-canvas-mode .create-node-menu header {
   border-bottom-color: var(--vbs-v2-border);
-  background: #ffffff;
-  color: #59636d;
+  background: var(--vbs-v2-surface);
+  color: var(--vbs-v2-text-soft);
 }
 
 .app-shell.videosbatch-canvas-mode .create-node-menu-item {
-  color: #27313a;
+  color: var(--vbs-v2-text);
 }
 
 .app-shell.videosbatch-canvas-mode .create-node-menu-item:hover {
-  background: var(--vbs-v2-accent-soft);
+  background: var(--vbs-v2-surface-muted);
 }
 
 .app-shell.videosbatch-canvas-mode .create-node-menu-item .cnm-icon {
-  background: #f1f4f6;
-  color: #59636d;
+  background: var(--vbs-v2-surface-muted);
+  color: var(--vbs-v2-text-soft);
 }
 
 .app-shell.videosbatch-canvas-mode .create-node-menu-item .cnm-label strong {
-  color: #27313a;
+  color: var(--vbs-v2-text);
 }
 
 .app-shell.videosbatch-canvas-mode .create-node-menu-item .cnm-label small,
@@ -489,35 +537,82 @@ body:has(.videosbatch-studio-v2) {
 }
 
 .app-shell.videosbatch-canvas-mode .flow-node-duration-badge {
-  border-color: #ead49a;
-  background: var(--vbs-v2-accent-soft);
-  color: #78591c;
+  border-color: var(--vbs-v2-border);
+  background: var(--vbs-v2-surface-muted);
+  color: var(--vbs-v2-text-soft);
 }
 
-/* Node type identity strips: warm variants of the per-type colors. */
+/* Node type identity strips: one muted family, matching lightness, no brass.
+   Kind is already written in the node's own title and tag — this is only a
+   second, silent channel so the eye can group the graph at a glance. */
 .app-shell.videosbatch-canvas-mode .flow-node::before {
-  opacity: 0.9;
+  opacity: 0.85;
 }
 
 .app-shell.videosbatch-canvas-mode .asset-node::before {
-  background: #d8a640;
+  background: #7d8791;
 }
 
 .app-shell.videosbatch-canvas-mode .storyboard-node::before {
-  background: #b3a1dd;
+  background: #8b83bf;
 }
 
 .app-shell.videosbatch-canvas-mode .shot-node::before {
-  background: #c99232;
+  background: #454f59;
 }
 
 .app-shell.videosbatch-canvas-mode .stitch-node::before {
-  background: #a9bf7f;
+  background: #7f9b62;
 }
 
 .app-shell.videosbatch-canvas-mode .refvideo-node::before,
 .app-shell.videosbatch-canvas-mode .videoproc-node::before {
-  background: #d99aa6;
+  background: #b98b98;
+}
+
+/* --- Late catches ---------------------------------------------------------
+   A scripted audit of every painted element inside the canvas shell (any warm
+   pixel where green sits above blue) had three survivors. The brand glyph is
+   the intended one; these two were not. */
+
+/* The dot grid xyflow draws is a <circle>, not a line/path, so the old rule
+   never matched and the grid kept its hardcoded #1f2937. */
+.app-shell.videosbatch-canvas-mode .react-flow__background-pattern,
+.app-shell.videosbatch-canvas-mode .react-flow__background-pattern circle {
+  fill: var(--vbs-v2-border-strong) !important;
+}
+
+.app-shell.videosbatch-canvas-mode .react-flow__background-pattern line,
+.app-shell.videosbatch-canvas-mode .react-flow__background-pattern path {
+  stroke: var(--vbs-v2-border-strong) !important;
+}
+
+/* "Reference images you can @-mention" on a node. It is a payload of the
+   wires, not a gate — so it is ink, like the wires. */
+.app-shell.videosbatch-canvas-mode .flow-node-reference-strip {
+  color: var(--vbs-v2-text-soft);
+}
+
+.app-shell.videosbatch-canvas-mode .flow-node-reference-strip img {
+  border-color: var(--vbs-v2-border-strong);
+  background: var(--vbs-v2-surface-muted);
+}
+
+.app-shell.videosbatch-canvas-mode .flow-node-reference-strip small {
+  color: var(--vbs-v2-text-faint);
+}
+
+/* The toolbar's publish CTA: outlined ink, so the toolbar keeps one filled
+   primary and brass stays off the chrome. */
+.app-shell.videosbatch-canvas-mode .gallery-publish-button {
+  color: var(--vbs-v2-text);
+  border-color: var(--vbs-v2-border-strong);
+  background: var(--vbs-v2-surface);
+}
+
+.app-shell.videosbatch-canvas-mode .gallery-publish-button:hover:not(:disabled) {
+  border-color: var(--vbs-v2-text);
+  background: var(--vbs-v2-surface-muted);
 }
 
 @media (max-width: 899px) {

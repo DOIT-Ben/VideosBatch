@@ -218,12 +218,12 @@ function RobustVideoThumb({ streamSrc, posterSrc, downloadUrl, downloadFilename,
 
 function statusBadge(status: string | undefined, phase: string | undefined, t: Dictionary) {
   if (!status || status === "draft") return { color: "#6b7280", label: t.nodes.statusDraft };
-  if (status === "scripted") return { color: "#fbbf24", label: t.nodes.statusScripted };
+  if (status === "scripted") return { color: "var(--vbs-v2-accent)", label: t.nodes.statusScripted };
   if (status === "generating") {
     // Sub-phase tells the user whether the Seedance task is still queued at BytePlus (idle, can
     // sit for many minutes during peak hours) vs. actively rendering on a GPU. Surfaced because
     // queued time is not the user's fault and not something a re-submit fixes.
-    if (phase === "queued") return { color: "#fbbf24", label: t.nodes.statusQueued };
+    if (phase === "queued") return { color: "var(--vbs-v2-accent)", label: t.nodes.statusQueued };
     if (phase === "running") return { color: "#60a5fa", label: t.nodes.statusRunning };
     return { color: "#60a5fa", label: t.nodes.statusGenerating };
   }
@@ -254,7 +254,7 @@ function VideoDurationBadge({ seconds }: { seconds?: number | null }) {
 }
 
 function reviewBadge(t: Dictionary, status?: string, score?: number, stale?: boolean) {
-  if (stale) return { color: "#fbbf24", label: t.nodes.reviewStale };
+  if (stale) return { color: "var(--vbs-v2-accent)", label: t.nodes.reviewStale };
   if (status === "running") return { color: "#60a5fa", label: t.nodes.reviewRunning };
   if (status === "error") return { color: "#f87171", label: t.nodes.reviewError };
   if (typeof score === "number") {
@@ -531,7 +531,7 @@ function StitchNodeImpl({ data, selected }: NodeProps<StitchFlowNode>) {
   const final = isStitching ? undefined : job.finalVideoUrl;
   const finalVideoStale = Boolean(job.finalVideoStale || (legacy && session.finalVideoStale));
   const label = finalVideoStale && final ? "源视频已更新" : status === "ready" ? t.nodes.stitched : status === "running" ? t.nodes.stitching : status === "error" ? t.nodes.stitchError : t.nodes.notStitched;
-  const color = finalVideoStale && final ? "#f59e0b" : status === "ready" ? "#34d399" : status === "running" ? "#60a5fa" : status === "error" ? "#f87171" : "#6b7280";
+  const color = finalVideoStale && final ? "var(--vbs-v2-accent)" : status === "ready" ? "#34d399" : status === "running" ? "#60a5fa" : status === "error" ? "#f87171" : "#6b7280";
   const reviewStale = Boolean(job.finalVideoReviewBuiltForSignature && job.finalVideoSignature && job.finalVideoReviewBuiltForSignature !== job.finalVideoSignature);
   const finalReviewInfo = reviewBadge(t, job.finalVideoReviewStatus, job.finalVideoReview?.score, reviewStale);
   const finalCacheKey = job.finalVideoGeneratedAt || job.finalVideoUrl || job.finalVideoSignature || job.updatedAt;
@@ -936,7 +936,7 @@ function VideoProcessorNodeImpl({ data, selected }: NodeProps<VideoProcessorFlow
         )}
       </div>
       <div className="flow-node-foot">
-        <span className="flow-status" style={{ color: "#60a5fa" }}>● {strategyLabel}</span>
+        <span className="flow-status" style={{ color: "var(--vbs-v2-text-soft)" }}>● {strategyLabel}</span>
         {durationLabel && <small>{durationLabel}</small>}
         {sourceAsset && <small style={{ opacity: 0.7 }}>{t.nodes.source(sourceAsset.name)}</small>}
       </div>
@@ -976,7 +976,7 @@ function TailframeNodeImpl({ data, selected }: NodeProps<TailframeFlowNode>) {
         {thumb ? <img src={thumb} alt={asset.name} loading="lazy" decoding="async" /> : <div className="flow-empty">{t.nodes.notExtracted}</div>}
       </div>
       <div className="flow-node-foot">
-        <span className="flow-status" style={{ color: "#38bdf8" }}>● {t.nodes.frameAnchor}</span>
+        <span className="flow-status" style={{ color: "var(--vbs-v2-text-soft)" }}>● {t.nodes.frameAnchor}</span>
         {sourceShot && <small>{t.nodes.fromShot(sourceShot.title || `Shot ${sourceShot.index}`)}</small>}
         <small>{targetLabel}</small>
       </div>

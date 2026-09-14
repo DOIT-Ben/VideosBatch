@@ -3,7 +3,7 @@ import { AlertCircle, CheckCircle2, FileText, LoaderCircle, RotateCcw, UploadClo
 import { Tabs } from "radix-ui";
 import { useDropzone } from "react-dropzone";
 import { StagePage } from "../components/StagePage";
-import { productStepKicker } from "../stageModel";
+import { productStepIndexLabel, productStepName } from "../stageModel";
 import type {
   VideosBatchLessonSource,
   VideosBatchParsedLessonDocument
@@ -185,9 +185,10 @@ export function LessonStage({
     <section className="vbs-stage-page vbs-lesson-stage vbs-v2-lesson-onboarding">
       <Tabs.Root className="vbs-v2-lesson-tabs" defaultValue="upload">
         <div className="vbs-v2-lesson-panel-heading">
-          <div>
-            <span className="vbs-stage-kicker">{productStepKicker("lesson")}</span>
-            <p>上传完整课程教案。系统先解析并让你确认内容，再生成三类九套课程导入方案。</p>
+          <span className="vbs-stage-numeral" aria-hidden="true">{productStepIndexLabel("lesson")}</span>
+          <div className="vbs-stage-heading">
+            <p className="vbs-stage-kicker">{productStepName("lesson")}</p>
+            <p className="vbs-stage-lead">上传完整课程教案。系统先解析并让你确认内容，再生成三类九套课程导入方案。</p>
           </div>
           <Tabs.List className="vbs-v2-tab-list" aria-label="教案输入方式">
             <Tabs.Trigger className="vbs-v2-tab-trigger" value="upload"><UploadCloud size={15} /> 上传文件</Tabs.Trigger>

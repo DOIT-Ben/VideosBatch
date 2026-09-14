@@ -136,6 +136,18 @@ export function FlowView({ snapshot, session, visionReviewEnabled, defaultImageM
   const [edges, setEdges] = useState<Edge[]>(derivedEdges);
   const nodesRef = useRef<Node<FlowNodeData>[]>(derivedNodes);
   const [selectedNodeId, setSelectedNodeId] = useState<string | undefined>();
+  // Selecting a node answers "what does this one touch?" — its own wires lift to
+  // full ink, every other wire drops to a hint. That focus is the whole
+  // legibility device on a fifty-edge graph; the colour of a wire on its own
+  // carries nothing. Classes only — the canvas stylesheet owns the paint.
+  const displayEdges = useMemo(() => {
+    if (!selectedNodeId) return edges;
+    return edges.map((edge) => {
+      const linked = edge.source === selectedNodeId || edge.target === selectedNodeId;
+      const base = edge.className ? `${edge.className} ` : "";
+      return { ...edge, className: `${base}${linked ? "edge-linked" : "edge-dimmed"}` };
+    });
+  }, [edges, selectedNodeId]);
   const [showFinalVideoPanel, setShowFinalVideoPanel] = useState(false);
   // Floating "新建节点" menu position. Right-click summons it; null hides it.
   const [createMenu, setCreateMenu] = useState<{ x: number; y: number; flowPosition?: XYPosition } | null>(null);
@@ -1549,7 +1561,7 @@ export function FlowView({ snapshot, session, visionReviewEnabled, defaultImageM
         >
           <ReactFlow
             nodes={nodes}
-            edges={edges}
+            edges={displayEdges}
             onNodesChange={onNodesChange}
             onNodeDragStop={persistCanvasNodePositions}
             onEdgesChange={onEdgesChange}
