@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { AlertCircle, CheckCircle2, FileText, LoaderCircle, RotateCcw, UploadCloud } from "lucide-react";
 import { Tabs } from "radix-ui";
 import { useDropzone } from "react-dropzone";
+import { StagePage } from "../components/StagePage";
+import { productStepKicker } from "../stageModel";
 import type {
   VideosBatchLessonSource,
   VideosBatchParsedLessonDocument
@@ -146,18 +148,18 @@ export function LessonStage({
 
   if (started) {
     return (
-      <section className="vbs-stage-page vbs-lesson-stage vbs-v2-lesson-readonly">
-        <div className="vbs-stage-kicker">01 · 教案</div>
-        <div className="vbs-document-header">
-          <div>
-            <h2>课程教案</h2>
-            <p>这是后续课程导入、故事、资产和视频分镜的教学事实源。</p>
-          </div>
+      <StagePage
+        stepId="lesson"
+        className="vbs-lesson-stage vbs-v2-lesson-readonly"
+        title="课程教案"
+        lead="这是后续课程导入、故事、资产和视频分镜的教学事实源。"
+        aside={
           <div className="vbs-v2-source-chip">
             <FileText size={16} />
             <span>{source?.kind === "file" ? source.fileName || "已上传教案" : "粘贴文本"}</span>
           </div>
-        </div>
+        }
+      >
         <article className="vbs-v2-lesson-document">
           <header>
             <div><small>项目</small><strong>{sessionTitle || "课程视频"}</strong></div>
@@ -165,7 +167,7 @@ export function LessonStage({
           </header>
           <pre>{lessonText || "暂无教案内容"}</pre>
         </article>
-      </section>
+      </StagePage>
     );
   }
 
@@ -184,7 +186,7 @@ export function LessonStage({
       <Tabs.Root className="vbs-v2-lesson-tabs" defaultValue="upload">
         <div className="vbs-v2-lesson-panel-heading">
           <div>
-            <span className="vbs-stage-kicker">01 · 教案</span>
+            <span className="vbs-stage-kicker">{productStepKicker("lesson")}</span>
             <p>上传完整课程教案。系统先解析并让你确认内容，再生成三类九套课程导入方案。</p>
           </div>
           <Tabs.List className="vbs-v2-tab-list" aria-label="教案输入方式">

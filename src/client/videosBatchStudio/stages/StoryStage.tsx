@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Pencil, Save, X } from "lucide-react";
+import { StageEmpty, StageFact, StagePage } from "../components/StagePage";
 
 export function StoryStage({
   artifact,
@@ -25,47 +26,46 @@ export function StoryStage({
     setEditing(false);
   };
 
+  const hasContent = Boolean(content || editing);
+
   return (
-    <section className="vbs-stage-page vbs-document-stage">
-      <div className="vbs-stage-kicker">03 · 故事文稿</div>
-      <div className="vbs-document-header">
-        <div>
-          <h2>{artifact?.title || "故事文稿"}</h2>
-          <p>{artifact?.storyType || "课程导入故事"}</p>
-        </div>
-        <div className="vbs-document-facts">
-          <span><strong>{(editing ? draft : content).length}</strong><small>当前字数</small></span>
-          <span><strong>{artifact?.storyType || "—"}</strong><small>故事类型</small></span>
-        </div>
-      </div>
-      {artifact?.truthfulnessNote && <div className="vbs-note-card"><strong>真实性说明</strong><p>{artifact.truthfulnessNote}</p></div>}
-      {content || editing ? (
+    <StagePage
+      stepId="story"
+      title={artifact?.title || "故事文稿"}
+      lead="课程导入故事的完整文稿。编辑并保存后，后续资产、剧本和分镜都以这一版为准。"
+      facts={hasContent ? (
         <>
-          {editing ? (
-            <textarea
-              className="vbs-story-editor"
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              rows={22}
-              aria-label="编辑故事正文"
-            />
-          ) : (
-            <article className="vbs-longform">{content}</article>
-          )}
-          {onSaveContent && (
-            <div className="vbs-document-actions">
-              {editing ? (
-                <>
-                  <button type="button" className="vbs-primary" disabled={busy || !draft.trim()} onClick={() => void save()}><Save size={15} /> 保存正文</button>
-                  <button type="button" className="vbs-secondary" disabled={busy} onClick={() => { setDraft(content); setEditing(false); }}><X size={15} /> 取消</button>
-                </>
-              ) : (
-                <button type="button" className="vbs-secondary" disabled={busy} onClick={() => setEditing(true)}><Pencil size={15} /> 编辑故事正文</button>
-              )}
-            </div>
-          )}
+          <StageFact value={(editing ? draft : content).length} label="当前字数" />
+          <StageFact value={artifact?.storyType || "—"} label="故事类型" />
         </>
-      ) : <div className="vbs-empty-card">故事文稿尚未生成。</div>}
-    </section>
+      ) : null}
+      actions={onSaveContent && hasContent ? (
+        editing ? (
+          <>
+            <button type="button" className="vbs-primary" disabled={busy || !draft.trim()} onClick={() => void save()}><Save size={15} /> 保存正文</button>
+            <button type="button" className="vbs-secondary" disabled={busy} onClick={() => { setDraft(content); setEditing(false); }}><X size={15} /> 取消</button>
+          </>
+        ) : (
+          <button type="button" className="vbs-secondary" disabled={busy} onClick={() => setEditing(true)}><Pencil size={15} /> 编辑故事正文</button>
+        )
+      ) : null}
+    >
+      {artifact?.truthfulnessNote ? (
+        <div className="vbs-note-card"><strong>真实性说明</strong><p>{artifact.truthfulnessNote}</p></div>
+      ) : null}
+      {hasContent ? (
+        editing ? (
+          <textarea
+            className="vbs-story-editor"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            rows={22}
+            aria-label="编辑故事正文"
+          />
+        ) : (
+          <article className="vbs-longform">{content}</article>
+        )
+      ) : <StageEmpty>故事文稿尚未生成。</StageEmpty>}
+    </StagePage>
   );
 }

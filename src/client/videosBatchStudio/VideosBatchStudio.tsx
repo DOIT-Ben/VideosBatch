@@ -9,7 +9,6 @@ import type {
 import { VideosBatchHeader } from "./VideosBatchHeader";
 import { WorkflowFooter } from "./WorkflowFooter";
 import { ArtifactDebugDrawer } from "./components/ArtifactDebugDrawer";
-import { StudioStageToolbar } from "./components/StudioStageToolbar";
 import { WorkflowProgressRail } from "./components/WorkflowProgressRail";
 import { StageWorkspace } from "./stages/StageWorkspace";
 import type { VideosBatchLessonDraft } from "./stages/LessonStage";
@@ -147,7 +146,6 @@ export function VideosBatchStudio({
   }, [assetGroups]);
 
   const selectedStep = productStepById(selectedStepId);
-  const selectedStatus = workflow ? deriveProductStepStatus(workflow, selectedStep) : "pending";
   const currentStep = productStepById(currentStepId);
   const debugStageId = debugStageForStep(workflow, selectedStepId);
   const debugArtifact = workflow?.stages[debugStageId]?.artifact;
@@ -308,22 +306,6 @@ export function VideosBatchStudio({
         getStatus={statusForStep}
         onSelectStep={setSelectedStepId}
       />
-      {workflow ? (
-        <StudioStageToolbar
-          stepLabel={selectedStep.label}
-          status={selectedStatus}
-          workflowStarted
-          completed={Boolean(workflow.completed)}
-          busy={Boolean(busy)}
-          canDebug={debugArtifact !== undefined}
-          canRetry={Boolean(retryStageId)}
-          onRunAll={() => void runAll()}
-          onRestart={() => void restartSelected()}
-          onRetry={() => void retrySelected()}
-          onDebug={() => setDebugOpen(true)}
-        />
-      ) : null}
-
       <main className="vbs-v2-workspace">
         {error && <div className="vbs-inline-error">{error}</div>}
         <div className="vbs-v2-stage-frame">
@@ -353,10 +335,17 @@ export function VideosBatchStudio({
         <WorkflowFooter
           selectedStepId={selectedStepId}
           busy={Boolean(busy)}
+          completed={Boolean(workflow?.completed)}
+          canRetry={Boolean(retryStageId)}
+          canDebug={debugArtifact !== undefined}
           primaryLabel={primaryLabel}
           primaryDisabled={primaryDisabled}
           onPrevious={previous}
           onPrimary={primaryAction}
+          onRunAll={workflow ? () => void runAll() : undefined}
+          onRestart={workflow ? () => void restartSelected() : undefined}
+          onRetry={workflow ? () => void retrySelected() : undefined}
+          onDebug={workflow ? () => setDebugOpen(true) : undefined}
         />
       </main>
 

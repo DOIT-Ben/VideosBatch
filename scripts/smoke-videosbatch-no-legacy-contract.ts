@@ -22,8 +22,7 @@ const exactFiles = [
   "docs/seereel-injection-map.md"
 ];
 const directories = [
-  "src/server/videosBatchWorkflow",
-  "src/client/videosBatchWorkflow"
+  "src/server/videosBatchWorkflow"
 ];
 
 async function collectFiles(directory: string): Promise<string[]> {

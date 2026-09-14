@@ -1,5 +1,6 @@
 import type { Shot } from "../../../shared/types";
 import { preferredShotVideoUrl } from "../contentModel";
+import { StageEmpty, StageFact, StagePage } from "../components/StagePage";
 
 function shotStatusLabel(shot: Shot) {
   if (shot.status === "ready") return "✓ 已完成";
@@ -34,14 +35,20 @@ export function ExecutionStage({
   const progressLabel = ready ? "视频镜头已生成" : anyGenerating ? "正在生成视频" : "等待视频生成";
 
   return (
-    <section className="vbs-stage-page">
-      <div className="vbs-stage-kicker">08 · 视频生成</div>
-      <div className="vbs-document-header">
-        <div><h2>批量生成视频</h2><p>按最终分镜逐镜头执行。这里直接读取 SeeReel Shot/Render 状态，需要精调时进入制作画布。</p></div>
-        <button type="button" className="vbs-secondary" onClick={onOpenCanvas}>在制作画布中打开</button>
-      </div>
-      {quoteArtifact && <div className="vbs-note-card"><strong>执行快照</strong><p>目标时长 {quoteArtifact.targetDurationSeconds || "—"} 秒 · 资产顺序已锁定 {Array.isArray(quoteArtifact.assetOrder) ? quoteArtifact.assetOrder.length : 0} 项</p></div>}
-      {!executionArtifact && !orderedShots.length ? <div className="vbs-empty-card">视频执行尚未开始。</div> : (
+    <StagePage
+      stepId="execution"
+      title="批量生成视频"
+      lead="按最终分镜逐镜头执行。这里直接读取 SeeReel Shot/Render 状态，需要精调时进入制作画布。"
+      facts={totalCount ? <StageFact value={`${readyCount} / ${totalCount}`} label="镜头完成" /> : null}
+      actions={<button type="button" className="vbs-secondary" onClick={onOpenCanvas}>在制作画布中打开</button>}
+    >
+      {quoteArtifact && (
+        <div className="vbs-note-card">
+          <strong>执行快照</strong>
+          <p>目标时长 {quoteArtifact.targetDurationSeconds || "—"} 秒 · 资产顺序已锁定 {Array.isArray(quoteArtifact.assetOrder) ? quoteArtifact.assetOrder.length : 0} 项</p>
+        </div>
+      )}
+      {!executionArtifact && !orderedShots.length ? <StageEmpty>视频执行尚未开始。</StageEmpty> : (
         <div className="vbs-execution-summary">
           <div className="vbs-progress-card"><span className={`vbs-progress-dot ${ready ? "ready" : anyGenerating ? "running" : ""}`} /><div><strong>{progressLabel}</strong><small>{readyCount} / {totalCount} 个镜头完成</small></div></div>
           {orderedShots.length ? (
@@ -71,6 +78,6 @@ export function ExecutionStage({
           )}
         </div>
       )}
-    </section>
+    </StagePage>
   );
 }

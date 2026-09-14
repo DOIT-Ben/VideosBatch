@@ -363,40 +363,11 @@
   color: var(--vbs-v2-accent-deep);
 }
 
-/* Compact current-stage action bar */
-.vbs-v2-stage-toolbar {
-  min-height: 46px;
+/* Run controls in the workflow footer: auto-run plus the step-actions menu. */
+.vbs-footer-run {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  padding: 6px 32px;
-  border-bottom: 1px solid var(--vbs-v2-border);
-  background: var(--vbs-v2-canvas-warm);
-}
-
-.vbs-v2-stage-toolbar-copy {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-}
-
-.vbs-v2-stage-toolbar-copy > span:first-child {
-  color: #9a968e;
-  font-size: 10px;
-  font-weight: 500;
-}
-
-.vbs-v2-stage-toolbar-copy > strong {
-  color: #343638;
-  font-size: 12px;
-  font-weight: 650;
-}
-
-.vbs-v2-stage-toolbar-actions {
-  display: flex;
-  align-items: center;
+  flex-shrink: 0;
   gap: 8px;
 }
 
@@ -515,7 +486,6 @@
   font-weight: 650;
 }
 
-.videosbatch-studio-v2 .vbs-stage-lead,
 .videosbatch-studio-v2 .vbs-document-header p {
   max-width: 760px;
   color: var(--vbs-v2-text-soft);
@@ -1494,11 +1464,6 @@
 
   .vbs-v2-header-headline h1 {
     white-space: normal;
-  }
-
-  .vbs-v2-stage-toolbar {
-    align-items: flex-start;
-    flex-direction: column;
   }
 
   .vbs-v2-progress {

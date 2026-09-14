@@ -1,4 +1,21 @@
 import { useMemo } from "react";
+import { StageEmpty, StageFact, StagePage } from "../components/StagePage";
+
+const CREATIVE_GROUPS = ["数学史与知识由来", "历史需求与古今应用", "创意故事与现代情境"] as const;
+
+/**
+ * Models write creativeType in loose shapes: "数学史与知识由来：原始问题",
+ * "数学史与知识由来·原始问题", "A1历史需求与古今应用", or just the sub-direction.
+ * Match the canonical category anywhere, then fall back to the leading segment, so
+ * a candidate can never fall out of the grid and leave the step looking empty.
+ */
+function creativeGroup(value: unknown) {
+  const raw = String(value ?? "").trim();
+  const canonical = CREATIVE_GROUPS.find((name) => raw.includes(name));
+  if (canonical) return { group: canonical, sub: raw.slice(raw.indexOf(canonical) + canonical.length).replace(/^[：:·/\s]+/, "").trim() };
+  const [group = ""] = raw.split(/[：:·/]/);
+  return { group: group.trim() || "其他方案", sub: "" };
+}
 
 export function IntroCandidatesStage({
   artifact,
@@ -17,20 +34,30 @@ export function IntroCandidatesStage({
       .map((item: any): [string, string] => [String(item?.id || ""), String(item?.reason || "")])
   );
   const groups = useMemo(() => {
-    const ordered = ["数学史与知识由来", "历史需求与古今应用", "创意故事与现代情境"];
-    return ordered.map((label) => ({
-      label,
-      items: candidates.filter((candidate: any) => candidate?.creativeType === label)
-    })).filter((group) => group.items.length);
-  }, [artifact]);
+    const known = new Set<string>(CREATIVE_GROUPS);
+    const buckets = new Map<string, any[]>();
+    for (const candidate of candidates) {
+      const key = creativeGroup(candidate?.creativeType).group || "其他方案";
+      const bucket = buckets.get(key);
+      if (bucket) bucket.push(candidate);
+      else buckets.set(key, [candidate]);
+    }
+    // Canonical order first; anything the model invented stays visible at the end.
+    const order = [...CREATIVE_GROUPS, ...[...buckets.keys()].filter((key) => !known.has(key)).sort()];
+    return order
+      .filter((key) => buckets.has(key))
+      .map((key) => ({ label: key, items: buckets.get(key) as any[] }));
+  }, [candidates]);
 
   return (
-    <section className="vbs-stage-page">
-      <div className="vbs-stage-kicker">02 · 课程导入</div>
-      <h2>选择课程导入方案</h2>
-      <p className="vbs-stage-lead">系统生成三类九套候选。选择并锁定一套后，后续故事、资产和视频都沿用这一方向。</p>
+    <StagePage
+      stepId="intro"
+      title="选择课程导入方案"
+      lead="系统生成三类九套候选。选择并锁定一套后，后续故事、资产和视频都沿用这一方向。"
+      facts={<StageFact value={candidates.length} label="候选方案" />}
+    >
       {!candidates.length ? (
-        <div className="vbs-empty-card">课程导入方案尚未生成。使用右侧“自动运行到确认点”生成候选。</div>
+        <StageEmpty>课程导入方案尚未生成。使用底部“自动运行到确认点”生成候选。</StageEmpty>
       ) : (
         <div className="vbs-intro-groups">
           {groups.map((group) => (
@@ -38,12 +65,14 @@ export function IntroCandidatesStage({
               <h3>{group.label}</h3>
               <div className="vbs-intro-grid">
                 {group.items.map((candidate: any) => {
+                  const { sub } = creativeGroup(candidate.creativeType);
                   const recommended = recommendations.get(String(candidate.id || ""));
                   const selected = selectedIntroId === candidate.id;
                   return (
                     <article className={`vbs-intro-card ${selected ? "selected" : ""}`} key={String(candidate.id)}>
                       <div className="vbs-card-topline">
                         <span className="vbs-code">{String(candidate.id || "")}</span>
+                        {sub && <span className="vbs-card-sub">{sub}</span>}
                         {recommended && <span className="vbs-recommend">组内推荐</span>}
                       </div>
                       <h4>{String(candidate.name || candidate.id || "未命名方案")}</h4>
@@ -62,6 +91,6 @@ export function IntroCandidatesStage({
           ))}
         </div>
       )}
-    </section>
+    </StagePage>
   );
 }

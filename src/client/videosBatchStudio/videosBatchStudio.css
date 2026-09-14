@@ -79,17 +79,11 @@
 .vbs-step-number { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; background: #eee9df; color: var(--vbs-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 .vbs-step-copy { display: grid; gap: 5px; min-width: 0; }
 .vbs-step-copy strong { font-size: 13px; }
-.vbs-stage-status { display: inline-flex; align-items: center; gap: 5px; color: var(--vbs-muted); font-size: 11px; }
-.vbs-stage-status.status-ready { color: var(--vbs-success); }
-.vbs-stage-status.status-confirm { color: #9a7114; }
-.vbs-stage-status.status-failed { color: var(--vbs-danger); }
-.vbs-stage-status.status-running { color: #775f27; }
 
 .vbs-workspace { min-width: 0; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
 .vbs-stage-page { width: min(940px, calc(100% - 48px)); margin: 0 auto; padding: 38px 0 30px; }
 .vbs-stage-kicker { color: #99751d; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; margin-bottom: 8px; }
 .vbs-stage-page h2 { margin: 0; font-size: 28px; line-height: 1.2; letter-spacing: -.03em; }
-.vbs-stage-lead { max-width: 720px; color: var(--vbs-muted); line-height: 1.8; margin: 10px 0 24px; }
 
 .vbs-form-card, .vbs-note-card, .vbs-empty-card, .vbs-intro-card, .vbs-asset-plan-card, .vbs-shot-card, .vbs-screenplay-scene, .vbs-progress-card {
   border: 1px solid var(--vbs-border); border-radius: 14px; background: var(--vbs-surface);

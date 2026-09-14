@@ -1,3 +1,5 @@
+import { StageEmpty, StageFact, StagePage } from "../components/StagePage";
+
 const CATEGORY_LABELS: Record<string, string> = {
   CHARACTER: "人物 / 拟人动物",
   SCENE: "场景 / 空间环境",
@@ -13,12 +15,15 @@ export function AssetPlanStage({ artifact }: { artifact: any }) {
     return acc;
   }, {});
   const groups = Object.entries(grouped) as Array<[string, any[]]>;
+
   return (
-    <section className="vbs-stage-page">
-      <div className="vbs-stage-kicker">04 · 资产计划</div>
-      <h2>{String(artifact?.title || "资产计划与生成提示词")}</h2>
-      <p className="vbs-stage-lead">在生成图片前检查角色、场景和道具是否完整。稳定公开编号由服务端分配，模型只负责资产语义和 Prompt。</p>
-      {!items.length ? <div className="vbs-empty-card">资产计划尚未生成。</div> : (
+    <StagePage
+      stepId="asset-plan"
+      title={String(artifact?.title || "资产计划与生成提示词")}
+      lead="在生成图片前检查角色、场景和道具是否完整。稳定公开编号由服务端分配，模型只负责资产语义和 Prompt。"
+      facts={<StageFact value={items.length} label="资产项" />}
+    >
+      {!items.length ? <StageEmpty>资产计划尚未生成。</StageEmpty> : (
         <div className="vbs-asset-plan-groups">
           {groups.map(([category, group]) => (
             <section key={category} className="vbs-asset-plan-group">
@@ -39,6 +44,6 @@ export function AssetPlanStage({ artifact }: { artifact: any }) {
           ))}
         </div>
       )}
-    </section>
+    </StagePage>
   );
 }

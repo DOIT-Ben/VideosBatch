@@ -26,8 +26,17 @@
   margin-top: 12px;
 }
 
-.vbs-document-actions-top {
-  margin: 0 0 14px;
+/* Right-hand column of a stage header: key figures above the stage actions. */
+.vbs-document-aside {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex-shrink: 0;
+  gap: 12px;
+}
+
+.vbs-document-aside .vbs-document-actions {
+  margin-top: 0;
 }
 
 .vbs-structured-editor-grid {

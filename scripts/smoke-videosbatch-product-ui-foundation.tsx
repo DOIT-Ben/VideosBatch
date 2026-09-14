@@ -30,7 +30,8 @@ workflow.stages.COURSE_INTRO_CANDIDATES = {
       {
         id: "A-01",
         name: "原始问题导入",
-        creativeType: "数学史与知识由来",
+        // Real generators suffix the sub-direction onto the canonical category.
+        creativeType: "数学史与知识由来：原始问题",
         body: "学生从一个真实问题进入课堂。",
         endingQuestion: "应该怎样判断？"
       }
@@ -59,6 +60,8 @@ assert.ok(markup.includes("vbs-v2-workspace"), "guided studio must render one wi
 assert.ok(!markup.includes("vbs-sidebar"), "Guided Studio V2 must not render the internal left workflow sidebar");
 assert.ok(!markup.includes('class="vbs-context"'), "Guided Studio V2 must not render a permanent right context rail");
 assert.ok(markup.includes("选择课程导入方案"), "intro step must render semantic content instead of raw JSON");
+assert.ok(markup.includes("原始问题导入"), "a creativeType carrying a sub-direction suffix must still render its candidate card");
+assert.ok(markup.includes("数学史与知识由来"), "intro candidates must group under their canonical creative category instead of falling out of the grid");
 assert.ok(!markup.includes("videosbatch-stage-rail"), "old horizontal engineering rail must not be the primary product UI");
 assert.ok(!markup.includes("revision 1"), "revision/debug metadata must not dominate the primary workspace");
 assert.ok(!markup.includes("高级 · 原始数据"), "raw JSON must stay hidden until the advanced drawer is explicitly opened");

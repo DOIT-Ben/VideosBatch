@@ -101,3 +101,9 @@ export function productStepById(stepId: VideosBatchProductStepId): VideosBatchPr
   if (!step) throw new Error(`Unknown VideosBatch product step ${stepId}`);
   return step;
 }
+
+/** "03 · 故事文稿" — the one place a step number and label are joined. */
+export function productStepKicker(stepId: VideosBatchProductStepId): string {
+  const index = VIDEOS_BATCH_PRODUCT_STEPS.findIndex((step) => step.id === stepId);
+  return `${String(index + 1).padStart(2, "0")} · ${productStepById(stepId).label}`;
+}

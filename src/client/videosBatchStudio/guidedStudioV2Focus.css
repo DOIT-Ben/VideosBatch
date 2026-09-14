@@ -108,11 +108,6 @@ body:has(.videosbatch-studio-v2) {
   padding: 10px 28px 9px;
 }
 
-.videosbatch-studio-v2 .vbs-v2-stage-toolbar {
-  min-height: 42px;
-  padding: 5px 28px;
-}
-
 .videosbatch-studio-v2 .vbs-v2-workspace {
   min-height: auto;
   overflow: visible;
@@ -136,11 +131,6 @@ body:has(.videosbatch-studio-v2) {
   padding: 27px;
 }
 
-.videosbatch-studio-v2 .vbs-footer {
-  margin: 24px auto 0;
-  padding: 16px 0 4px;
-}
-
 @media (max-height: 950px) and (min-width: 900px) {
   .videosbatch-studio-v2 .vbs-v2-header {
     min-height: 62px;
@@ -153,11 +143,6 @@ body:has(.videosbatch-studio-v2) {
 
   .videosbatch-studio-v2 .vbs-v2-progress-step {
     min-height: 48px;
-  }
-
-  .videosbatch-studio-v2 .vbs-v2-stage-toolbar {
-    min-height: 38px;
-    padding-block: 3px;
   }
 
   .videosbatch-studio-v2 .vbs-v2-workspace {

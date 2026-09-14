@@ -104,18 +104,23 @@ assert.match(v2CssSource, /\.vbs-v2-parse-editor textarea,[\s\S]*?min-height:\s*
 assert.ok(v2CssSource.includes("--vbs-bg: var(--vbs-v2-canvas)"), "legacy stage surfaces must inherit the canonical V2 palette inside Guided Studio");
 assert.ok(finalStageSource.includes("vbs-final-delivery"), "final step must expose a dedicated delivery surface while preserving native playback behavior");
 
-// Status-language contract: toolbar badge and stage body must not contradict
-// each other, and a completed workflow must not keep a run control visible.
-const toolbarSource = readFileSync(new URL("../src/client/videosBatchStudio/components/StudioStageToolbar.tsx", import.meta.url), "utf8");
+// Status-language contract: the footer run controls and the stage body must not
+// contradict each other, and a completed workflow must not keep a run control
+// visible. The footer owns these controls since the stage toolbar was removed.
+const footerSource = readFileSync(new URL("../src/client/videosBatchStudio/WorkflowFooter.tsx", import.meta.url), "utf8");
 const executionStageSource = readFileSync(new URL("../src/client/videosBatchStudio/stages/ExecutionStage.tsx", import.meta.url), "utf8");
 assert.match(
-  toolbarSource,
+  footerSource,
   /\{!completed && \([\s\S]*?vbs-v2-auto-run/,
   "a completed workflow must hide the auto-run control instead of showing it disabled"
 );
 assert.ok(
-  toolbarSource.includes("更多当前步骤操作"),
+  footerSource.includes("更多当前步骤操作"),
   "the step-actions menu must stay available after completion"
+);
+assert.ok(
+  !existsSync(new URL("../src/client/videosBatchStudio/components/StudioStageToolbar.tsx", import.meta.url)),
+  "the stage toolbar must stay removed so the footer is the only run-control surface"
 );
 assert.ok(
   executionStageSource.includes("等待视频生成") && executionStageSource.includes("正在生成视频"),

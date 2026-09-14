@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Accordion, Tabs } from "radix-ui";
 import { Check, ChevronDown, Copy, Pencil, Save, X } from "lucide-react";
+import { StageEmpty, StageFact, StagePage } from "../components/StagePage";
 import {
   storyboardSegmentFieldDefinitions,
   storyboardSegmentSubshots,
@@ -63,17 +64,28 @@ export function StoryboardStage({
     window.setTimeout(() => setCopiedKey((current) => current === key ? "" : current), 1600);
   };
 
-  return (
-    <section className="vbs-stage-page">
-      <div className="vbs-stage-kicker">07 · 视频分镜</div>
-      <div className="vbs-document-header">
-        <div><h2>{artifact?.title || "最终分镜"}</h2><p>正式分镜是事实源；执行 Prompt 是从正式分镜派生的可复制执行副本。</p></div>
-        <div className="vbs-document-facts">
-          <span><strong>{artifact?.targetDuration || "—"}s</strong><small>总时长</small></span>
-          <span><strong>{segments.length}</strong><small>主分镜</small></span>
-        </div>
-      </div>
+  const editActions = editing ? (
+    <>
+      <button type="button" className="vbs-primary" disabled={busy} onClick={() => void save()}><Save size={15} /> 保存分镜</button>
+      <button type="button" className="vbs-secondary" disabled={busy} onClick={() => { setDraft(artifact); setEditing(false); }}><X size={15} /> 取消</button>
+    </>
+  ) : onSaveArtifact && segments.length ? (
+    <button type="button" className="vbs-secondary" disabled={busy} onClick={() => setEditing(true)}><Pencil size={15} /> 编辑分镜</button>
+  ) : null;
 
+  return (
+    <StagePage
+      stepId="storyboard"
+      title={artifact?.title || "最终分镜"}
+      lead="正式分镜是事实源；执行 Prompt 是从正式分镜派生的可复制执行副本。"
+      facts={
+        <>
+          <StageFact value={`${artifact?.targetDuration || "—"}s`} label="总时长" />
+          <StageFact value={segments.length} label="主分镜" />
+        </>
+      }
+      actions={editActions}
+    >
       <Tabs.Root className="vbs-storyboard-tabs" defaultValue="structure">
         <Tabs.List className="vbs-tabs-list" aria-label="视频分镜视图">
           <Tabs.Trigger className="vbs-tab-trigger" value="structure">分镜结构</Tabs.Trigger>
@@ -81,124 +93,111 @@ export function StoryboardStage({
         </Tabs.List>
 
         <Tabs.Content className="vbs-tab-content" value="structure">
-          {!segments.length ? <div className="vbs-empty-card">最终分镜尚未生成。</div> : (
-            <>
-              <div className="vbs-document-actions vbs-document-actions-top">
-                {editing ? (
-                  <>
-                    <button type="button" className="vbs-primary" disabled={busy} onClick={() => void save()}><Save size={15} /> 保存分镜</button>
-                    <button type="button" className="vbs-secondary" disabled={busy} onClick={() => { setDraft(artifact); setEditing(false); }}><X size={15} /> 取消</button>
-                  </>
-                ) : onSaveArtifact ? (
-                  <button type="button" className="vbs-secondary" disabled={busy} onClick={() => setEditing(true)}><Pencil size={15} /> 编辑分镜</button>
-                ) : null}
-              </div>
-
-              <Accordion.Root
-                className="vbs-storyboard-accordion"
-                type="multiple"
-                defaultValue={visibleSegments.length ? [`segment-${visibleSegments[0].sequence}`] : []}
-              >
-                {visibleSegments.map((segment: any) => {
-                  const start = (Number(segment.sequence || 1) - 1) * 10;
-                  const references = Array.isArray(segment.references) ? segment.references : [];
-                  const subshots = storyboardSegmentSubshots(segment);
-                  const segmentFields = storyboardSegmentFieldDefinitions(editing ? draft : artifact, segment);
-                  const canonicalFields = segmentFields[0]?.[0] === "scene";
-                  return (
-                    <Accordion.Item className="vbs-shot-card vbs-storyboard-item" key={segment.sequence} value={`segment-${segment.sequence}`}>
-                      <Accordion.Header className="vbs-storyboard-header">
-                        <Accordion.Trigger className="vbs-storyboard-trigger">
-                          <span className="vbs-storyboard-summary">
-                            <span><span className="vbs-code">镜头 {String(segment.sequence).padStart(2, "0")}</span><strong>{String(start).padStart(2, "0")}–{String(start + Number(segment.duration || 10)).padStart(2, "0")}s · {segment.duration || 10}s</strong></span>
-                            <span className="vbs-storyboard-summary-copy">{storyboardSegmentSummary(segment) || "暂无画面内容"}</span>
-                          </span>
-                          <span className="vbs-storyboard-trigger-meta">
-                            {segment.nativeShotId && <span className="vbs-native-pill">已同步制作画布</span>}
-                            <ChevronDown className="vbs-accordion-chevron" size={17} />
-                          </span>
-                        </Accordion.Trigger>
-                      </Accordion.Header>
-                      <Accordion.Content className="vbs-storyboard-content">
-                        {editing ? (
-                            <div className="vbs-storyboard-editor">
-                              <div className="vbs-structured-editor-grid">
-                              {segmentFields.map(([field, label, wide]) => (
-                                  <label className={wide ? "wide" : ""} key={field}>
-                                    <span>{label}</span>
-                                    <textarea
-                                    rows={wide ? 5 : 3}
-                                      value={String(segment?.[field] || "")}
-                                      onChange={(event) => setDraft((current: any) => updateStoryboardSegmentFields(current, segment.sequence, { [field]: event.target.value }))}
-                                    />
-                                </label>
-                              ))}
-                            </div>
-                            <div className="vbs-locked-structure">
-                              <strong>结构锁定</strong>
-                              <span>主分镜时长 {segment.duration || 10}s · {references.length} 个语义资产引用 · {subshots.length} 个子镜头</span>
-                            </div>
-                            <div className="vbs-subshot-editor-list">
-                              {subshots.map((subshot: any) => (
-                                <section className="vbs-subshot-editor" key={subshot.sequence}>
-                                  <header><strong>子镜头 {subshot.sequence}</strong><span>{subshot.duration}s · 时长锁定</span></header>
-                                  <div className="vbs-structured-editor-grid compact">
-                                    {SUBSHOT_FIELDS.map(([field, label]) => (
-                                      <label className={field === "action" ? "wide" : ""} key={field}>
-                                        <span>{label}</span>
-                                        <textarea
-                                          rows={field === "action" ? 3 : 2}
-                                          value={String(subshot?.[field] || "")}
-                                          onChange={(event) => setDraft((current: any) => updateStoryboardSubshotFields(current, segment.sequence, subshot.sequence, { [field]: event.target.value }))}
-                                        />
-                                      </label>
-                                    ))}
-                                  </div>
-                                </section>
-                              ))}
-                            </div>
+          {!segments.length ? <StageEmpty>最终分镜尚未生成。</StageEmpty> : (
+            <Accordion.Root
+              className="vbs-storyboard-accordion"
+              type="multiple"
+              defaultValue={visibleSegments.length ? [`segment-${visibleSegments[0].sequence}`] : []}
+            >
+              {visibleSegments.map((segment: any) => {
+                const start = (Number(segment.sequence || 1) - 1) * 10;
+                const references = Array.isArray(segment.references) ? segment.references : [];
+                const subshots = storyboardSegmentSubshots(segment);
+                const segmentFields = storyboardSegmentFieldDefinitions(editing ? draft : artifact, segment);
+                const canonicalFields = segmentFields[0]?.[0] === "scene";
+                return (
+                  <Accordion.Item className="vbs-shot-card vbs-storyboard-item" key={segment.sequence} value={`segment-${segment.sequence}`}>
+                    <Accordion.Header className="vbs-storyboard-header">
+                      <Accordion.Trigger className="vbs-storyboard-trigger">
+                        <span className="vbs-storyboard-summary">
+                          <span><span className="vbs-code">镜头 {String(segment.sequence).padStart(2, "0")}</span><strong>{String(start).padStart(2, "0")}–{String(start + Number(segment.duration || 10)).padStart(2, "0")}s · {segment.duration || 10}s</strong></span>
+                          <span className="vbs-storyboard-summary-copy">{storyboardSegmentSummary(segment) || "暂无画面内容"}</span>
+                        </span>
+                        <span className="vbs-storyboard-trigger-meta">
+                          {segment.nativeShotId && <span className="vbs-native-pill">已同步制作画布</span>}
+                          <ChevronDown className="vbs-accordion-chevron" size={17} />
+                        </span>
+                      </Accordion.Trigger>
+                    </Accordion.Header>
+                    <Accordion.Content className="vbs-storyboard-content">
+                      {editing ? (
+                        <div className="vbs-storyboard-editor">
+                          <div className="vbs-structured-editor-grid">
+                            {segmentFields.map(([field, label, wide]) => (
+                              <label className={wide ? "wide" : ""} key={field}>
+                                <span>{label}</span>
+                                <textarea
+                                  rows={wide ? 5 : 3}
+                                  value={String(segment?.[field] || "")}
+                                  onChange={(event) => setDraft((current: any) => updateStoryboardSegmentFields(current, segment.sequence, { [field]: event.target.value }))}
+                                />
+                              </label>
+                            ))}
                           </div>
-                        ) : (
-                          <>
-                            {canonicalFields ? (
-                              <div className="vbs-storyboard-facts">
-                                {segmentFields.map(([field, label]) => String(segment?.[field] || "").trim() ? (
-                                  <div className="vbs-teaching-purpose" key={field}><strong>{label}</strong><span>{segment[field]}</span></div>
-                                ) : null)}
-                              </div>
-                            ) : (
-                              <>
-                                <p className="vbs-visual-prompt">{segment.visualPrompt}</p>
-                                {segment.teachingPurpose && <div className="vbs-teaching-purpose"><strong>教学目的</strong><span>{segment.teachingPurpose}</span></div>}
-                              </>
-                            )}
-                            <div className="vbs-subshot-list">
-                              {subshots.map((subshot: any) => (
-                                <div className="vbs-subshot" key={subshot.sequence}>
-                                  <span>{subshot.duration}s</span>
-                                  <div><strong>{subshot.visual}</strong><p>{subshot.action}</p><small>{subshot.camera} · {subshot.sound}{subshot.voice ? ` · ${subshot.voice}` : ""}</small></div>
+                          <div className="vbs-locked-structure">
+                            <strong>结构锁定</strong>
+                            <span>主分镜时长 {segment.duration || 10}s · {references.length} 个语义资产引用 · {subshots.length} 个子镜头</span>
+                          </div>
+                          <div className="vbs-subshot-editor-list">
+                            {subshots.map((subshot: any) => (
+                              <section className="vbs-subshot-editor" key={subshot.sequence}>
+                                <header><strong>子镜头 {subshot.sequence}</strong><span>{subshot.duration}s · 时长锁定</span></header>
+                                <div className="vbs-structured-editor-grid compact">
+                                  {SUBSHOT_FIELDS.map(([field, label]) => (
+                                    <label className={field === "action" ? "wide" : ""} key={field}>
+                                      <span>{label}</span>
+                                      <textarea
+                                        rows={field === "action" ? 3 : 2}
+                                        value={String(subshot?.[field] || "")}
+                                        onChange={(event) => setDraft((current: any) => updateStoryboardSubshotFields(current, segment.sequence, subshot.sequence, { [field]: event.target.value }))}
+                                      />
+                                    </label>
+                                  ))}
                                 </div>
-                              ))}
+                              </section>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          {canonicalFields ? (
+                            <div className="vbs-storyboard-facts">
+                              {segmentFields.map(([field, label]) => String(segment?.[field] || "").trim() ? (
+                                <div className="vbs-teaching-purpose" key={field}><strong>{label}</strong><span>{segment[field]}</span></div>
+                              ) : null)}
                             </div>
-                            {references.length > 0 && <div className="vbs-reference-chips">{references.map((reference: any, index: number) => <span key={`${reference.label || reference.publicAssetId || reference.assetId || "reference"}-${index}`}>{reference.label || reference.publicAssetId || reference.assetId}</span>)}</div>}
-                            {(segment.narration || segment.subtitles) && <div className="vbs-dialogue-block">{segment.narration && <p><strong>旁白：</strong>{segment.narration}</p>}{segment.subtitles && <p><strong>字幕：</strong>{segment.subtitles}</p>}</div>}
-                          </>
-                        )}
-                      </Accordion.Content>
-                    </Accordion.Item>
-                  );
-                })}
-              </Accordion.Root>
-            </>
+                          ) : (
+                            <>
+                              <p className="vbs-visual-prompt">{segment.visualPrompt}</p>
+                              {segment.teachingPurpose && <div className="vbs-teaching-purpose"><strong>教学目的</strong><span>{segment.teachingPurpose}</span></div>}
+                            </>
+                          )}
+                          <div className="vbs-subshot-list">
+                            {subshots.map((subshot: any) => (
+                              <div className="vbs-subshot" key={subshot.sequence}>
+                                <span>{subshot.duration}s</span>
+                                <div><strong>{subshot.visual}</strong><p>{subshot.action}</p><small>{subshot.camera} · {subshot.sound}{subshot.voice ? ` · ${subshot.voice}` : ""}</small></div>
+                              </div>
+                            ))}
+                          </div>
+                          {references.length > 0 && <div className="vbs-reference-chips">{references.map((reference: any, index: number) => <span key={`${reference.label || reference.publicAssetId || reference.assetId || "reference"}-${index}`}>{reference.label || reference.publicAssetId || reference.assetId}</span>)}</div>}
+                          {(segment.narration || segment.subtitles) && <div className="vbs-dialogue-block">{segment.narration && <p><strong>旁白：</strong>{segment.narration}</p>}{segment.subtitles && <p><strong>字幕：</strong>{segment.subtitles}</p>}</div>}
+                        </>
+                      )}
+                    </Accordion.Content>
+                  </Accordion.Item>
+                );
+              })}
+            </Accordion.Root>
           )}
         </Tabs.Content>
 
         <Tabs.Content className="vbs-tab-content" value="prompt">
           {!copyablePromptArtifact ? (
-            <div className="vbs-empty-card">
+            <StageEmpty>
               <strong>执行 Prompt 尚未生成</strong>
               <p>完成并保存正式分镜后，系统会生成只用于执行的可复制 Prompt 副本。</p>
-            </div>
+            </StageEmpty>
           ) : (
             <div className="vbs-copyable-prompt-view">
               {copyablePromptStatus === "stale" && <div className="vbs-inline-warning">正式分镜已修改，这份执行 Prompt 已过期，需要重新生成。</div>}
@@ -236,6 +235,6 @@ export function StoryboardStage({
           )}
         </Tabs.Content>
       </Tabs.Root>
-    </section>
+    </StagePage>
   );
 }

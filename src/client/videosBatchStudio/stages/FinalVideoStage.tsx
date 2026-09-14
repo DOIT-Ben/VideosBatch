@@ -1,5 +1,6 @@
 import type { Session } from "../../../shared/types";
 import { preferredFinalVideo } from "../contentModel";
+import { StagePage } from "../components/StagePage";
 
 export function FinalVideoStage({ artifact, session, onOpenCanvas }: { artifact: any; session?: Session; onOpenCanvas: () => void }) {
   const native = preferredFinalVideo(session);
@@ -14,8 +15,7 @@ export function FinalVideoStage({ artifact, session, onOpenCanvas }: { artifact:
   const settled = ready || simulatedReady;
 
   return (
-    <section className="vbs-stage-page vbs-final-stage">
-      <div className="vbs-stage-kicker">09 · 最终成片</div>
+    <StagePage stepId="final" className="vbs-final-stage" title="最终成片" lead="全部镜头按顺序拼接后的交付文件。">
       <div className="vbs-final-delivery">
         <div className="vbs-final-delivery-copy">
           <div className={`vbs-final-check ${settled ? "ready" : ""}`}>{settled ? "✓" : "○"}</div>
@@ -38,6 +38,6 @@ export function FinalVideoStage({ artifact, session, onOpenCanvas }: { artifact:
         {downloadUrl && <a className="vbs-primary" href={downloadUrl} download>下载 MP4</a>}
         <button type="button" className="vbs-secondary" onClick={onOpenCanvas}>进入制作画布</button>
       </div>
-    </section>
+    </StagePage>
   );
 }

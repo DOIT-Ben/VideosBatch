@@ -3,6 +3,7 @@ import type { Asset } from "../../../shared/types";
 import type { VideosBatchStageStatus } from "../../../shared/videosBatchWorkflow";
 import { buildAssetCandidateGroups, isAssetConfirmationComplete } from "../contentModel";
 import { MediaPreviewDialog } from "../components/MediaPreviewDialog";
+import { StageEmpty, StageFact, StagePage } from "../components/StagePage";
 import { Check, ImageIcon, Maximize2 } from "lucide-react";
 
 export function AssetGalleryStage({
@@ -44,16 +45,13 @@ export function AssetGalleryStage({
     !isAssetConfirmationComplete(planArtifact, candidatesArtifact, confirmationArtifact);
 
   return (
-    <section className="vbs-stage-page">
-      <div className="vbs-stage-kicker">05 · 资产图片</div>
-      <div className="vbs-section-title">
-        <div>
-          <h2>确认资产图片</h2>
-          <p className="vbs-stage-lead">逐个查看真实生成结果，为每个角色、场景和道具选定一张最终参考图。</p>
-        </div>
-        <span>{groups.length} 个资产</span>
-      </div>
-      {!groups.length ? <div className="vbs-empty-card">资产计划或候选图尚未生成。</div> : (
+    <StagePage
+      stepId="assets"
+      title="确认资产图片"
+      lead="逐个查看真实生成结果，为每个角色、场景和道具选定一张最终参考图。"
+      facts={<StageFact value={groups.length} label="个资产" />}
+    >
+      {!groups.length ? <StageEmpty>资产计划或候选图尚未生成。</StageEmpty> : (
         <>
           <div className="vbs-asset-gallery vbs-asset-gallery-detailed">
             {groups.map((group) => {
@@ -127,6 +125,6 @@ export function AssetGalleryStage({
         imageUrl={preview?.url || ""}
         onOpenChange={(open) => { if (!open) setPreview(null); }}
       />
-    </section>
+    </StagePage>
   );
 }
