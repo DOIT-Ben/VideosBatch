@@ -62,14 +62,14 @@ Each shot is one JSON object with fields:
 
 Output strict JSON only: {"shots": [...]}. NO Markdown, NO explanation, NO text outside JSON.`;
 
-export interface AnalyzeVideoOpts {
+interface AnalyzeVideoOpts {
   /** Local /media/... or filesystem path. */
   videoPath: string;
   sampleCount?: number;
   lang?: SessionLanguage;
 }
 
-export interface AnalyzeVideoResult {
+interface AnalyzeVideoResult {
   shots: ParsedShotEntry[];
   durationSec: number;
   sampledFrames: number;

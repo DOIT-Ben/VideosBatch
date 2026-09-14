@@ -43,29 +43,29 @@ function missingAgentPlanReviewModelMessage() {
 
 const reviewDefaultEnabled = () => process.env.SEEREEL_ENABLE_AUTO_VLM_REVIEW === "1";
 
-export const VISION_REVIEW_MAX_ATTEMPTS_HARD_CAP = 5;
+const VISION_REVIEW_MAX_ATTEMPTS_HARD_CAP = 5;
 
-export interface ReviewVerdict {
+interface ReviewVerdict {
   ok: boolean;
   reasons: string[];
   rawText: string;
   model: string;
 }
 
-export interface ImageReviewInput {
+interface ImageReviewInput {
   prompt: string;
   productUrl: string;
   referenceUrls?: string[];
   kind: "asset" | "sketch";
 }
 
-export interface VideoReviewInput {
+interface VideoReviewInput {
   prompt: string;
   videoUrl: string;
   referenceUrls?: string[];
 }
 
-export interface DetailedVideoReviewInput extends VideoReviewInput {
+interface DetailedVideoReviewInput extends VideoReviewInput {
   scope: VideoReviewScope;
   frameCount?: number;
   context?: string;
@@ -164,16 +164,6 @@ export async function reviewImageDetailed(
     if (opts.tolerant) return skippedImageVerdict(input.kind, `[skip] review failed: ${message.slice(0, 300)}`, model, reviewedAt);
     throw error;
   }
-}
-
-export async function reviewVideo(input: VideoReviewInput): Promise<ReviewVerdict> {
-  const verdict = await reviewVideoDetailed({ ...input, scope: "shot", frameCount: 8 });
-  return {
-    ok: verdict.ok,
-    reasons: verdict.ok ? [] : (verdict.reasons.length ? verdict.reasons : verdict.fatalIssues),
-    rawText: verdict.rawText || "",
-    model: verdict.model
-  };
 }
 
 export async function reviewVideoDetailed(input: DetailedVideoReviewInput): Promise<VideoReviewVerdict> {
@@ -649,7 +639,7 @@ async function resolveFfmpegInputArg(url: string): Promise<string | undefined> {
 // Wrappers used by the three generation routes.
 // ============================================================================
 
-export interface WithImageReviewOpts<T> {
+interface WithImageReviewOpts<T> {
   enabled: boolean;
   maxAttempts: number;
   prompt: string;
@@ -671,7 +661,7 @@ export interface WithImageReviewOpts<T> {
   lang?: "zh" | "en";
 }
 
-export interface ReviewWrapResult<T> {
+interface ReviewWrapResult<T> {
   url: string;
   payload: T;
   reviewNote?: string;
@@ -765,15 +755,7 @@ export function formatReviewNote(
   return [head, ...lines].join("\n");
 }
 
-// ============================================================================
-// Prompt rewriter disabled: prompt text remains user-authored.
-// ============================================================================
-
-const SYSTEM_PROMPT_REWRITE_ZH = "";
-
-const SYSTEM_PROMPT_REWRITE_EN = "";
-
-export interface RewritePromptInput {
+interface RewritePromptInput {
   originalPrompt: string;
   reviewReasons: string[];
   /** Optional reference image URLs to attach so the rewriter sees what should have been preserved. */
@@ -785,7 +767,7 @@ export interface RewritePromptInput {
   model?: string;
 }
 
-export interface RewritePromptResult {
+interface RewritePromptResult {
   /** The rewritten prompt, or the original if rewriting was skipped/failed. */
   prompt: string;
   /** Did the rewriter actually run and produce a different prompt? */
@@ -797,19 +779,11 @@ export interface RewritePromptResult {
   tokenUsage?: TokenUsageBreakdown;
 }
 
-function resolvePromptRewriteModel(explicitModel: string | undefined, source: "standard" | "agent-plan" | "missing") {
-  if (explicitModel) return explicitModel;
-  if (source === "agent-plan") {
-    return process.env.PROMPT_REWRITE_AGENT_PLAN_MODEL || process.env.SEED_PROMPT_AGENT_PLAN_MODEL || process.env.AGENT_PLAN_TEXT_MODEL || "";
-  }
-  return process.env.PROMPT_REWRITE_MODEL || process.env.SEED_PROMPT_MODEL || "seed-2-0-pro-260328";
-}
-
 /**
  * Prompt rewriting is intentionally disabled. VLM failures are feedback only; the user or agent
  * must edit visible prompt fields directly.
  */
-export async function rewritePromptWithReviewFeedback(input: RewritePromptInput): Promise<RewritePromptResult> {
+async function rewritePromptWithReviewFeedback(input: RewritePromptInput): Promise<RewritePromptResult> {
   const original = (input.originalPrompt || "").trim();
   return { prompt: original, rewritten: false, model: "", note: "[skip] prompt rewriting disabled" };
 }

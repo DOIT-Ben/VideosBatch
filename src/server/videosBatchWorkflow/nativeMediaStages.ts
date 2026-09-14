@@ -982,11 +982,6 @@ function sourceLineage<const T extends readonly VideosBatchStageId[]>(
   };
 }
 
-function itemErrorFromShot(shot: Shot, fallbackAttempt: number) {
-  if (!shot.videosBatchError && !shot.error) return undefined;
-  return shot.videosBatchError || mediaError(new Error(text(shot.error)), "SHOT_FAILED", fallbackAttempt);
-}
-
 function executionStatus(items: NativeExecutionItem[]): NativeExecutionArtifact["status"] {
   const failed = items.filter((item) => item.status !== "ready");
   if (!failed.length) return "READY";

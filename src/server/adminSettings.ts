@@ -43,7 +43,7 @@ function envAdminPassword() {
   return process.env.SEEREEL_ADMIN_PASSWORD?.trim() || process.env.REELYAI_ADMIN_PASSWORD?.trim() || process.env.ADMIN_PASSWORD?.trim() || undefined;
 }
 
-export function currentAdminUsername() {
+function currentAdminUsername() {
   return settings.adminUsername?.trim() || envAdminUsername() || "admin";
 }
 

@@ -3,7 +3,12 @@ import { readFileSync } from "node:fs";
 
 const nodesSource = readFileSync("src/client/flow/nodes.tsx", "utf8");
 const inspectorSource = readFileSync("src/client/flow/Inspector.tsx", "utf8");
-const robustVideoThumbMatch = nodesSource.match(/function RobustVideoThumb[\s\S]*?\n}\n\nfunction statusBadge/);
+// Anchor on "closing brace at column 0 + blank line + next top-level declaration" instead of naming
+// the following function: naming it made this smoke break whenever that unrelated neighbour was
+// renamed or removed (it used to say `function statusBadge`).
+const robustVideoThumbMatch = nodesSource.match(
+  /function RobustVideoThumb[\s\S]*?\n}\n\n(?=(?:export )?(?:async )?function |(?:export )?const |\/\/ )/
+);
 const shotNodeMatch = nodesSource.match(/function ShotNodeImpl[\s\S]*?\n}\n\n\/\/ ============================================================================\n\/\/ StitchNode/);
 const shotInspectorMatch = inspectorSource.match(/function ShotInspector[\s\S]*?\n}\n\n\/\/ ============================================================================\n\/\/ Stitch inspector/);
 

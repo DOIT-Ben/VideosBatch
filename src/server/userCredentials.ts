@@ -136,7 +136,7 @@ export function currentIpHash() {
   return requestContext.getStore()?.ipHash;
 }
 
-export function currentUserAgentHash() {
+function currentUserAgentHash() {
   return requestContext.getStore()?.userAgentHash;
 }
 

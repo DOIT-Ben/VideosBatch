@@ -14,7 +14,7 @@ export interface VideosBatchReferenceBinding {
   imageUrlHash?: string;
 }
 
-export type VideosBatchPromptRendering = "full" | "compact";
+type VideosBatchPromptRendering = "full" | "compact";
 
 declare module "./types" {
   interface Asset {

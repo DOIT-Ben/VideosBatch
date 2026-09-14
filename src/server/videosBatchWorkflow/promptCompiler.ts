@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { contentHash as canonicalContentHash } from "./canonicalStoryboard";
 import { validateVideosBatchAssetPlan } from "./llmTextStages";
 import {
   normalizeShotExecutionAssetPlanLineage,
@@ -15,8 +14,8 @@ import type {
   ShotExecutionStoryType
 } from "../../shared/videosBatchWorkflow";
 
-export const SHOT_PROVIDER_PROMPT_SCHEMA_VERSION = "1" as const;
-export const SHOT_PROVIDER_PROMPT_COMPILER_VERSION = "2" as const;
+const SHOT_PROVIDER_PROMPT_SCHEMA_VERSION = "1" as const;
+const SHOT_PROVIDER_PROMPT_COMPILER_VERSION = "2" as const;
 
 export const SHOT_PROVIDER_PROMPT_SECTION_ORDER = [
   "teaching",
@@ -29,7 +28,7 @@ export const SHOT_PROVIDER_PROMPT_SECTION_ORDER = [
   "references"
 ] as const;
 
-export type ShotProviderPromptSectionId = (typeof SHOT_PROVIDER_PROMPT_SECTION_ORDER)[number];
+type ShotProviderPromptSectionId = (typeof SHOT_PROVIDER_PROMPT_SECTION_ORDER)[number];
 
 const SECTION_TITLES: Record<ShotProviderPromptSectionId, string> = {
   teaching: "[教学目标与知识点]",
@@ -85,7 +84,7 @@ const INTERNAL_IDENTIFIER_PATTERN = /\b(?:assetId|selectedAssetId|publicAssetId|
 const EVENT_INTERNAL_IDENTIFIER_PATTERN = /\b(?:asset|shot|task)_[A-Za-z0-9][A-Za-z0-9_-]*|\b(?:assetId|shotId|taskId)\b/iu;
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u0009\u000B\u000C\u000E-\u001F\u007F-\u009F\u2028\u2029]/u;
 
-export interface CompiledShotPromptSection {
+interface CompiledShotPromptSection {
   id: ShotProviderPromptSectionId;
   title: string;
   text: string;
@@ -106,7 +105,7 @@ export interface CompiledShotPrompt {
   sections: readonly CompiledShotPromptSection[];
 }
 
-export const PROMPT_COMPILER_ERROR_CODES = [
+const PROMPT_COMPILER_ERROR_CODES = [
   "PROMPT_PACKAGE_INVALID",
   "PROMPT_PACKAGE_LINEAGE_STALE",
   "PROMPT_FIELD_MISSING",
@@ -115,7 +114,7 @@ export const PROMPT_COMPILER_ERROR_CODES = [
   "PROMPT_CONTEXT_TOO_LARGE"
 ] as const;
 
-export type PromptCompilerErrorCode = (typeof PROMPT_COMPILER_ERROR_CODES)[number];
+type PromptCompilerErrorCode = (typeof PROMPT_COMPILER_ERROR_CODES)[number];
 
 export interface PromptCompilerError {
   ok: false;
@@ -131,7 +130,7 @@ export interface PromptCompilerError {
 
 export type ShotProviderPromptCompileResult = CompiledShotPrompt | PromptCompilerError;
 
-export interface ShotProviderPromptAssetPlanLineage {
+interface ShotProviderPromptAssetPlanLineage {
   revision?: number;
   hash?: string;
   contentHash?: string;
@@ -152,7 +151,7 @@ export interface ShotProviderPromptAssetPlanLineage {
   artifact?: unknown;
 }
 
-export interface CompileShotProviderPromptOptions {
+interface CompileShotProviderPromptOptions {
   maxChars?: number;
   /** Current FINAL_STORYBOARD lineage, when the caller has it available. */
   current?: ShotExecutionPackageLineage | number;
@@ -178,7 +177,7 @@ type ValidationIssue = {
   retryable?: boolean;
 };
 
-export class ShotProviderPromptRenderError extends Error {
+class ShotProviderPromptRenderError extends Error {
   readonly code: PromptCompilerErrorCode;
   readonly retryable: boolean;
 
@@ -816,8 +815,6 @@ export function renderShotProviderPromptSections(
   return sections;
 }
 
-export const renderProviderPromptSections = renderShotProviderPromptSections;
-
 function joinSections(sections: readonly CompiledShotPromptSection[], compact: boolean): string {
   return sections.map((item) => item.text).join(compact ? "\n" : "\n\n");
 }
@@ -982,10 +979,4 @@ export function isCompiledShotPrompt(
   return isFull !== isCompact
     && result.promptHash === promptHashFor(result.text, isCompact)
     && validateRenderedPrompt(result) === undefined;
-}
-
-export function isPromptCompilerError(
-  result: ShotProviderPromptCompileResult
-): result is PromptCompilerError {
-  return result.ok === false && typeof result.code === "string";
 }

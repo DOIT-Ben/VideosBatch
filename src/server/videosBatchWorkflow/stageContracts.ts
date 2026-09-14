@@ -20,7 +20,7 @@ export interface StageExecutionContext {
   store?: CinemaStore;
 }
 
-export interface StageResult<T = unknown> {
+interface StageResult<T = unknown> {
   artifact: T;
   /** Optional execution evidence persisted by the runner with the artifact. */
   attempts?: number;

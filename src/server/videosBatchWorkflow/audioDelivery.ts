@@ -26,8 +26,6 @@ import { MEDIA_DIR, localMediaPathFromMediaUrl, runFfmpegCommand } from "../gene
 
 export const VIDEOS_BATCH_FAKE_AUDIO_PROVIDER = "videosbatch-fake-audio";
 
-export const AUDIO_DELIVERY_SAMPLE_RATE = 44_100;
-
 /** Stable file-name stem so repeated runs with identical input reuse the file. */
 function audioFileStem(prefix: string, sessionId: string, identity: string) {
   const digest = createHash("sha1").update(identity).digest("hex").slice(0, 12);

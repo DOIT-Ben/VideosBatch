@@ -3,7 +3,7 @@
  * A prompt may omit complete trailing fields/items when it reaches the budget,
  * but it must never send a partial value to a provider.
  */
-export const DEFAULT_PROMPT_MATERIAL_BUDGET = 48_000;
+const DEFAULT_PROMPT_MATERIAL_BUDGET = 48_000;
 
 export class PromptMaterialTooLargeError extends Error {
   readonly code = "PROMPT_CONTEXT_TOO_LARGE";

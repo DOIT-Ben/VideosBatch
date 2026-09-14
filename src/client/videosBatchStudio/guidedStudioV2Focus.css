@@ -37,7 +37,6 @@ body:has(.videosbatch-studio-v2) {
 }
 
 .app-shell:has(.videosbatch-studio-v2) .workspace > .panel,
-.app-shell:has(.videosbatch-studio-v2) .workspace > .studio-panel,
 .app-shell:has(.videosbatch-studio-v2) .workspace > .canvas-shell {
   min-width: 0;
 }
@@ -48,7 +47,6 @@ body:has(.videosbatch-studio-v2) {
   min-height: 100vh;
   height: auto;
   overflow: visible;
-  background: var(--vbs-v2-canvas);
 }
 
 .app-shell.videosbatch-canvas-mode > .sidebar,
@@ -65,7 +63,6 @@ body:has(.videosbatch-studio-v2) {
   overflow: visible;
   display: flex;
   flex-direction: column;
-  background: var(--vbs-v2-canvas);
 }
 
 .app-shell.videosbatch-canvas-mode .vbs-v2-header {
@@ -223,12 +220,6 @@ body:has(.videosbatch-studio-v2) {
 .app-shell.videosbatch-canvas-mode .inspector-actions button.primary:hover:not(:disabled),
 .app-shell.videosbatch-canvas-mode .inspector-actions button:not(.danger):first-child:hover:not(:disabled) {
   background: #000000;
-}
-
-.app-shell.videosbatch-canvas-mode .flow-toolbar-actions .workflow-run-button {
-  border-color: #b7dccb;
-  background: var(--vbs-v2-success-soft);
-  color: var(--vbs-v2-success);
 }
 
 .app-shell.videosbatch-canvas-mode .flow-workflow-status {

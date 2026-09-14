@@ -2,9 +2,9 @@ import type { Shot, ShotRender } from "./types";
 
 type PendingRenderInput = Pick<ShotRender, "status" | "generationTaskId" | "videoUrl">;
 
-export type ShotGenerationStateInput = Pick<Shot, "status" | "generationTaskId" | "renders" | "videoUrl">;
+type ShotGenerationStateInput = Pick<Shot, "status" | "generationTaskId" | "renders" | "videoUrl">;
 
-export function isPendingShotRender(render: PendingRenderInput | undefined): boolean {
+function isPendingShotRender(render: PendingRenderInput | undefined): boolean {
   if (!render) return false;
   if (render.status === "generating") return true;
   return Boolean(render.generationTaskId && !render.videoUrl);

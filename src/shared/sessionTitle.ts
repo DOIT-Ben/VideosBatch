@@ -12,7 +12,7 @@
 /** Titles the store generated itself, from before sessions had readable names. */
 export const AUTO_SESSION_TITLE = /^un(?:n)?amed session\s+\d+$/i;
 
-export function sessionTitleStamp(date: Date) {
+function sessionTitleStamp(date: Date) {
   const pad = (value: number) => String(value).padStart(2, "0");
   return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }

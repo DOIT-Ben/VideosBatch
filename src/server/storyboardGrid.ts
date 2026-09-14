@@ -54,7 +54,7 @@ const resolveModel = (usesAgentPlan = false, route?: string) => {
   return modelForRoute(model, route);
 };
 
-export interface GenerateStoryboardGridOpts {
+interface GenerateStoryboardGridOpts {
   prompt: string;
   panelCount: number;
   size?: string;
@@ -67,7 +67,7 @@ export interface GenerateStoryboardGridOpts {
   referenceImageUrls?: string[];
 }
 
-export interface StoryboardGridResult {
+interface StoryboardGridResult {
   panels: Array<{ url: string; size?: string }>;
   model: string;
   rawUsage?: unknown;
@@ -137,7 +137,7 @@ export async function generateStoryboardGrid(opts: GenerateStoryboardGridOpts): 
   return { panels, model, rawUsage: body.usage };
 }
 
-export interface AssignFramesOpts {
+interface AssignFramesOpts {
   /** Session shots in index order, length must equal panels.length - 1 (N panels → N-1 transitions). */
   shots: Shot[];
   /** Asset rows already created for each panel, in panel order. */

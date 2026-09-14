@@ -1,12 +1,12 @@
 import { createHash } from "node:crypto";
 
-export type VideosBatchLlmProvider = "openai-responses";
+type VideosBatchLlmProvider = "openai-responses";
 /** @deprecated VideosBatch requests are always sent as json_schema. */
-export type VideosBatchLlmOutputMode = "json_schema" | "json_object";
+type VideosBatchLlmOutputMode = "json_schema" | "json_object";
 
 export type JsonSchema = Record<string, unknown>;
 
-export interface VideosBatchProviderAttempt {
+interface VideosBatchProviderAttempt {
   attempt: number;
   provider: VideosBatchLlmProvider;
   model: string;
@@ -98,7 +98,7 @@ export interface StructuredGenerationRequest {
   idempotencyKey?: string;
 }
 
-export interface StructuredGenerationUsage {
+interface StructuredGenerationUsage {
   inputTokens?: number;
   outputTokens?: number;
   totalTokens?: number;
@@ -366,10 +366,6 @@ function safeAttemptMetadata(metadata: Record<string, string> | undefined) {
   return entries.length ? Object.fromEntries(entries) : undefined;
 }
 
-function errorCode(error: unknown) {
-  return error instanceof VideosBatchLlmError ? error.code : "PROVIDER_ERROR";
-}
-
 function normalizeError(error: unknown, operation: string, model: string, attempt: number): VideosBatchLlmError {
   if (error instanceof VideosBatchLlmError) {
     return new VideosBatchLlmError({
@@ -382,7 +378,6 @@ function normalizeError(error: unknown, operation: string, model: string, attemp
       status: error.status
     });
   }
-  const message = error instanceof Error ? error.message : String(error);
   return new VideosBatchLlmError({
     code: "PROVIDER_ERROR",
     message: `VideosBatch ${operation} provider request failed on ${model}.`,

@@ -1,4 +1,4 @@
-export interface NextSessionSelectionInput {
+interface NextSessionSelectionInput {
   orderedSessionIds: string[];
   selectedSessionIds: Set<string>;
   lastSelectedSessionId: string | undefined;
@@ -6,7 +6,7 @@ export interface NextSessionSelectionInput {
   shiftKey: boolean;
 }
 
-export interface NextSessionSelectionResult {
+interface NextSessionSelectionResult {
   selectedSessionIds: Set<string>;
   lastSelectedSessionId: string;
 }

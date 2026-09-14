@@ -1,4 +1,4 @@
-export type SessionDockEmptyState = "loading" | "empty" | "none";
+type SessionDockEmptyState = "loading" | "empty" | "none";
 
 export function resolveSessionDockState({
   stateLoaded,

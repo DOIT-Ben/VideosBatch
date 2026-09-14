@@ -689,20 +689,7 @@ function validateCopyablePrompt(artifact: unknown, ctx: StageExecutionContext): 
   return result(errors);
 }
 
-function renderLabeledMaterial(label: string, value: unknown): string { return `【${label}】\n${renderPromptMaterial(value)}`; }
-
 function stageArtifact(workflow: any, stageId: VideosBatchStageId): any { return workflow?.stages?.[stageId]?.artifact; }
-function lockedIntro(workflow: any) {
-  const selectedIntroId = text(workflow?.selectedIntroId);
-  if (!workflow?.introLocked || !selectedIntroId) throw new Error("VideosBatch requires exactly one locked course intro before STORY_SCRIPT");
-  const selection = stageArtifact(workflow, "COURSE_INTRO_SELECTION") || {};
-  if (selectedIntroId === "CUSTOM" && selection.confirmedEntry) return selection.confirmedEntry;
-  const candidates = Array.isArray(stageArtifact(workflow, "COURSE_INTRO_CANDIDATES")?.candidates) ? stageArtifact(workflow, "COURSE_INTRO_CANDIDATES").candidates : [];
-  const selected = candidates.find((candidate: any) => text(candidate.id) === selectedIntroId);
-  if (!selected) throw new Error(`Locked course intro ${selectedIntroId} is not present in the current candidate artifact`);
-  return selected;
-}
-function storyScript(workflow: any) { const value = stageArtifact(workflow, "STORY_SCRIPT"); if (!value) throw new Error("VideosBatch STORY_SCRIPT artifact is required"); return value; }
 function assetPlan(workflow: any) { const value = stageArtifact(workflow, "ASSET_PLAN"); if (!value) throw new Error("VideosBatch ASSET_PLAN artifact is required"); return value; }
 function confirmedAssetFacts(workflow: any) {
   const plan = assetPlan(workflow);

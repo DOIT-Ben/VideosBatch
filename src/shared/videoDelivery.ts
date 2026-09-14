@@ -1,4 +1,4 @@
-export type VideoDeliveryMode = "playback" | "download";
+type VideoDeliveryMode = "playback" | "download";
 
 export interface VideoDeliveryInput {
   videoUrl?: string;
@@ -7,7 +7,7 @@ export interface VideoDeliveryInput {
   downloadVideoUrl?: string;
 }
 
-export function isRemoteDeliveryUrl(url: string | undefined): boolean {
+function isRemoteDeliveryUrl(url: string | undefined): boolean {
   if (!url) return false;
   try {
     const parsed = new URL(url);

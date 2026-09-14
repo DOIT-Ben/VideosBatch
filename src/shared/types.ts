@@ -1018,23 +1018,9 @@ export interface CreateSessionPayload {
   language?: SessionLanguage;
 }
 
-export interface GenerateAssetPayload {
-  assetId: string;
-  model?: AssetImageModel;
-  seedreamSize?: AssetImageSize;
-}
-
-export interface ExpandAssetPromptPayload {
-  asset: Partial<Asset>;
-}
-
 export interface ExpandAssetPromptResult {
   prompt: string;
   model: string;
-}
-
-export interface GenerateShotPayload {
-  shotId: string;
 }
 
 /**

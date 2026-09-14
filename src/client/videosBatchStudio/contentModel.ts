@@ -1,12 +1,12 @@
 import type { Asset, Session, Shot } from "../../shared/types";
 
-export interface VideosBatchCandidateView {
+interface VideosBatchCandidateView {
   id: string;
   asset?: Asset;
   previewUrl: string;
 }
 
-export interface VideosBatchAssetCandidateGroup {
+interface VideosBatchAssetCandidateGroup {
   assetKey: string;
   publicAssetId: string;
   name: string;
@@ -16,7 +16,7 @@ export interface VideosBatchAssetCandidateGroup {
   selectedAssetId?: string;
 }
 
-export function preferredAssetPreviewUrl(asset: Asset | undefined) {
+function preferredAssetPreviewUrl(asset: Asset | undefined) {
   if (!asset) return "";
   return asset.thumbnailUrl
     || asset.imageUrl
@@ -171,7 +171,7 @@ export function updateStoryboardSubshotFields<T extends Record<string, any>>(
   return { ...artifact, segments: nextSegments };
 }
 
-export type VideosBatchStoryboardField = readonly [key: string, label: string, wide?: boolean];
+type VideosBatchStoryboardField = readonly [key: string, label: string, wide?: boolean];
 
 /** Return the handbook fields for a segment while retaining legacy display compatibility. */
 export function storyboardSegmentFieldDefinitions(artifact: any, segment: any): VideosBatchStoryboardField[] {
@@ -223,7 +223,7 @@ export function preferredShotVideoUrl(shot: Partial<Shot> | undefined) {
   return shot.playbackVideoUrl || shot.videoUrl || "";
 }
 
-export interface PreferredFinalVideo {
+interface PreferredFinalVideo {
   playbackUrl: string;
   downloadUrl: string;
   status: string;

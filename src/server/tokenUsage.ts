@@ -2,7 +2,7 @@ import type { TokenUsageBreakdown, TokenUsageEvent, TokenUsageModelFamily } from
 
 type UsageLike = Record<string, unknown>;
 
-export type TokenUsageInput = Omit<TokenUsageEvent, "id" | "sessionId" | "createdAt"> & {
+type TokenUsageInput = Omit<TokenUsageEvent, "id" | "sessionId" | "createdAt"> & {
   id?: string;
   sessionId?: string;
   createdAt?: string;

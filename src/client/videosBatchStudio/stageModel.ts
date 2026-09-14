@@ -113,7 +113,3 @@ export function productStepName(stepId: VideosBatchProductStepId): string {
   return productStepById(stepId).label;
 }
 
-/** "03 · 故事文稿" — the one place a step number and label are joined. */
-export function productStepKicker(stepId: VideosBatchProductStepId): string {
-  return `${productStepIndexLabel(stepId)} · ${productStepName(stepId)}`;
-}

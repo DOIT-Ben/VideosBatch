@@ -1,4 +1,4 @@
-export interface VoicePreset {
+interface VoicePreset {
   id: string;
   labelZh: string;
   labelEn: string;

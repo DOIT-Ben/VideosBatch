@@ -1,11 +1,11 @@
 export type AppView = "studio" | "gallery";
 
-export interface AppRoute {
+interface AppRoute {
   view: AppView;
   sessionId: string;
 }
 
-export interface LocationLike {
+interface LocationLike {
   pathname: string;
   hash?: string;
 }

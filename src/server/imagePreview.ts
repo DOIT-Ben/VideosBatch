@@ -2,12 +2,12 @@ import { mkdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { MEDIA_DIR, runFfmpegCommand } from "./generators";
 
-export interface CanvasImagePreview {
+interface CanvasImagePreview {
   localUrl: string;
   filePath: string;
 }
 
-export interface GeneratedImageCanvasFields {
+interface GeneratedImageCanvasFields {
   mediaUrl: string;
   imageUrl: string;
   thumbnailUrl: string;

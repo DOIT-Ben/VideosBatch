@@ -11,10 +11,10 @@ const VOLC_ASR_DEFAULT_STANDARD_RESOURCE_ID = "volc.seedasr.auc";
 const VOLC_ASR_DEFAULT_POLL_MS = 5000;
 const VOLC_ASR_DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
 
-export type PostProductionAsrProvider = "volc" | "hyperframes";
+type PostProductionAsrProvider = "volc" | "hyperframes";
 type VolcAsrMode = "standard" | "flash";
 
-export interface VolcAsrRequestInput {
+interface VolcAsrRequestInput {
   audioBase64: string;
   apiKey?: string;
   appid?: string;
@@ -25,7 +25,7 @@ export interface VolcAsrRequestInput {
   base?: string;
 }
 
-export interface VolcAsrRequest {
+interface VolcAsrRequest {
   url: string;
   headers: Record<string, string>;
   body: {
@@ -35,7 +35,7 @@ export interface VolcAsrRequest {
   };
 }
 
-export interface VolcAsrTaskRequest {
+interface VolcAsrTaskRequest {
   url: string;
   headers: Record<string, string>;
   body: {
@@ -423,10 +423,6 @@ function formatSrtTime(sec: number) {
   const seconds = Math.floor((totalMillis % 60_000) / 1000);
   const millis = totalMillis % 1000;
   return `${pad2(hours)}:${pad2(minutes)}:${pad2(seconds)},${pad3(millis)}`;
-}
-
-function env(...keys: string[]) {
-  return envFrom(process.env, ...keys);
 }
 
 function envFrom(source: EnvLike, ...keys: string[]) {

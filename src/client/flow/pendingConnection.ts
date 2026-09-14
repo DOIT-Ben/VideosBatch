@@ -11,7 +11,7 @@ import type { FlowNodeData } from "./buildGraph";
  */
 const PENDING_EDGE_CLASS = "edge-pending";
 
-export interface PendingConnectInput {
+interface PendingConnectInput {
   connection: Connection;
   session: SessionWithShots;
   snapshot: StoreSnapshot;

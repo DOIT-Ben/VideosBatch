@@ -1,8 +1,8 @@
 import type { Asset, AssetType, SessionLanguage } from "../shared/types";
 
-export type ImageUploadKind = Extract<AssetType, "image" | "character" | "scene">;
+type ImageUploadKind = Extract<AssetType, "image" | "character" | "scene">;
 
-export interface PendingImageUploadAssetInput {
+interface PendingImageUploadAssetInput {
   fileName: string;
   kind: ImageUploadKind;
   sessionId: string;

@@ -7,14 +7,14 @@ import { hasAgentPlanKey } from "./arkCredentials";
 const mediaDir = path.resolve(process.cwd(), "data", "media");
 const mediaUrlPrefix = "/media/";
 
-export interface TosPublishResult {
+interface TosPublishResult {
   key: string;
   url: string;
   localUrl: string;
   expiresSec?: number;
 }
 
-export interface TosDeleteObjectsResult {
+interface TosDeleteObjectsResult {
   deletedKeys: string[];
   failed: Array<{ key: string; error: string }>;
 }
@@ -23,7 +23,7 @@ export function hasTosConfig() {
   return Boolean(getTosConfig(false));
 }
 
-export function isRemoteUrl(url: string | undefined) {
+function isRemoteUrl(url: string | undefined) {
   if (!url) return false;
   try {
     const parsed = new URL(url);
@@ -33,7 +33,7 @@ export function isRemoteUrl(url: string | undefined) {
   }
 }
 
-export function findLocalMediaUrl(asset: Asset) {
+function findLocalMediaUrl(asset: Asset) {
   const candidates = [asset.referenceImageUrl, asset.sourceImageUrl, asset.mediaUrl, asset.imageUrl, asset.thumbnailUrl].filter(Boolean) as string[];
   return candidates.find((url) => url.startsWith(mediaUrlPrefix));
 }

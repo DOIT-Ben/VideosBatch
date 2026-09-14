@@ -37,13 +37,13 @@ const TARGET_H = 720;
 const SAMPLE_COUNT = 4;
 const SAMPLE_LEN_SEC = 3;
 
-export interface ProbeInfo {
+interface ProbeInfo {
   durationSec: number;
   width: number;
   height: number;
 }
 
-export interface CondenseResult {
+interface CondenseResult {
   /** Path of the file the caller should publish to TOS (original if no condensing needed). */
   publishPath: string;
   /** Whether ffmpeg actually ran and produced a new file (vs. caller falling through to source). */
@@ -60,7 +60,7 @@ export interface CondenseResult {
 
 export type CondenseStrategy = "sample-concat" | "trim" | "speedup";
 
-export interface CondenseOptions {
+interface CondenseOptions {
   /** Which condensing strategy to use; defaults to "sample-concat" for backward compat. */
   strategy?: CondenseStrategy;
 }

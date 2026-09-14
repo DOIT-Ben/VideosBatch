@@ -60,25 +60,22 @@
   topbar/sidebar 仍在 DOM 里（`display:none`），`getComputedStyle` 照样返回颜色，会造假阳性；
   ② 用 `g-b` 区分，否则 danger 红 `rgb(242,162,162)` 会被当成黄铜。
 
-## 三、设计主题（2026-09-14 这一轮）
+## 三、设计主题（2026-09-14 那轮，已提交 `2ae3e47`）
 
 - **一个度量 / 一块板 / 黄铜稀缺**：所有 surface 对齐 `--vbs-v2-measure:1080px`
   （`--vbs-v2-gutter: max(28px, calc((100% - 1080px)/2))`）；每步同一块 slate 头；
   **amber 只作「有人工闸门待确认」的信号**（`confirm` 轨道点 + 模式提示），其余全是墨色在纸上。
-- **画布（制作画布）有意不共用 1080 measure**——图要宽度，用 `--vbs-v2-canvas-inset`
-  （tokens.css 唯一定义点，缺省 28px，窄屏媒体查询里调到 12px）。纪律是
-  **一个面一条内缩，绝不两条**：之前画布 header 32px、卡片 28px 各说各话。
+- **画布有意不共用 1080 measure**——图要宽度，用 `--vbs-v2-canvas-inset`。纪律是
+  **一个面一条内缩，绝不两条**。
 - **画布上的黄铜 = 「手握着的线」**：拖动中的连接线、optimistic 边（`.edge-pending`）、被点中的边。
-  handle / 节点色条 / 按钮 / 选中边框 / 参考图条全是墨。节点色条是**无黄铜的哑光 family**
-  （asset `#7d8791` / shot `#454f59` / storyboard `#8b83bf` / stitch `#7f9b62` / refvideo `#b98b98`）。
+  handle / 节点色条 / 按钮 / 选中边框 / 参考图条全是墨。节点色条是**无黄铜的哑光 family**。
 - **画布可读性靠聚焦不靠颜色**：`FlowView.tsx` 的 `displayEdges` 按 `selectedNodeId` 给相连边加
-  `edge-linked`、其余加 `edge-dimmed`（实测 12 条 0.78 / 44 条 0.13）。56 条边同色不丢信息——
-  原先 5 种色相没有图例，本来就是噪声。
+  `edge-linked`、其余加 `edge-dimmed`。56 条边同色不丢信息——原先 5 种色相没图例，本来就是噪声。
 - 不引 webfont（CJK 字体兆级、大陆不稳）——靠字号/字重/字距/tabular-figures + sans/mono 配对。
 - canvas 模式 accent 有意更深（`#9c6f10` / `#fbf3e0`），写在 tokens.css 覆盖块里；
   `--vbs-canvas-*` 平行命名已废除。
-- 节点状态点暖色只有一个来源：`var(--vbs-v2-accent)`（原 `#fbbf24`/`#f59e0b` 已换掉）；
-  蓝/绿/红三个点仍是**状态**（running/done/failed），不动。
+- 节点状态点暖色只有一个来源 `var(--vbs-v2-accent)`；蓝/绿/红三个点仍是**状态**，不动。
+- 操作细节（审计脚本、四条铁律、收尾清单）见技能 **`videosbatch-ui-retheme`**。
 
 ## 四、运行模式与入口
 
@@ -98,11 +95,45 @@
   `store.load()` 做内存迁移不写盘。列表/菜单显示步骤进度而不是镜头数。`/api/state` 的
   `runtime.videosBatch` 暴露模式与 ready 状态（服务端 try/catch 包住，环境非法降级成 `error` 字段）。
 
-## 五、环境备忘
+## 五、清理死代码（2026-09-14 第二轮）
+
+通用方法论见技能 **`ts-deadcode-cleanout`**。本项目专属的几条：
+
+- **四层 + 各层判据**：不可达文件（TS 编译器 API 建 `src+scripts` 模块图，**必须识别
+  `import()`/`require()`**，否则 `lazy(() => import(...))` 会被误判成死）；未被导入的导出
+  （分 `[D]` 真死 / `[e]` 只摘 `export`）；模块内私有死代码（`tsc --noUnusedLocals`，**会级联，
+  迭代到收敛**）；死 CSS（postcss + 全仓 code 语料）。本仓库结果：**0 孤儿文件**。
+- **⚠️ 共享选择器**：`.a, .b { font-weight:600 }` 只 `.b` 被覆盖时，删声明连 `.a` 的一起删了
+  → 1075 处 computed 差异。条件是**每个选择器都被同上下文同属性覆盖**才可删。
+- **⚠️ 删语句吞前导换行**：`getFullStart()` 会粘出 `import A;import B;`（tsc 不报错）。
+- **⚠️ 按源码文本断言的 smoke 有两类，都要扫**：
+  (a) 正则要求 `export type X` 存在（`smoke-audio-separation.ts:9`）——摘 `export` 会红；
+  扫 `assert.*export (const|function|type|interface|class)`。
+  (b) **更阴**：私有函数名被用作**正则锚点/终止符**。`smoke-canvas-video-node-playback.ts:6`
+  曾用 `/function RobustVideoThumb[\s\S]*?\n}\n\nfunction statusBadge/` 抽函数体，
+  `statusBadge` 只是"紧随其后的那个函数"；`--noUnusedLocals` 正确删掉它 → smoke 红，
+  而 tsc 绿、全 DOM 零差异、其余 smoke 全绿。修法是改锚点为
+  `\n}\n\n(?=(?:export )?(?:async )?function |(?:export )?const |// )`，**不是把死代码加回来**。
+  扫法：抽脚本里所有 `function NAME`，逐个确认 `src/` 里还有。
+- **共享词汇表不要收紧**：`src/shared/types.ts` 是项目共享域词汇，导出就是这文件的产品
+  （且已有 smoke 把它写成契约）。这类文件保留全部导出；收紧实现模块即可。
+- **验证顺序**：① `tsc --noEmit` → ② `tsc --noEmit --noUnusedLocals`（迭代到空）→
+  ③ 全 DOM 逐元素 computed 差异（必须先有**阳性对照**证明这测法能测出变化）→
+  ④ 结构性证明（每个 (上下文,选择器,属性) 的最终生效值一致）→ ⑤ `npm run verify:offline`。
+  **⑤ 是唯一能抓到"文本锚点"那类断裂的**（`&&` 链会在第一个红的 smoke 处断掉，
+  后面几十个根本没跑）。
+- **工具落点（`output/` 被 gitignore，删了就没了）**：`deadcode.mjs`、`deexport.mjs`、
+  `prune-css.mjs`、`check-css-prune.mjs`、`elem-dump.mjs`、`prune-unused.mjs`、`css-dup.mjs`。
+- **`verify:offline` 里会自己起服务器的用例**（`smoke:canvas-crud` 等）——跑之前先腾空 5173，
+  否则报 EADDRINUSE 假失败。
+
+## 六、环境备忘
 
 - 启动 dev：`node node_modules/tsx/dist/cli.mjs src/server/index.ts`（默认 5173）。**别用 npx**
   （沙箱会劫持到 wsl.exe 并拦掉）。类型检查 `node node_modules/typescript/bin/tsc --noEmit`；
-  构建 `node node_modules/vite/bin/vite.js build`。
+  构建 `node node_modules/vite/bin/vite.js build`。释放端口：
+  `Get-NetTCPConnection -LocalPort 5173 -State Listen` + `Stop-Process -Force`
+  （bash 里 `taskkill //PID` 会被 Git Bash 吃掉参数，别用）。
 - 截图/DOM：chromium 在 `C:/Users/HB/AppData/Local/ms-playwright/chromium-1234/chrome-win64/chrome.exe`，
   用仓库内 playwright-core 驱动；入口 `http://127.0.0.1:5173/canvas/<sessionId>`。
 - git 用系统版 `C:/Program Files/Git/mingw64/bin/git.exe`；**提交前 `git status` 逐行确认**

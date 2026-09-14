@@ -70,7 +70,7 @@ const resolveModel = (variant: SubStoryboardModel = "seedream-4-5", usesAgentPla
   return modelForRoute(model, route);
 };
 
-export interface GenerateSubStoryboardOpts {
+interface GenerateSubStoryboardOpts {
   /** Free-text scene description: subject, action arc, style, mood, character identity. */
   scenePrompt: string;
   /** Number of sub-panels to compose into one grid (Seedance reads them as a timeline). 4–12 is the sweet spot. */
@@ -256,7 +256,7 @@ export function buildSubStoryboardAssetPayload(
 // Sequential mode — one Seedream call per panel, then ffmpeg-composite into a single grid.
 // ============================================================================
 
-export interface SequentialPanelSpec {
+interface SequentialPanelSpec {
   /**
    * Per-panel beat prompt. The caller writes one description per panel; this helper handles all
    * the cross-panel style/identity wording itself by using shared `referenceImageUrls` plus the
@@ -265,7 +265,7 @@ export interface SequentialPanelSpec {
   prompt: string;
 }
 
-export interface GenerateSubStoryboardSequentialOpts {
+interface GenerateSubStoryboardSequentialOpts {
   /** Per-panel beat prompts in time order. The grid is composed in this order, no shuffling. */
   panels: SequentialPanelSpec[];
   /**
@@ -293,7 +293,7 @@ export interface GenerateSubStoryboardSequentialOpts {
   outputLabel?: string;
 }
 
-export interface SubStoryboardSequentialResult {
+interface SubStoryboardSequentialResult {
   /** Local /media/... URL of the composite grid image (the asset's mediaUrl). */
   compositeUrl: string;
   /** Each panel's Seedream-returned remote URL, in order. Useful for re-stitching or audit. */

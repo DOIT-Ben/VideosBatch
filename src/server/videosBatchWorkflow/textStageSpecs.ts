@@ -5,8 +5,7 @@ import {
   CANONICAL_STORYBOARD_TYPES,
   canonicalSegmentSchema,
   canonicalStoryboardSegmentsSchema,
-  normalizeStoryboardType,
-  renderCanonicalStoryboardText
+  normalizeStoryboardType
 } from "./canonicalStoryboard";
 import { renderPromptMaterial } from "./promptMaterial";
 import { loadPromptTemplate } from "../prompts/promptTemplates";

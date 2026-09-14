@@ -27,7 +27,7 @@
  * decide how to surface the error (matches the existing requestSeedanceJson contract).
  */
 
-export interface FetchWithRetryOptions extends RequestInit {
+interface FetchWithRetryOptions extends RequestInit {
   /** Per-attempt timeout in ms. Default 45_000. Set 0 to disable. */
   timeoutMs?: number;
   /** Max retry attempts AFTER the first try. Default 3 (= 4 total HTTP attempts). */

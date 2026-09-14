@@ -68,7 +68,7 @@ function rolloverIfNeeded() {
   }
 }
 
-export interface GenerationLimitResult {
+interface GenerationLimitResult {
   ok: boolean;
   count: number;
   cap: number;

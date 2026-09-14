@@ -71,7 +71,7 @@ export function setGauge(name: string, help: string, labels: Labels | undefined,
   item.values.set(keyFor(normalized), { labels: normalized, value });
 }
 
-export function observeHistogram(name: string, help: string, buckets: number[], labels: Labels | undefined, value: number) {
+function observeHistogram(name: string, help: string, buckets: number[], labels: Labels | undefined, value: number) {
   if (!Number.isFinite(value)) return;
   const item = metric(name, help, "histogram", buckets) as HistogramMetric;
   const normalized = normalizeLabels(labels);
@@ -85,8 +85,8 @@ export function observeHistogram(name: string, help: string, buckets: number[], 
   item.values.set(key, prev);
 }
 
-export const HTTP_DURATION_BUCKETS = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30];
-export const STORE_SAVE_BUCKETS = [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5];
+const HTTP_DURATION_BUCKETS = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30];
+const STORE_SAVE_BUCKETS = [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5];
 
 export function metricsText() {
   const lines: string[] = [];

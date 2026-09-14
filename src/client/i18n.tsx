@@ -845,11 +845,7 @@ function readStoredLanguage(): UiLanguage {
   );
 }
 
-export function getCurrentUiLanguage() {
-  return currentUiLanguage;
-}
-
-export function getDictionary(lang: UiLanguage = currentUiLanguage) {
+function getDictionary(lang: UiLanguage = currentUiLanguage) {
   return dictionaries[lang];
 }
 

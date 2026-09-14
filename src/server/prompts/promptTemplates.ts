@@ -27,7 +27,7 @@ export const PROMPT_TEMPLATE_NAMES = [
   "short-film-casting"
 ] as const;
 
-export type PromptTemplateName = (typeof PROMPT_TEMPLATE_NAMES)[number];
+type PromptTemplateName = (typeof PROMPT_TEMPLATE_NAMES)[number];
 
 const cache = new Map<PromptTemplateName, string>();
 

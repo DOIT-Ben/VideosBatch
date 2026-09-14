@@ -51,7 +51,7 @@ const VOLC_MUSIC_DEFAULT_TIMEOUT_MS = 20 * 60 * 1000;
 
 // ---------- Public types ----------
 
-export interface NarrationLineDescriptor {
+interface NarrationLineDescriptor {
   index: number;
   text: string;
   audioPath: string;
@@ -59,7 +59,7 @@ export interface NarrationLineDescriptor {
   startSec?: number;
 }
 
-export interface NarrationTimelineSegment {
+interface NarrationTimelineSegment {
   index: number;
   text: string;
   audioPath: string;
@@ -68,7 +68,7 @@ export interface NarrationTimelineSegment {
   endSec: number;
 }
 
-export interface NarrationTimeline {
+interface NarrationTimeline {
   segments: NarrationTimelineSegment[];
   /** Global atempo (1.0 = no change) applied to the whole narration track. */
   globalTempo: number;
@@ -89,7 +89,7 @@ interface ParsedNarrationLine {
   startSec?: number;
 }
 
-export interface NarrationPipelineResult {
+interface NarrationPipelineResult {
   narrationVideoUrl: string;
   narrationSubtitleUrl?: string;
   narrationSignature: string;
@@ -100,7 +100,7 @@ export interface NarrationPipelineResult {
   musicLocalAudioUrl?: string;
 }
 
-export interface NarrationPipelineOptions {
+interface NarrationPipelineOptions {
   onProgress?: (phase: string) => Promise<void> | void;
 }
 
@@ -147,7 +147,7 @@ export function computeNarrationSignature(input: {
 const SECONDARY_SPLIT_REGEX = /(?<=[，；,;])/g;
 
 /** Best-effort guess of the dominant language of a free-form script. */
-export function detectScriptLanguage(script: string): "en" | "zh" {
+function detectScriptLanguage(script: string): "en" | "zh" {
   const sample = script.slice(0, 500);
   const cjk = (sample.match(/[\u4e00-\u9fff\u3400-\u4dbf]/g) || []).length;
   const latin = (sample.match(/[A-Za-z]/g) || []).length;
@@ -155,7 +155,7 @@ export function detectScriptLanguage(script: string): "en" | "zh" {
 }
 
 /** Volcengine speaker ids are namespaced by language prefix: `en_*` vs everything else (zh_*). */
-export function inferVoiceLanguage(voice: string): "en" | "zh" {
+function inferVoiceLanguage(voice: string): "en" | "zh" {
   return voice.startsWith("en_") ? "en" : "zh";
 }
 

@@ -23,11 +23,11 @@ export const MINIMAX_TTS_PROVIDER = "minimax-t2a-v2";
 export const MINIMAX_TTS_DEFAULT_BASE_URL = "https://api.minimaxi.com/v1/t2a_v2";
 export const MINIMAX_TTS_DEFAULT_MODEL = "speech-02-turbo";
 export const MINIMAX_TTS_DEFAULT_VOICE_ID = "male-qn-qingse";
-export const MINIMAX_TTS_DEFAULT_SAMPLE_RATE = 32_000;
+const MINIMAX_TTS_DEFAULT_SAMPLE_RATE = 32_000;
 /** MiniMax accepts `text` up to 10 000 characters; stay well under the wire limit. */
-export const MINIMAX_TTS_MAX_TEXT_LENGTH = 9_000;
+const MINIMAX_TTS_MAX_TEXT_LENGTH = 9_000;
 
-export interface MiniMaxTtsConfig {
+interface MiniMaxTtsConfig {
   apiKey: string;
   baseUrl: string;
   model: string;
@@ -45,7 +45,7 @@ export interface MiniMaxTtsConfig {
 }
 
 /** Raised for provider-side failures so callers can surface a precise code. */
-export class MiniMaxTtsError extends Error {
+class MiniMaxTtsError extends Error {
   readonly code: string;
   readonly retryable: boolean;
 

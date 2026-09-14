@@ -15,42 +15,17 @@ import type { Asset, PromptComposition, SessionLanguage, Shot } from "../shared/
 
 export type Lang = SessionLanguage;
 
-export const DEFAULT_LANG: Lang = "zh";
+const DEFAULT_LANG: Lang = "zh";
 
 export function resolveLang(value: unknown): Lang {
   return value === "en" ? "en" : "zh";
-}
-
-export function composeSpokenLanguageInstruction(lang: Lang): string {
-  return lang === "en"
-    ? [
-        "SESSION SPOKEN-LANGUAGE LOCK:",
-        "All audible character dialogue in this video must be spoken in English only.",
-        "Do not generate Mandarin, Chinese dialects, bilingual dialogue, translated repeats, or random foreign-language words unless the user explicitly wrote multilingual dialogue in the prompt.",
-        "Technical prompt text may mention other languages as descriptions, but any performed spoken line must remain English."
-      ].join("\n")
-    : [
-        "会话口语语言锁定：",
-        "本视频中所有可听见的人物对白必须只说中文普通话。",
-        "不要生成英语对白、英中双语对白、英文复述、随机英文口号或外语夹杂，除非用户 prompt 明确要求多语言角色。",
-        "技术提示词可以用英文描述镜头，但角色实际说出口的台词必须保持中文普通话。"
-      ].join("\n");
-}
-
-export function enforceSpokenLanguageInstruction(prompt: string, lang: Lang): string {
-  const trimmed = (prompt || "").trim();
-  const instruction = composeSpokenLanguageInstruction(lang);
-  if (!trimmed) return instruction;
-  const hasLanguageLock = /SESSION SPOKEN-LANGUAGE LOCK|会话口语语言锁定/.test(trimmed);
-  if (hasLanguageLock) return trimmed;
-  return `${trimmed}\n${instruction}`;
 }
 
 // ============================================================================
 // Seedance — video text content
 // ============================================================================
 
-export interface SeedanceTextContext {
+interface SeedanceTextContext {
   shot: Pick<Shot, "rawPrompt" | "prompt" | "durationSec">;
   /** Assets that should appear in the @-mention reference table inside the prompt. */
   referencedAssets: Asset[];
@@ -146,10 +121,6 @@ function composeSeedanceReferenceBinding(entries: SeedanceReferenceEntry[], lang
   return composeAssetReferenceTableFromEntries(entries, lang);
 }
 
-function clampDuration(value?: number) {
-  return Math.min(Math.max(Number(value) || 1, 1), 15);
-}
-
 function composeAssetReferenceTableFromEntries(entries: SeedanceReferenceEntry[], lang: Lang): string {
   if (!entries.length) return "";
   const lines: string[] = [];
@@ -226,117 +197,6 @@ function composeAssetUsage(asset: Asset, lang: Lang): string {
     : "Use this reference for its explicitly named visual details while keeping the user's prompt authoritative.";
 }
 
-function composeGlobalContinuityInstruction(assets: Asset[], lang: Lang): string {
-  const cast = assets.filter((asset) => asset.type === "character");
-  const scenes = assets.filter((asset) => asset.type === "scene");
-  if (!cast.length && !scenes.length) return "";
-  const castNames = cast.map((asset) => `@${asset.name.replace(/\s*\/\s*/g, "/")}`).join("、");
-  const sceneNames = scenes.map((asset) => `@${asset.name.replace(/\s*\/\s*/g, "/")}`).join("、");
-  if (lang === "en") {
-    return [
-      "Long-form continuity lock:",
-      castNames ? `Across the entire film, keep these cast identities locked: ${castNames}. The same named character must keep the same face geometry, body type, hair, costume palette, age, and recognizable expression pattern in every shot.` : "",
-      sceneNames ? `Keep these scene identities locked when they appear: ${sceneNames}. Preserve geography, practical light direction, palette, weather, and object placement across cuts.` : "",
-      "Do not treat later shots as a reboot. This shot is one beat inside the same one-minute story; keep visual rhythm, emotional intensity, camera language, and pacing compatible with adjacent shots."
-    ].filter(Boolean).join("\n");
-  }
-  return [
-    "长视频一致性锁定：",
-    castNames ? `整条片中锁定这些演员身份：${castNames}。同名角色在每个镜头都必须保持相同脸型、五官比例、体型、发型、服装主色、年龄感与可识别表情习惯。` : "",
-    sceneNames ? `这些场景出现时必须锁定：${sceneNames}。保持空间方位、实景光源方向、色彩、天气与关键物件位置跨镜头一致。` : "",
-    "不要把后续镜头当成重新开场。本镜是同一条 1 分钟故事里的一个节拍；视觉节奏、情绪强度、镜头语言和剪辑速度都要能和相邻镜头自然接上。"
-  ].filter(Boolean).join("\n");
-}
-
-const NO_TEXT_OVERLAY_INSTRUCTION: Record<Lang, string> = {
-  zh:
-    "严格禁止屏幕内文字：不要渲染任何屏幕字幕、台词条、低三分屏、标题卡、片头片尾字幕、屏幕内排版、歌词条、动态文字、" +
-    "水印、台标、标识、版权说明，也不要插入任何 UI 元素。仅当文字属于被拍摄的物理世界时允许（例如商店招牌、海报、" +
-    "角色正在展示的笔记本电脑屏幕里的内容）。",
-  en:
-    "STRICT NO-TEXT-OVERLAY RULE: do NOT render any on-screen subtitles, captions, lower-thirds, " +
-    "title cards, opening/closing credits, on-screen typography, lyric lines, kinetic text, " +
-    "watermarks, channel logos, brand logos, copyright notices, or UI elements. Allowed: text that is naturally " +
-    "part of the physical world being filmed (e.g. a store sign, a poster, content on a laptop screen the character is showing)."
-};
-
-function composeContinuityInstruction(lang: Lang): string {
-  if (lang === "en") {
-    return [
-      "Shot-to-shot continuity reference:",
-      "Video 1 is the immediate previous shot, especially its final seconds. Use it as temporal continuity context, not as a generic style sample.",
-      "The user's original prompt defines what happens next. Add only the missing connective tissue needed to make the new shot feel like the next beat after Video 1.",
-      "Begin after the final moment of Video 1. Do not replay the same frames, do not restart the same action, and do not make the character return to an earlier pose unless the user explicitly asks for it.",
-      "Carry forward concrete continuity cues from Video 1: character emotion, eyeline, body direction, blocking, spatial relationship, prop state, scene geography, weather, practical light sources, color temperature, exposure, texture, lens feel, framing center, camera height, camera movement direction, movement speed, rhythm, and pacing.",
-      "For audio continuity, keep the ambience, room tone, music energy, rhythm, BPM feel, instrumentation, and sound texture consistent with Video 1. Let sound evolve naturally with the new action instead of abruptly switching style.",
-      "If @ asset images are present, they control identity, costume, props, and scene design. Video 1 controls the handoff, motion, camera continuity, and audio/tempo continuity. If these references conflict, prioritize the user's prompt first, then @ asset identity/design, then Video 1 continuity.",
-      "If the user's prompt explicitly asks for a jump cut, scene change, time skip, silence, or new music, follow the user's prompt over this continuity instruction."
-    ].join("\n");
-  }
-  return [
-    "镜头到镜头的连贯参考：",
-    "视频 1 是紧邻的上一镜头，尤其是它的末几秒。把它当作时间上的连贯上下文，而不是一个通用的风格样本。",
-    "用户的原始 prompt 定义「接下来发生什么」。你只补必要的过渡，让本镜看起来是视频 1 之后的下一个节拍。",
-    "从视频 1 的最后一刻之后开始。不要重播同样的画面，不要重启同样的动作，也不要让角色回到更早的姿势——除非用户的 prompt 明确这样要求。",
-    "需要从视频 1 继承的连贯线索：角色情绪、视线、身体朝向、走位、空间关系、道具状态、场景地理、天气、实景光源、色温、曝光、质感、镜头味道、构图重心、机位高度、运镜方向、运动速度、节奏与韵律。",
-    "音频上保持视频 1 的环境音、房间噪声、音乐能量、节奏、BPM 感、配器与音色一致。让声音随新动作自然演化,而不是突然切换风格。",
-    "如果有 @ 资产图，它们决定角色身份、服装、道具与场景设计;视频 1 决定接续点、运动、运镜连贯与音乐 / 节奏连贯。三者冲突时:优先用户 prompt,其次 @ 资产身份与设计,最后才是视频 1 连贯。",
-    "如果用户 prompt 明确要硬切、换场、时间跳跃、静音或新音乐,以用户 prompt 为准,忽略本连贯指令。"
-  ].join("\n");
-}
-
-function composeFirstFrameInstruction(asset: Asset, lang: Lang): string {
-  const label = `@${asset.name.replace(/\s*\/\s*/g, "/").replace(/\s+/g, "")}`;
-  if (lang === "en") {
-    return [
-      `First-frame mode: the attached image is the literal first frame of the video.`,
-      `Animate FROM that exact frame (composition, character, lighting, framing match ${label}).`,
-      `Do not treat it as a generic style reference; do not cut away from it at t=0.`
-    ].join(" ");
-  }
-  return [
-    `首帧模式：附图就是本段视频的真实第一帧。`,
-    `请从这一帧的确切构图开始向前演化（构图、角色、光线、画面边界都对齐 ${label}）。`,
-    `不要把它当作泛风格参考，不要在 t=0 就剪走。`
-  ].join(" ");
-}
-
-function composeFirstLastFrameInstruction(firstAsset: Asset, lastAsset: Asset, lang: Lang): string {
-  const firstLabel = `@${firstAsset.name.replace(/\s+/g, "")}`;
-  const lastLabel = `@${lastAsset.name.replace(/\s+/g, "")}`;
-  if (lang === "en") {
-    return [
-      `First-and-last frame mode: the two attached images are the literal start and end frames of the video.`,
-      `Frame 1 (${firstLabel}) is the very first frame; Frame 2 (${lastLabel}) is the very last frame.`,
-      `Interpolate motion smoothly between the two: composition, character identity, lighting and framing must match the start and resolve onto the end.`,
-      `Do not cut, do not reset, do not introduce content that contradicts either anchor frame.`
-    ].join(" ");
-  }
-  return [
-    `首尾帧模式：两张附图分别是视频的首帧和尾帧。`,
-    `第 1 张（${firstLabel}）是视频的真实第一帧；第 2 张（${lastLabel}）是视频的真实最后一帧。`,
-    `请在两者之间平滑插值：构图、角色身份、光线、边界要从起点过渡到终点。`,
-    `不要剪辑、不要重启、不要插入与任一锚定帧冲突的内容。`
-  ].join(" ");
-}
-
-function composeSubShotSequenceInstruction(panelCount: number, lang: Lang): string {
-  if (lang === "en") {
-    return [
-      `Storyboard-sequence mode: the attached image1 is a single composite of ${panelCount} reference panels arranged as a storyboard grid (read left-to-right, top-to-bottom).`,
-      `Follow the storyboard sequence of the ${panelCount} reference frames in image1, edited as a fast-cut cinematic sequence.`,
-      `Each panel is one beat of the timeline; output a single continuous video that cuts through all ${panelCount} beats in order.`,
-      `Distribute panel beats roughly evenly across the duration. Keep transitions smooth, preserve character identity, lighting and palette across cuts. Do NOT compose the output as a grid; do NOT show panel borders or labels in the output video.`
-    ].join(" ");
-  }
-  return [
-    `分镜序列模式：附图 image1 是 ${panelCount} 个参考面板拼合的单张故事板（按从左到右、从上到下的顺序阅读）。`,
-    `请遵循 image1 中 ${panelCount} 个参考帧的故事板序列，作为一段快速剪辑的电影化镜头输出。`,
-    `每个面板对应时间轴上的一个节拍；输出单段连贯视频,按顺序切过所有 ${panelCount} 个节拍。`,
-    `将面板节拍大致均匀地分布在视频时长上。保持转场流畅、跨剪辑维持角色身份与光线、配色一致。**不要**把输出渲染成网格；**不要**在输出视频中出现面板边框或标号。`
-  ].join(" ");
-}
-
 // ============================================================================
 // Seedream — image gen prompts
 // ============================================================================
@@ -364,7 +224,7 @@ function composeSubShotSequenceInstruction(panelCount: number, lang: Lang): stri
  *   - **prop**: 1:1 product hero, 90mm macro, soft top + rim, neutral backdrop.
  *   - **style**: 16:9 mood board still, color grade and composition that ARE the style.
  */
-export interface SeedreamAssetPromptOptions {
+interface SeedreamAssetPromptOptions {
   referenceAssets?: Array<Pick<Asset, "id" | "prompt" | "description" | "name" | "type" | "mediaKind">>;
 }
 
@@ -688,29 +548,4 @@ function extractTimelineBeats(scenePrompt: string): string[] {
     const end = i + 1 < matches.length ? matches[i + 1].index : text.length;
     return text.slice(start, end).trim().replace(/[；;，,]+$/g, "").trim();
   });
-}
-
-export function composeSeedreamMultiFrameGroup(
-  scenePrompt: string,
-  panelCount: number,
-  lang: Lang = DEFAULT_LANG
-): PromptComposition {
-  // Used by /sessions/:id/storyboard-grid (the multi-frame anchor workflow). The user-provided
-  // scenePrompt typically already enumerates the N panels — we just frame it with consistency
-  // requirements and the language toggle.
-  const parts: Record<string, string> = {};
-  if (lang === "en") {
-    parts.intro = `Generate ${panelCount} stylistically-consistent storyboard keyframes as a sequential set of separate images. Each frame is one beat in the same continuous story.`;
-    parts.consistency = "All frames share identical visual style: identical character identity, identical wardrobe, identical color palette, identical lighting logic, identical film grain.";
-    parts.noText = "No on-screen text on any frame. No panel numbers. No captions. No subtitles.";
-    parts.scene = scenePrompt;
-  } else {
-    parts.intro = `请生成 ${panelCount} 张风格一致的故事板关键帧，作为一组互相独立但同源的连续画面。每张是同一故事中按时序排列的一个节拍。`;
-    parts.consistency = "全部画面共享同一视觉风格：同一角色身份、同一服装、同一配色、同一光线逻辑、同一胶片颗粒。";
-    parts.noText = "**任何画面**上都不要出现屏幕文字、面板编号、字幕。";
-    parts.scene = scenePrompt;
-  }
-  const order = ["intro", "consistency", "noText", "scene"];
-  const composedPrompt = order.map((k) => parts[k]).filter(Boolean).join("\n");
-  return { composedPrompt, parts, lang };
 }

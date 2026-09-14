@@ -1,10 +1,10 @@
 const VIEWPORT_MARGIN = 12;
 const MIN_SCROLLABLE_HEIGHT = 220;
 
-export type CreateNodeMenuPlacement = "left" | "right";
-export type CreateNodeMenuVerticalPlacement = "above" | "below";
+type CreateNodeMenuPlacement = "left" | "right";
+type CreateNodeMenuVerticalPlacement = "above" | "below";
 
-export interface CreateNodeMenuLayoutInput {
+interface CreateNodeMenuLayoutInput {
   anchorX: number;
   anchorY: number;
   viewportWidth: number;
@@ -13,7 +13,7 @@ export interface CreateNodeMenuLayoutInput {
   menuHeight: number;
 }
 
-export interface CreateNodeMenuLayout {
+interface CreateNodeMenuLayout {
   left: number;
   top: number;
   maxHeight: number;

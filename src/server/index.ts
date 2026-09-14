@@ -135,7 +135,6 @@ import type {
   StoryPlan,
   SubStoryboardModel,
   StoreSnapshot,
-  VideoReviewRepairPlan,
   VideoReviewVerdict,
   WorkflowExecutionPlan,
   WorkflowRunMode,
@@ -3394,7 +3393,6 @@ async function extractVideoFrameAsAsset(opts: {
   if (!asset) throw new Error(`${frameRole}frame: failed to persist asset`);
   return asset;
 }
-
 
 function getShotSketchAssets(shot: Shot) {
   return store

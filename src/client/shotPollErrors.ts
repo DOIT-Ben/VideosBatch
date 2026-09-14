@@ -1,6 +1,6 @@
 const TRANSIENT_POLL_FAILURE_THRESHOLD = 3;
 
-export interface ShotPollFailure {
+interface ShotPollFailure {
   shotId: string;
   message: string;
   count: number;

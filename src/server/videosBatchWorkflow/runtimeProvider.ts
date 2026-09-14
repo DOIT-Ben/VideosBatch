@@ -14,11 +14,11 @@ import {
 import { createPhase1FakeStageRegistry } from "./stages";
 import type { StageRegistry } from "./stageContracts";
 
-export type VideosBatchExecutorMode = "fake" | "llm";
-export type VideosBatchMediaMode = "fake" | "native";
-export type VideosBatchRuntimeEnv = Record<string, string | undefined>;
+type VideosBatchExecutorMode = "fake" | "llm";
+type VideosBatchMediaMode = "fake" | "native";
+type VideosBatchRuntimeEnv = Record<string, string | undefined>;
 
-export interface VideosBatchRuntimeConfig {
+interface VideosBatchRuntimeConfig {
   executorMode: VideosBatchExecutorMode;
   mediaMode: VideosBatchMediaMode;
   videoProvider: "seedance" | "newapi-h3";
@@ -31,7 +31,7 @@ export interface VideosBatchRuntimeConfig {
   llm?: VideosBatchLlmConfig;
 }
 
-export interface VideosBatchProviderReadiness {
+interface VideosBatchProviderReadiness {
   executorMode: VideosBatchExecutorMode;
   mediaMode: VideosBatchMediaMode;
   text: {

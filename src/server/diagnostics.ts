@@ -3,7 +3,7 @@ import path from "node:path";
 import type { StoreSnapshot } from "../shared/types";
 import { DATA_DIR, STORE_FILE } from "./store";
 
-export interface ComponentStatus {
+interface ComponentStatus {
   ok: boolean;
   status: "ok" | "warn" | "error";
   message?: string;

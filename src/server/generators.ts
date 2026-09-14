@@ -69,8 +69,6 @@ const jsonHeaders = (apiKey?: string) => ({
   "Content-Type": "application/json",
   ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {})
 });
-
-const SEED_PROMPT_KEY_ENVS = ["SEED_PROMPT_API_KEY", "BP_ARK_API_KEY", "ARK_API_KEY"];
 const SEEDREAM_KEY_ENVS = [
   "BP_ARK_API_KEY",
   "BP_SEEDREAM_API_KEY",
@@ -123,14 +121,6 @@ function refuseFakeSuccessInProduction(label: string, keyEnvs: string[]): void {
   if (process.env.NODE_ENV === "production") {
     throw new Error(arkMissingKeyMessage(label, keyEnvs));
   }
-}
-
-function seedPromptCredential() {
-  return resolveArkCredential({
-    keyEnvNames: SEED_PROMPT_KEY_ENVS,
-    baseEnvNames: ["SEED_PROMPT_API_BASE", "SEEDANCE_API_BASE"],
-    defaultBase: BYTEPLUS_SEEDANCE_BASE
-  });
 }
 
 function seedreamCredential() {
@@ -717,34 +707,12 @@ function isMissingSeedreamModelError(error: unknown) {
   return /InvalidEndpointOrModel\.NotFound|model or endpoint .* does not exist|does not have access/i.test(message);
 }
 
-function resolveSeedPromptModel(source: "standard" | "agent-plan" | "missing") {
-  if (source === "agent-plan") {
-    return process.env.SEED_PROMPT_AGENT_PLAN_MODEL || process.env.AGENT_PLAN_TEXT_MODEL || "";
-  }
-  return process.env.SEED_PROMPT_MODEL || "seed-2-0-pro-260328";
-}
-
-function isAgentPlanUnsupportedModelError(status: number, text: string) {
-  return status === 404 && /UnsupportedModel|does not support the agent plan feature/i.test(text);
-}
-
 export async function expandAssetPrompt(asset: Partial<Asset>) {
   return { prompt: assetUserPrompt(asset), model: "user-prompt", rawUsage: undefined };
 }
 
 function assetUserPrompt(asset: Partial<Pick<Asset, "prompt" | "description" | "name">>) {
   return (asset.prompt || asset.description || asset.name || "").trim();
-}
-
-function isNoOpPromptExpansion(expanded: string, asset: Partial<Asset>) {
-  if (!expanded) return true;
-  const rawPrompt = [asset.name, asset.description || asset.prompt].filter(Boolean).join("，").trim();
-  if (!rawPrompt) return false;
-  return normalizePromptForNoOpCheck(expanded) === normalizePromptForNoOpCheck(rawPrompt);
-}
-
-function normalizePromptForNoOpCheck(value: string) {
-  return value.replace(/[\s，。,.；;：:、|/\\*_`"'“”‘’（）()【】\[\]{}<>《》-]+/g, "").toLowerCase();
 }
 
 async function generateAssetImageViaOpenAI(asset: Asset, referenceImageUrls: string[] = []) {
@@ -1167,7 +1135,6 @@ async function generateShotVideoViaCustomEndpoint(shot: Shot, assets: Asset[], o
 
   const referenceClipUrl = useFirstFrameMode ? undefined : getSeedanceWebUrl(shot.referenceClipUrl);
   const referenceAudioUrl = useFirstFrameMode ? undefined : getSeedanceWebUrl(shot.referenceAudioUrl);
-  const referenceAssets = useFirstFrameMode && firstFrameAsset ? [firstFrameAsset] : assets;
   const prompt = opts.prebuiltText && opts.prebuiltText.trim().length > 0
     ? opts.prebuiltText.trim()
     : (shot.rawPrompt || shot.prompt || "").trim();
@@ -1537,51 +1504,6 @@ function resolveLastFrameAsset(shot: Shot, assets: Asset[]): Asset | undefined {
   return assets.find((asset) => asset.id === shot.lastFrameAssetId);
 }
 
-function buildFirstFrameInstruction(asset?: Asset) {
-  const label = asset?.name ? `@${asset.name.replace(/\s*\/\s*/g, "/").replace(/\s+/g, "")}` : "the attached first-frame image";
-  return [
-    `First-frame mode: the attached image is the literal first frame of the video.`,
-    `Animate FROM that exact frame (composition, character, lighting, framing match ${label}).`,
-    `Do not treat it as a generic style reference; do not cut away from it at t=0.`
-  ].join(" ");
-}
-
-function buildFirstLastFrameInstruction(firstAsset?: Asset, lastAsset?: Asset) {
-  const firstLabel = firstAsset?.name ? `@${firstAsset.name.replace(/\s+/g, "")}` : "the first attached image";
-  const lastLabel = lastAsset?.name ? `@${lastAsset.name.replace(/\s+/g, "")}` : "the second attached image";
-  return [
-    `First-and-last frame mode: the two attached images are the literal start and end frames of the video.`,
-    `Frame 1 (${firstLabel}) is the very first frame; Frame 2 (${lastLabel}) is the very last frame.`,
-    `Interpolate motion smoothly between the two: composition, character identity, lighting and framing must match the start and resolve onto the end.`,
-    `Do not cut, do not reset, do not introduce content that contradicts either anchor frame.`
-  ].join(" ");
-}
-
-function buildSubShotSequenceInstruction(panelCount: number) {
-  // The exact sequencing phrase used in the EvoLink GPT-Image-2 / Seedance 2.0 community
-  // workflow (Cases 2 + 10). Seedance reads panel positions left→right, top→bottom as a TIMELINE
-  // and produces ONE video that internally cuts between those N moments.
-  return [
-    `Storyboard-sequence mode: the attached image1 is a single composite of ${panelCount} reference panels arranged as a storyboard grid (read left-to-right, top-to-bottom).`,
-    `Follow the storyboard sequence of the ${panelCount} reference frames in image1, edited as a fast-cut cinematic sequence.`,
-    `Each panel is one beat of the timeline; output a single continuous video that cuts through all ${panelCount} beats in order.`,
-    `Distribute panel beats roughly evenly across the duration. Keep transitions smooth, preserve character identity, lighting and palette across cuts. Do NOT compose the output as a grid; do NOT show panel borders or labels in the output video.`
-  ].join(" ");
-}
-
-async function getSeedanceMediaUrl(url?: string | null) {
-  if (!url) return undefined;
-  if (/^https?:\/\//.test(url)) return url;
-  if (url.startsWith("/media/")) {
-    const dataUrl = await readLocalMediaAsDataUrl(url);
-    if (dataUrl) return dataUrl;
-    const publicBase = process.env.PUBLIC_MEDIA_BASE_URL || process.env.MEDIA_PUBLIC_BASE_URL || process.env.APP_PUBLIC_URL;
-    const base = (publicBase || `http://127.0.0.1:${process.env.PORT || 5173}`).replace(/\/$/, "");
-    return `${base}${url}`;
-  }
-  return undefined;
-}
-
 function getSeedanceWebUrl(url?: string | null) {
   if (!url) return undefined;
   try {
@@ -1592,24 +1514,6 @@ function getSeedanceWebUrl(url?: string | null) {
   } catch {
     return undefined;
   }
-}
-
-type BuildVideoPromptOptions = {
-  continuityVideoFirst?: boolean;
-  firstFrameAsset?: Asset;
-};
-
-function buildContinuityInstruction() {
-  return [
-    "Shot-to-shot continuity reference:",
-    "Video 1 is the immediate previous shot, especially its final seconds. Use it as temporal continuity context, not as a generic style sample.",
-    "The user's original prompt defines what happens next. Add only the missing connective tissue needed to make the new shot feel like the next beat after Video 1.",
-    "Begin after the final moment of Video 1. Do not replay the same frames, do not restart the same action, and do not make the character return to an earlier pose unless the user explicitly asks for it.",
-    "Carry forward concrete continuity cues from Video 1: character emotion, eyeline, body direction, blocking, spatial relationship, prop state, scene geography, weather, practical light sources, color temperature, exposure, texture, lens feel, framing center, camera height, camera movement direction, movement speed, rhythm, and pacing.",
-    "For audio continuity, keep the ambience, room tone, music energy, rhythm, BPM feel, instrumentation, and sound texture consistent with Video 1. Let sound evolve naturally with the new action instead of abruptly switching style.",
-    "If @ asset images are present, they control identity, costume, props, and scene design. Video 1 controls the handoff, motion, camera continuity, and audio/tempo continuity. If these references conflict, prioritize the user's prompt first, then @ asset identity/design, then Video 1 continuity.",
-    "If the user's prompt explicitly asks for a jump cut, scene change, time skip, silence, or new music, follow the user's prompt over this continuity instruction."
-  ].join("\n");
 }
 
 async function readLocalMediaAsDataUrl(url: string) {
@@ -1660,77 +1564,6 @@ function toPublicMediaUrl(url?: string) {
 
 function getShotDurationSec(shot: Pick<Shot, "durationSec">) {
   return Math.min(Math.max(Number(shot.durationSec) || 1, 1), 15);
-}
-
-// Hard ban on any on-screen text/captions/HUD/watermarks/logos in generated clips. Subtitles are
-// added in post (NarrationPanel hard-burns SRT via ffmpeg) and editors often want a clean plate.
-// Allowed: text that is naturally part of the physical world being filmed (e.g. a store sign,
-// a poster, content on a laptop screen the character is showing).
-const NO_TEXT_OVERLAY_INSTRUCTION =
-  "STRICT NO-TEXT-OVERLAY RULE: do NOT render any on-screen subtitles, captions, lower-thirds, " +
-  "title cards, opening/closing credits, on-screen typography, lyric lines, kinetic text, " +
-  "watermarks, logos, channel bugs, timestamps, or HUD readouts of any kind. The final cut must " +
-  "be a clean text-free plate so the editor can add subtitles in post. Physical-world text that " +
-  "naturally lives in the scene (e.g. a Starbucks shop sign in the background, content visible " +
-  "on a laptop screen the character is showing) is allowed — but DO NOT add any overlay text on " +
-  "top of the footage.";
-
-function buildVideoPrompt(shot: Pick<Shot, "rawPrompt" | "prompt" | "durationSec">, assets: Asset[] = [], options: BuildVideoPromptOptions = {}) {
-  const duration = getShotDurationSec(shot);
-  const resolution = process.env.SEEDANCE_RATIO || "16:9";
-  const referenceText = buildAssetReferenceText(assets, options);
-  return [
-    (shot.rawPrompt || shot.prompt || "").trim(),
-    referenceText,
-    NO_TEXT_OVERLAY_INSTRUCTION,
-    `Generation duration: ${duration}s.`,
-    `Resolution / aspect ratio: ${resolution}.`,
-    "The duration and resolution values above come from the UI/system settings and are authoritative. If any earlier text mentions conflicting duration or resolution, ignore it."
-  ]
-    .filter(Boolean)
-    .join("\n");
-}
-
-function buildAssetReferenceText(assets: Asset[], options: BuildVideoPromptOptions) {
-  if (!assets.length) return "";
-  const lines = ["Referenced assets from @ mentions. Use these references only for the named asset roles; do not invent extra story beats from them."];
-  // In first-frame mode the very first image_url attachment IS the first frame, so we annotate it
-  // explicitly and start indexing other images at 2.
-  let imageIndex = options.firstFrameAsset ? 2 : 1;
-  let videoIndex = options.continuityVideoFirst ? 2 : 1;
-  let otherIndex = 1;
-
-  for (const asset of assets) {
-    const name = asset.name.replace(/\s*\/\s*/g, "/");
-    const description = asset.description || asset.prompt || "";
-    const usage = getAssetReferenceUsage(asset);
-    const isFirstFrame = options.firstFrameAsset && asset.id === options.firstFrameAsset.id;
-    if (isFirstFrame) {
-      lines.push(`Image 1 (first_frame): @${name} = ${asset.type} asset "${asset.name}". This is the literal first frame of the generated video; animate forward from this exact composition. ${description}`.trim());
-      continue;
-    }
-    if (asset.mediaKind === "image") {
-      lines.push(`Image ${imageIndex}: @${name} = ${asset.type} asset "${asset.name}". ${usage} ${description}`.trim());
-      imageIndex += 1;
-    } else if (asset.mediaKind === "video") {
-      lines.push(`Video ${videoIndex}: @${name} = ${asset.type} asset "${asset.name}". Use this asset video only for its named motion, layout, or visual behavior; do not confuse it with Video 1 previous-shot continuity. ${description}`.trim());
-      videoIndex += 1;
-    } else {
-      lines.push(`Asset ${otherIndex}: @${name} = ${asset.type} asset "${asset.name}". ${usage} ${description}`.trim());
-      otherIndex += 1;
-    }
-  }
-
-  return lines.join("\n");
-}
-
-function getAssetReferenceUsage(asset: Asset) {
-  if (asset.type === "image") return "Use this connected image node as an explicit visual reference. Preserve its intended subject, layout, palette, material cues, and editing constraints unless the user's prompt says otherwise.";
-  if (asset.type === "character") return "Maintain the character identity, face, body type, costume, and recognizable expression details from this reference.";
-  if (asset.type === "scene") return "Maintain the scene layout, key objects, lighting logic, palette, weather, and spatial geography from this reference.";
-  if (asset.type === "prop") return "Maintain the prop shape, material, scale, state, and how it is held or used from this reference.";
-  if (asset.type === "style") return "Maintain the visual style only when it does not override character identity, scene continuity, or the user's prompt.";
-  return "Use this reference for its explicitly named visual details while keeping the user's prompt authoritative.";
 }
 
 export function resolveSeedanceModel(shot: Pick<Shot, "seedanceVariant">, credential: ArkCredential = seedanceCredential()) {
@@ -1792,208 +1625,6 @@ function extractGenerationError(body: unknown): unknown {
   const data = isRecord(body) && isRecord(body.data) ? body.data : body;
   if (!isRecord(data)) return body;
   return data.error || data.message || data.reason || body;
-}
-
-/**
- * 资产图像 prompt 模板段落区（模板注入形态）。
- *
- * 以下两个组装函数覆盖全部资产图像 prompt 的产生路径：每个分支按段落
- * 数组拼装、唯一插值变量是用户原文（rawPrompt）。段落文本刻意因分支而异
- * （LLM 扩写指令 ≠ 本地兜底 prompt，人类角色 ≠ 非人类角色），因此不做
- * 跨分支"去重合并"——合并任何近似段落都会改变发给模型的文本。修改段落
- * 时保持"逐字节一致或整段重写"二选一，不要顺手润色。
- */
-function buildAssetPromptExpansionInstruction(asset: Partial<Asset>) {
-  const rawPrompt = [asset.name, asset.prompt || asset.description].filter(Boolean).join("，").trim() || "未命名电影资产";
-  if (asset.type === "image") {
-    return [
-      "请把用户原始图片节点描述扩写成 Seedream 4.5 文生图 / 图生图最终 prompt。语言：中文。最长不超过 650 字。",
-      "这是一张 SeeReel 画布里的通用图片节点，可代表角色、场景、道具、风格、Moodboard 或图片编辑结果。不要强行套角色三视图或场景空镜模板；按用户原文判断图片内容。",
-      "如果此节点连接了上游图片参考，扩写必须体现 image-to-image 编辑：保留参考图的主体身份、轮廓、透视、构图、材质、色彩关系和关键细节；只改变用户明确要求改变的部分。",
-      "硬性输出：一张清晰、干净、电影级图片，优先 16:9 横构图；ARRI Alexa Mini LF + 50mm prime + 35mm 胶片质感；主体清晰，材质细节明确，光线可读。",
-      "结尾负面：**STRICT NEGATIVE**——不要文字 / 字幕 / 水印 / UI / 二维码 / HDR halo / 低清 / 虚焦 / motion blur / 无关主体；不要改变已连接参考图的主体身份。",
-      `用户原始描述：${rawPrompt}`
-    ].join("\n");
-  }
-  if (asset.type === "character") {
-    if (isLikelyNonHumanCharacterAsset(rawPrompt)) {
-      return [
-        "请把用户原始角色描述扩写成 Seedream 4.5 文生图最终 prompt。语言：中文。最长不超过 800 字。",
-        "**用途声明（写到 prompt 前部）**：这张图是下游 Seedance 视频生成的**非人类角色参考底板**，会被反复读取以保持主体身份。必须尊重用户原文的主体类别、物种、体型、毛色/羽色/鳞片/材质、标志性轮廓与道具；禁止拟人化，禁止改写成演员或人物肖像。",
-        "硬性输出：**一张** 16:9 横构图，photoreal live-action / cinema-grade reference sheet，画面内只能出现一个主体；**横向并排**展示同一主体三个完整视图——左：正面 / 中：三分之四侧面 / 右：背面。三个视图从主体最高点到最低点完整入画，不要裁切耳朵、尾巴、爪子、翅膀、角、轮廓边缘或底部接触点。",
-        "一致性约束：三个视图必须是同一个主体——体型比例、骨架/姿态结构、毛色/纹理/斑纹、眼睛颜色、鼻口/喙/角/尾巴/爪子/翅膀等识别特征、项圈/衣物/配饰/随身道具必须严格一致。",
-        "姿态：自然克制的 reference pose；正面视图朝向镜头，三分之四侧面展示轮廓和体量，背面展示背部、尾部、毛流/羽流/纹理走向。允许符合该物种或主体类别的自然站姿、坐姿或静止姿态，不加入奔跑、跳跃、攻击、夸张表演。",
-        "摄影规格：ARRI Alexa Mini LF + Zeiss Supreme Prime 50mm T1.5 + Kodak Vision3 250D 数字模拟胶片质感；f/5.6 中等景深，主体边缘、眼睛、毛流/羽毛/鳞片/材质纹理全部清晰锐利；禁止虚焦、散焦、motion blur、低清噪点。",
-        "光线：影棚四点布光——主光右上 45° 大尺寸柔光箱 + 正面柔和 fill + 后侧轻微 rim light + 顶部柔光勾主体轮廓。色温 5500K 日光平衡，CRI 95+，无硬阴影。",
-        "材质：按原始主体如实表现——动物毛流、绒毛、湿润鼻尖、爪垫、羽毛、鳞片、甲壳、布料或金属等都要有真实细节；不要塑料感，不要玩具化。",
-        "背景：纯净影棚——light grey to mid grey seamless paper backdrop，脚下极淡接触阴影；不要杂物、家具、地砖、纹理、装饰。",
-        "调色：胶片级低饱和、低对比、highlight 软卷曲，shadow 保留细节，Kodak Vision3 颗粒；不要数码 HDR、不要广告片 ACES 看法。",
-        "结尾负面（必须放在 prompt 最后）：**STRICT NEGATIVE**——不要任何屏幕文字 / 字幕 / 对白气泡 / 品牌 LOGO / UI / 水印 / 签名 / 二维码；不要额外主体；不要 anime / cartoon / illustration / painting / game CG / 3D 渲染感；不要玩具化；不要主体变形；不要额外肢体；不要饱和度过高；不要 HDR halo；不要现代乱入元素。",
-        `用户原始描述：${rawPrompt}`
-      ].join("\n");
-    }
-    return [
-      "请把用户原始角色描述扩写成 Seedream 4.5 文生图最终 prompt。语言：中文。最长不超过 800 字。结构必须按下面骨架填充。",
-      "**用途声明（写到 prompt 前部）**：这张图是下游 Seedance 视频生成的**角色参考底板**，会被反复读取以保持角色身份。因此扩写必须强制五项中性原则：**中性表情**（嘴自然闭合，眼平视镜头，无笑无怒无嘟嘴无瞪眼）、**中性手势**（双手自然下垂或微贴大腿，不抱胸不插兜不指向不持物，除非用户原文显式列出随身道具）、**中性身姿**（站直自然，无奔跑无下蹲无跳跃）、**均匀中性光**（避免硬阴影、单方向强光、彩色 gel）、**中性调色**（不要 push 情绪 grade）。即便用户原文出现情绪词（如「好欺负」「自信」「凶狠」），也只能转化为五官与气质（眉眼造型、下颌线、姿态比例），**不能转化为表演动作或夸张表情**。",
-      "硬性输出：**一张** 16:9 横构图，**真实真人照片级 photoreal live-action** 角色参考图，画面内只能出现一个真实成年人角色；**横向并排**展示同一角色三个全身视图——左：正面 / 中：三分之四侧面 / 右：背面。每视图全身从头到脚完整入画，**不要裁切头顶或鞋底**，三视图脚踝水平线对齐。",
-      "一致性约束：三个视图必须是同一个角色——人物比例、五官、肤色、发型与发色、瞳色、表情、服装款式与配色、配饰、随身道具、鞋款必须**像素级一致**。",
-      "姿态：自然克制 A-pose；正面视图直面镜头与观众平视，三分之四侧面视图微转身体露出侧脸轮廓与服装侧缝，背面视图展示后背结构、发型轮廓、服装背面构造。",
-      "摄影规格：**ARRI Alexa Mini LF + Zeiss Supreme Prime 50mm T1.5 + Kodak Vision3 250D 数字模拟胶片质感**；f/5.6 中等景深，三个视图的面部、眼睛、头发边缘、服装轮廓全部清晰锐利；禁止虚焦、散焦、motion blur、低清噪点。",
-      "光线：影棚四点布光——**主光（key）**右上 45° 大尺寸柔光箱（Skypanel 类）；**辅光（fill）**正面环形 LED 1/2 强度填阴；**轮廓光（rim）**后侧轻微钨丝勾边分离；**发光（hair light）**顶部柔光勾发丝。色温 5500K 日光平衡，CRI 95+，无硬阴影。",
-      "材质：真实真人皮肤纹理（自然毛孔、法令纹、眼周细纹、胡茬或剃须痕迹、微小油光，subsurface scattering 自然，**无塑料感**）；布料纤维清晰可辨；金属、皮革、丝绸按物性如实表现。",
-      "背景：纯净影棚——**light grey to mid grey seamless paper backdrop**（浅灰到中灰 seamless 影棚纸），脚下 ~0.5m 极淡接触阴影；不要杂物、家具、地砖、纹理、装饰。",
-      "调色：胶片级——低饱和、低对比、温和肤色，highlight 软卷曲，shadow 保留细节，**Kodak Vision3 颗粒**；不要数码 HDR、不要广告片 ACES 看法。",
-      "结尾负面（必须放在 prompt 最后）：**STRICT NEGATIVE**——不要任何屏幕文字 / 字幕 / 对白气泡 / 品牌 LOGO / UI / 水印 / 签名 / 二维码；不要第二个人；不要 anime / cartoon / illustration / painting / game CG / 3D 渲染感 / 蜡像感；不要塑料皮肤；不要脸部模糊 / 低分辨率 / 虚焦 / motion blur / 眼睛糊；不要变形或多余手指；不要饱和度过高；不要 HDR halo；不要现代乱入元素。",
-      `用户原始描述：${rawPrompt}`
-    ].join("\n");
-  }
-  if (asset.type === "scene") {
-    return [
-      "请把用户原始场景描述扩写成 Seedream 4.5 文生图最终 prompt。语言：中文。最长不超过 800 字。结构必须按下面骨架填充。",
-      "**用途声明（写到 prompt 前部）**：这张图是下游 Seedance 视频生成的**场景参考底板**，Seedance 会在不同分镜把演员置入这个场景。因此扩写必须强制：**画面绝对干净无人物**（包括玻璃倒影、远处剪影、镜面反射、屏幕里、橱窗内均不可有人）；**前景下半部 1/3 留白**（仅干净地面/桌面/走廊地板，不堆放主体），便于演员置入；**光线默认明亮中性、曝光充足、干净通透**（避免逆光剪影、彩色霓虹主导、极端 god ray、低照度脏暗氛围），让 Seedance 在该底板上自由演员置入与打光；**中性调色**（不要 push 极端情绪 grade）。必须尊重用户原文的清洁度与明暗：普通办公室、家居、学校、医院、商场等现代室内默认干净、维护良好、专业明亮；只有用户原文明确要求老旧、破败、肮脏、潮湿、恐怖、夜晚、犯罪现场等，才加入脏污、霉斑、烟雾或低调光。",
-      "硬性输出：16:9 横构图电影级**全景空镜 establishing plate**，**画面内不出现任何人物**（除非用户原文显式要求），重点是环境、光线、氛围。",
-      "摄影规格：**ARRI Alexa 35 + Cooke S7/i 32mm T2.0**（场景需要时改 Master Anamorphic 40mm T1.9 加水平蓝色 lens flare）；f/5.6-8 大景深保证全景纵深；轻微 anamorphic 横向 oval bokeh；2.39:1 cinemascope feel 在 16:9 内构图。",
-      "光线：**干净可读的 motivated practical lighting**——优先使用与场景匹配的自然窗光、天窗漫射、办公/商业空间 overhead softbox / fluorescent practicals、墙面反弹光、柔和环境补光；默认高键、明亮、通透、曝光充足，主光方向明确，前景留白区域明亮干净。仅当用户原文明确要求夜晚、霓虹、烛火、废墟、恐怖、潮湿、烟雾等氛围时，才加入街灯 / 霓虹 / 烛火 / god ray / atmospheric haze；时间设定与原文一致（daylight / golden hour / blue hour / night / overcast / 黎明）。",
-      "构图：**foreground / mid-ground / background 三层景深**清晰可读；三分法或对称中心；leading lines 与 vanishing point 明确。",
-      "材质：真实但整洁——地面 / 墙面 / 织物 / 玻璃 / 木材 / 金属各有质感差别；默认维护良好、干净清爽、无脏污破败，可有少量生活化使用痕迹；只有用户原文明确要求老旧、破败、肮脏、潮湿、废墟、贫民窟、犯罪现场等，才加入表面老化、积尘、油渍、霉斑、湿漉反光。",
-      "调色：cinema 调色——默认**中性日光 / clean commercial cinema grade**，白平衡准确，色彩自然，低到中等对比，highlight 软卷曲，shadow 保留细节，细腻 35mm 胶片颗粒；办公室、家居、商场、医院、学校等现代室内优先明亮温和、干净专业。只有用户原文明确要求阴郁、黑色电影、战争、80s、赛博朋克等风格时，才使用 teal-orange / ENR / bleach bypass / 暖色 push。",
-      "结尾负面（必须放在 prompt 最后）：**STRICT NEGATIVE**——不要任何屏幕文字 / 字幕 / 可读招牌字 / UI / 水印；**不要任何人物**（除非原文显式要求）；不要变形物体；不要饱和度爆表；不要 HDR halo / 锐化过度；不要 anime / cartoon。",
-      `用户原始描述：${rawPrompt}`
-    ].join("\n");
-  }
-  if (asset.type === "prop") {
-    return [
-      "请把用户原始道具描述扩写成 Seedream 4.5 文生图最终 prompt。语言：中文。最长不超过 600 字。",
-      "硬性输出：1:1 方画幅产品级 hero shot，**单一主体居中**，全部入画。",
-      "摄影规格：**Phase One IQ4 + Schneider 90mm T/S Macro**（或 90mm-equivalent macro），f/8 全幅锐利，主体占画面 60-70%，干净三分构图。",
-      "光线：三点布光——柔和顶部主光（diffused top key）+ 后侧 rim light 勾轮廓与背景分离 + 正面填充。色温 5000K，无杂乱反射。",
-      "材质：金属（specular + 各向异性反射）、皮革（毛孔 + 磨损 + 染色不均）、玻璃（透射 + 折射 + 高光）、布料（weave + drape）、木材（年轮 + 抛光）按物性如实。",
-      "背景：中性渐变背景纸（light-grey to dark-grey seamless），脚下极淡接触阴影；不要桌面纹理、装饰、第二物体。",
-      "结尾负面（必须放在 prompt 最后）：**STRICT NEGATIVE**——不要文字 / 品牌 LOGO（除非原文包含）/ 价格标签 / 水印；不要第二个物体；不要塑料合成感；不要 HDR halo；不要广角畸变。",
-      `用户原始描述：${rawPrompt}`
-    ].join("\n");
-  }
-  if (asset.type === "style") {
-    return [
-      "请把用户原始风格描述扩写成 Seedream 4.5 文生图最终 prompt。语言：中文。最长不超过 600 字。",
-      "硬性输出：16:9 横构图风格 mood board——用一张有代表性的电影画面承载该风格的所有视觉特征。",
-      "摄影规格：**ARRI Alexa Mini LF + Master Anamorphic 50mm T1.9**，f/2.8 浅景深，35mm 胶片质感，2.39:1 cinemascope。",
-      "光线：遵循该风格核心特征（noir = 高对比硬光 + Venetian blind / impressionist = 柔光散射 / cyberpunk = 霓虹 practicals + 雨夜湿地反光 / Wes Anderson = 平面正面光 + 严格 hue keys）。",
-      "调色：作为该风格的灵魂——色温倾向、饱和度、对比度、highlight rolloff、shadow detail、film grain 都需精准还原（noir = ENR / 50s = 高饱和泡沫粉 / 现代独立 = teal-orange / 战争 = bleach bypass）。",
-      "构图：能代表该风格的镜头语言（noir = 低角度斜线 / new wave = 中景跳切感 / Wes Anderson = 严格中心对称 / Tarkovsky = 缓慢推进对称）。",
-      "结尾负面（必须放在 prompt 最后）：**STRICT NEGATIVE**——不要文字 / 字幕 / UI；不要风格混搭；不要漫画 / 3D 渲染（除非风格本身要求）；不要 HDR halo。",
-      `用户原始描述：${rawPrompt}`
-    ].join("\n");
-  }
-  return [
-    "请把用户原始资产描述扩写成 Seedream 4.5 文生图最终 prompt。",
-    "要求：ARRI Alexa Mini LF + 50mm prime + 35mm 胶片质感；主体清晰，材质细节明确；干净高级。",
-    "结尾负面：**STRICT NEGATIVE**——不要文字 / 字幕 / 水印 / UI / HDR halo / 现代乱入元素。",
-    `资产类型：${asset.type || "other"}`,
-    `用户原始描述：${rawPrompt}`
-  ].join("\n");
-}
-
-function buildLocalExpandedAssetPrompt(asset: Partial<Asset>) {
-  const rawPrompt = [asset.name, asset.prompt || asset.description].filter(Boolean).join("，").trim() || "一个电影短片资产";
-  if (asset.type === "image") {
-    return [
-      `图片节点参考图：${rawPrompt}。`,
-      "一张清晰、干净、电影级图片，可作为下游图片编辑、分镜板或视频生成参考。",
-      "如果连接了上游图片参考，保留参考图的主体身份、轮廓、透视、构图、材质、色彩关系和关键细节；只改变用户描述要求改变的部分。",
-      "ARRI Alexa Mini LF + 50mm prime + 35mm 胶片质感；主体清晰，光线可读，材质细节明确，构图干净高级。",
-      "**STRICT NEGATIVE**：不要文字 / 字幕 / 水印 / UI / 二维码 / HDR halo / 低清 / 虚焦 / motion blur / 无关主体；不要改变已连接参考图的主体身份。"
-    ].join(" ");
-  }
-  if (asset.type === "character") {
-    if (isLikelyNonHumanCharacterAsset(rawPrompt)) {
-      return [
-        `非人类角色参考底板：${rawPrompt}。`,
-        "一张 16:9 横构图 photoreal live-action / cinema-grade reference sheet，画面内只能出现一个主体；横向并排展示同一主体三个完整视图——左：正面 / 中：三分之四侧面 / 右：背面。三个视图从主体最高点到最低点完整入画，不要裁切耳朵、尾巴、爪子、翅膀、角、轮廓边缘或底部接触点。",
-        "三个视图必须是同一个主体：体型比例、骨架/姿态结构、毛色/纹理/斑纹、眼睛颜色、鼻口/喙/角/尾巴/爪子/翅膀等识别特征、项圈/衣物/配饰/随身道具严格一致；尊重原始主体类别和物种，禁止拟人化，禁止改写成演员或人物肖像。",
-        "姿态自然克制，正面朝向镜头，三分之四侧面展示轮廓和体量，背面展示背部、尾部、毛流/羽流/纹理走向；不加入奔跑、跳跃、攻击、夸张表演。",
-        "ARRI Alexa Mini LF + Zeiss Supreme Prime 50mm T1.5 + Kodak Vision3 250D 数字胶片质感，f/5.6 中等景深，主体边缘、眼睛、毛流/羽毛/鳞片/材质纹理全部清晰锐利；禁止虚焦、散焦、motion blur、低清噪点。",
-        "影棚四点布光：主光右上 45° 大柔光箱 + 正面柔和 fill + 后侧轻微 rim light + 顶部柔光勾主体轮廓。5500K 日光平衡，CRI 95+，无硬阴影。",
-        "按原始主体如实表现材质：动物毛流、绒毛、湿润鼻尖、爪垫、羽毛、鳞片、甲壳、布料或金属等都要有真实细节；不要塑料感，不要玩具化。",
-        "纯净影棚：light-grey to mid-grey seamless paper backdrop，脚下极淡接触阴影，无杂物。",
-        "Kodak Vision3 调色：低饱和、低对比，highlight 软卷曲，shadow 保留细节，胶片颗粒，避免 HDR halo。",
-        "**STRICT NEGATIVE**：不要任何屏幕文字 / 字幕 / 对白气泡 / 品牌 LOGO / UI / 水印 / 签名；不要额外主体；不要 anime / cartoon / illustration / painting / game CG / 3D 渲染；不要玩具化；不要主体变形；不要额外肢体；不要饱和度过高；不要 HDR halo；不要现代乱入元素。"
-      ].join(" ");
-    }
-    return [
-      `电影角色设定参考表（character lookbook turnaround）：${rawPrompt}。`,
-      "**一张** 16:9 横构图，**真实真人照片级 photoreal live-action** 角色参考图，画面内只能出现一个真实成年人角色；**横向并排**展示同一角色三个全身视图——左：正面 / 中：三分之四侧面 / 右：背面。每视图全身从头到脚完整入画，不要裁切头顶或鞋底。三视图脚踝水平线对齐。",
-      "三个视图必须是同一个角色：人物比例、五官、肤色、发型与发色、瞳色、表情、服装款式与配色、配饰、随身道具、鞋款**像素级一致**。",
-      "姿态：自然克制 A-pose。正面直面镜头平视；三分之四侧面微转身体露出侧脸与服装侧缝；背面展示后背结构、发型轮廓、服装背面。",
-      "**ARRI Alexa Mini LF + Zeiss Supreme Prime 50mm T1.5 + Kodak Vision3 250D 数字胶片质感**，f/5.6 中等景深，三个视图的面部、眼睛、头发边缘、服装轮廓全部清晰锐利；禁止虚焦、散焦、motion blur、低清噪点。",
-      "影棚四点布光：主光右上 45° 大柔光箱（Skypanel 类）+ 正面环形 LED 1/2 强度 fill + 后侧钨丝 rim + 顶部 hair light。5500K 日光平衡，CRI 95+，无硬阴影。",
-      "真实真人皮肤纹理（自然毛孔、法令纹、眼周细纹、胡茬或剃须痕迹、微小油光，subsurface scattering 自然，**无塑料感**）；布料纤维与编织清晰；金属、皮革、丝绸按物性如实表现。",
-      "纯净影棚：light-grey to mid-grey seamless paper backdrop，脚下 ~0.5m 极淡接触阴影，无杂物。",
-      "Kodak Vision3 调色：低饱和、低对比、温和肤色，highlight 软卷曲，shadow 保留细节，胶片颗粒，**不要 HDR halo**。",
-      "**STRICT NEGATIVE**：不要任何屏幕文字 / 字幕 / 对白气泡 / 品牌 LOGO / UI / 水印 / 签名；不要第二人；不要 anime / cartoon / illustration / painting / game CG / 3D 渲染 / 蜡像感；不要塑料皮肤；不要脸部模糊 / 低分辨率 / 虚焦 / motion blur / 眼睛糊；不要变形或多余手指；不要饱和度过高；不要 HDR halo；不要现代乱入元素。"
-    ].join(" ");
-  }
-  if (asset.type === "scene") {
-    return [
-      `电影场景 establishing plate：${rawPrompt}。`,
-      "16:9 横构图电影级**全景空镜**，**画面内不出现任何人物**（除非描述显式要求）。",
-      "**ARRI Alexa 35 + Cooke S7/i 32mm T2.0**（或 Master Anamorphic 40mm T1.9 加水平蓝色 lens flare），f/5.6-8 大景深，轻微 anamorphic 横向 oval bokeh，2.39:1 cinemascope feel 在 16:9 内构图。",
-      "干净可读的 motivated practical lighting：优先自然窗光、天窗漫射、办公/商业空间 overhead softbox / fluorescent practicals、墙面反弹光、柔和环境补光；默认高键、明亮、通透、曝光充足。仅当描述明确要求夜晚、霓虹、烛火、废墟、恐怖、潮湿、烟雾等氛围时，才加入街灯 / 霓虹 / 烛火 / god ray / atmospheric haze；时间设定与描述一致。",
-      "**foreground / mid-ground / background 三层景深**清晰可读；三分法或对称中心；leading lines 与 vanishing point 明确。",
-      "材质真实但整洁：地面 / 墙面 / 织物 / 玻璃 / 木材 / 金属质感各有差别；默认维护良好、干净清爽、无脏污破败，可有少量生活化使用痕迹；只有描述明确要求老旧、破败、肮脏、潮湿、废墟、贫民窟、犯罪现场等，才加入积尘、油渍、霉斑、湿漉反光。",
-      "cinema 调色：默认中性日光 / clean commercial cinema grade，白平衡准确，色彩自然，低到中等对比，highlight 软卷曲，shadow 保留细节，细腻 35mm 胶片颗粒；办公室、家居、商场、医院、学校等现代室内优先明亮温和、干净专业；只有描述明确要求阴郁、黑色电影、战争、80s、赛博朋克等风格时，才使用 teal-orange / ENR / bleach bypass / 暖色 push。",
-      "**STRICT NEGATIVE**：不要任何屏幕文字 / 字幕 / 可读招牌字 / UI / 水印；**不要任何人物**（除非描述显式要求）；不要变形物体；不要饱和度爆表；不要 HDR halo；不要 anime / cartoon。"
-    ].join(" ");
-  }
-  if (asset.type === "prop") {
-    return [
-      `电影道具参考图：${rawPrompt}。`,
-      "1:1 方画幅产品级 hero shot，单一主体居中，全部入画。",
-      "**Phase One IQ4 + Schneider 90mm T/S Macro**（或 90mm 微距），f/8 全幅锐利，主体占 60-70%。",
-      "三点布光：柔和顶部主光 + 后侧 rim + 正面 fill；5000K，无杂乱反射。",
-      "材质如实：金属（specular + 各向异性）、皮革（毛孔 + 磨损 + 染色不均）、玻璃（透射 + 折射）、布料（weave + drape）、木材（年轮 + 抛光）。",
-      "中性渐变背景纸（light-grey to dark-grey seamless），淡接触阴影，无杂物。",
-      "**STRICT NEGATIVE**：不要文字 / LOGO（除非描述包含）/ 价格标签 / 水印 / 第二物体 / 塑料合成感 / HDR halo / 广角畸变。"
-    ].join(" ");
-  }
-  if (asset.type === "style") {
-    return [
-      `电影风格 mood-board reference：${rawPrompt}。`,
-      "16:9 横构图风格 mood board，用一张有代表性的电影画面承载所有视觉特征。",
-      "**ARRI Alexa Mini LF + Master Anamorphic 50mm T1.9**，f/2.8 浅景深，35mm 胶片质感，2.39:1 cinemascope。",
-      "光线 / 调色 / 构图按该风格核心特征精准还原（noir = 高对比硬光 + ENR / cyberpunk = 霓虹 practicals + 湿地反光 / Wes Anderson = 平面正面 + 严格中心对称）。",
-      "**STRICT NEGATIVE**：不要文字 / 字幕 / UI；不要风格混搭；不要漫画 / 3D 渲染（除非风格要求）；不要 HDR halo。"
-    ].join(" ");
-  }
-  return `${rawPrompt}。电影资产参考图，ARRI Alexa Mini LF + 50mm prime + 35mm 胶片质感；主体清晰，材质细节明确，构图干净高级。**STRICT NEGATIVE**：不要文字 / 字幕 / 水印 / UI / 现代乱入元素 / HDR halo。`;
-}
-
-function isLikelyNonHumanCharacterAsset(rawPrompt: string) {
-  const text = rawPrompt.toLowerCase();
-  const explicitHuman = /真人|人类|人物|成人|男人|女人|男性|女性|男孩|女孩|小孩|儿童|少年|少女|老人|老头|老太|青年|中年|演员|模特|老板|员工|学生|老师|医生|护士|警察|父亲|母亲|爸爸|妈妈|爷爷|奶奶|叔叔|阿姨|哥哥|姐姐|弟弟|妹妹|human|person|man|woman|boy|girl|actor|actress|model/i.test(text);
-  if (explicitHuman) return false;
-
-  return /一只|一条|动物|宠物|狗|犬|金毛|拉布拉多|哈士奇|柴犬|柯基|贵宾|猫|狸花|布偶|橘猫|老虎|狮子|豹子|熊|狼|狐狸|兔|马|牛|羊|猪|鹿|猴|猩猩|鸟|鹰|鸽|鹦鹉|鸡|鸭|鹅|鱼|鲨|鲸|海豚|蛇|蜥蜴|龟|乌龟|青蛙|昆虫|蝴蝶|蜜蜂|甲虫|恐龙|怪兽|龙|生物|精灵|机器人|机甲|玩偶|娃娃|puppy|dog|cat|animal|pet|golden retriever|labrador|husky|corgi|tiger|lion|bear|wolf|fox|rabbit|horse|bird|dragon|monster|creature|robot/i.test(text);
-}
-
-function extractResponseText(body: unknown): string | undefined {
-  if (!isRecord(body)) return undefined;
-  if (typeof body.output_text === "string") return body.output_text.trim();
-  const output = body.output;
-  if (Array.isArray(output)) {
-    const parts = output.flatMap((item) => {
-      if (!isRecord(item) || !Array.isArray(item.content)) return [];
-      return item.content.flatMap((content) => {
-        if (!isRecord(content)) return [];
-        if (typeof content.text === "string") return [content.text];
-        if (typeof content.output_text === "string") return [content.output_text];
-        return [];
-      });
-    });
-    const text = parts.join("").trim();
-    if (text) return text;
-  }
-  return undefined;
 }
 
 function findUrl(value: unknown, keys: string[]): string | undefined {

@@ -20,7 +20,7 @@ export interface StandardCredentialRouteConfig {
   defaultBase: string;
 }
 
-export interface ResolveArkCredentialOpts {
+interface ResolveArkCredentialOpts {
   keyEnvNames: string[];
   baseEnvNames: string[];
   defaultBase: string;
@@ -80,7 +80,7 @@ export function hasAgentPlanKey() {
   return Boolean(getRequestAgentPlanKey() || hasAdminAgentPlanKey() || env("ARK_AGENT_PLAN_KEY", "AGENT_PLAN_API_KEY", "VOLCENGINE_AGENT_PLAN_KEY"));
 }
 
-export function hasStandardApiKey() {
+function hasStandardApiKey() {
   return Boolean(
     hasRequestApiKey() ||
       env(

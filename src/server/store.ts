@@ -1137,7 +1137,6 @@ export class CinemaStore {
   }
 }
 
-
 function normalizeTags(tags: string[] | undefined) {
   return Array.from(new Set((tags || []).map((tag) => tag.trim()).filter(Boolean))).slice(0, 8);
 }

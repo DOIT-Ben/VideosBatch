@@ -6,7 +6,7 @@ function parseTime(value?: string | null) {
   return Number.isFinite(time) ? time : undefined;
 }
 
-export function latestShotVideoTime(shot: Shot) {
+function latestShotVideoTime(shot: Shot) {
   const candidates: number[] = [];
   const topLevelTime = parseTime(shot.videoGeneratedAt);
   if (topLevelTime !== undefined) candidates.push(topLevelTime);

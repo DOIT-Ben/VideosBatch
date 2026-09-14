@@ -10,20 +10,20 @@ import {
 
 const AUDIO_SEPARATION_SIGNATURE_VERSION = "audio-sep-v1-center-fallback";
 
-export interface AudioSeparationPipelineInput {
+interface AudioSeparationPipelineInput {
   sessionId: string;
   finalVideoUrl: string;
   finalVideoSignature: string;
 }
 
-export interface AudioSeparationPipelineResult {
+interface AudioSeparationPipelineResult {
   vocalsUrl: string;
   backgroundUrl: string;
   signature: string;
   method: "external-command" | "center-vocal fallback";
 }
 
-export interface AudioSeparationPipelineOptions {
+interface AudioSeparationPipelineOptions {
   onProgress?: (phase: string) => Promise<void> | void;
 }
 

@@ -99,7 +99,7 @@ export function emitDownloadToast(filename: string) {
  * underlying record) emit this event after their API call so FlowView can pull a fresh snapshot.
  * Without it, picker `value` reads from stale snapshot and the dropdown visually snaps back.
  */
-export function emitFlowMutated() {
+function emitFlowMutated() {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent("flow-mutated"));
 }
@@ -214,23 +214,6 @@ function RobustVideoThumb({ streamSrc, posterSrc, downloadUrl, downloadFilename,
       )}
     </div>
   );
-}
-
-function statusBadge(status: string | undefined, phase: string | undefined, t: Dictionary) {
-  if (!status || status === "draft") return { color: "#6b7280", label: t.nodes.statusDraft };
-  if (status === "scripted") return { color: "var(--vbs-v2-accent)", label: t.nodes.statusScripted };
-  if (status === "generating") {
-    // Sub-phase tells the user whether the Seedance task is still queued at BytePlus (idle, can
-    // sit for many minutes during peak hours) vs. actively rendering on a GPU. Surfaced because
-    // queued time is not the user's fault and not something a re-submit fixes.
-    if (phase === "queued") return { color: "var(--vbs-v2-accent)", label: t.nodes.statusQueued };
-    if (phase === "running") return { color: "#60a5fa", label: t.nodes.statusRunning };
-    return { color: "#60a5fa", label: t.nodes.statusGenerating };
-  }
-  if (status === "ready") return { color: "#34d399", label: t.nodes.statusReady };
-  if (status === "error") return { color: "#f87171", label: t.nodes.statusError };
-  if (status === "cancelled") return { color: "#9ca3af", label: t.nodes.statusCancelled };
-  return { color: "#6b7280", label: status };
 }
 
 function selectedShotRender(shot: ShotNodeData["shot"]) {

@@ -77,8 +77,6 @@
   --vbs-v2-mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
 
   --vbs-v2-size-display: 27px;
-  --vbs-v2-size-title: 19px;
-  --vbs-v2-size-section: 15px;
   --vbs-v2-size-body: 14px;
   --vbs-v2-size-label: 12px;
   --vbs-v2-size-micro: 11px;
@@ -87,13 +85,6 @@
   --vbs-v2-leading-body: 1.75;
 
   /* --- Space -------------------------------------------------------------- */
-  --vbs-v2-space-1: 4px;
-  --vbs-v2-space-2: 8px;
-  --vbs-v2-space-3: 12px;
-  --vbs-v2-space-4: 16px;
-  --vbs-v2-space-5: 24px;
-  --vbs-v2-space-6: 32px;
-  --vbs-v2-space-7: 48px;
 
   /* --- Measure: the one column the header, rail, stages and footer share ---
      The gutter is derived from it, so widening the measure widens every

@@ -60,7 +60,7 @@ export interface ShotExecutionReferenceBindingInput {
   imageUrl?: unknown;
 }
 
-export interface ShotExecutionPackageTeachingInput {
+interface ShotExecutionPackageTeachingInput {
   goal?: unknown;
   knowledgeFocus?: unknown;
   evidence?: unknown;
@@ -91,8 +91,6 @@ export interface BuildShotExecutionPackageFromStoryboardInput {
   references?: readonly ShotExecutionReferenceBindingInput[];
   expectedLineage?: ShotExecutionPackageLineage;
 }
-
-export type ShotExecutionPackageExpectedLineage = ShotExecutionPackageLineage;
 
 type AnyRecord = Record<string, unknown>;
 
@@ -134,15 +132,13 @@ function deepFreeze<T>(value: T, seen = new WeakSet<object>()): T {
  * Hash only the stable package payload.  `contentHash` is intentionally
  * removed first so computing a hash is not recursive and is safe to repeat.
  */
-export function shotExecutionPackageContentHash(value: unknown): string {
+function shotExecutionPackageContentHash(value: unknown): string {
   const payload = isRecord(value) ? { ...value } : {};
   delete payload.contentHash;
   return canonicalContentHash(payload);
 }
 
 export const hashShotExecutionPackage = shotExecutionPackageContentHash;
-export const stableShotExecutionPackageHash = shotExecutionPackageContentHash;
-export const contentHashForShotExecutionPackage = shotExecutionPackageContentHash;
 
 const CODE_PRIORITY: Record<string, number> = {
   SHOT_EXECUTION_PACKAGE_INVALID: 1,
@@ -161,7 +157,7 @@ function makeValidationResult(errors: string[], code: string): ShotExecutionPack
   };
 }
 
-export interface ShotExecutionLineageNormalization {
+interface ShotExecutionLineageNormalization {
   lineage: Partial<ShotExecutionPackageLineage>;
   conflicts: string[];
 }
@@ -651,7 +647,7 @@ export function validateShotExecutionPackage(
   return makeValidationResult(errors, code);
 }
 
-export class ShotExecutionPackageContractError extends Error {
+class ShotExecutionPackageContractError extends Error {
   readonly code: string;
   readonly retryable: boolean;
   readonly validation: ShotExecutionPackageValidationResult;
@@ -664,8 +660,6 @@ export class ShotExecutionPackageContractError extends Error {
     this.validation = validation;
   }
 }
-
-export { ShotExecutionPackageContractError as ShotExecutionPackageValidationError };
 
 function throwContract(validation: ShotExecutionPackageValidationResult): never {
   throw new ShotExecutionPackageContractError(validation);
@@ -1110,7 +1104,7 @@ function looksLikeStoryboardInput(value: unknown): boolean {
  * Build either a direct package draft or a package from a storyboard input.
  * Keeping both forms here gives later projection code one stable constructor.
  */
-export function buildShotExecutionPackage(
+function buildShotExecutionPackage(
   input: unknown,
   current?: ShotExecutionPackageLineage | number,
   currentHash?: string
@@ -1128,16 +1122,4 @@ export function buildShotExecutionPackage(
 }
 
 export const createShotExecutionPackage = buildShotExecutionPackage;
-export const constructShotExecutionPackage = buildShotExecutionPackage;
-export const makeShotExecutionPackage = buildShotExecutionPackage;
 
-export function assertValidShotExecutionPackage(
-  value: unknown,
-  current?: ShotExecutionPackageLineage | number,
-  currentHash?: string
-): asserts value is ShotExecutionPackage {
-  const validation = validateShotExecutionPackage(value, current, currentHash);
-  if (!validation.ok) throw new ShotExecutionPackageContractError(validation);
-}
-
-export const assertShotExecutionPackage = assertValidShotExecutionPackage;

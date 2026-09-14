@@ -20,7 +20,7 @@ const SIZE_BY_RATIO: Record<string, string> = {
   "21:9": "1568x672"
 };
 
-export interface NewApiH3GenerationOptions {
+interface NewApiH3GenerationOptions {
   taskId?: string | null;
   idempotencyKey?: string;
   onTaskSubmitted?(taskId: string): Promise<void> | void;

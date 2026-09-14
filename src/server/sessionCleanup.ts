@@ -6,22 +6,22 @@ import { deleteTosObjectKeys as defaultDeleteTosObjectKeys } from "./tos";
 
 const mediaUrlPrefix = "/media/";
 
-export interface DeletedSessionArtifacts {
+interface DeletedSessionArtifacts {
   localMediaUrls: Set<string>;
   tosObjectKeys: Set<string>;
 }
 
-export interface TosDeleteResult {
+interface TosDeleteResult {
   deletedKeys: string[];
   failed: Array<{ key: string; error: string }>;
 }
 
-export interface SessionArtifactCleanupOptions {
+interface SessionArtifactCleanupOptions {
   mediaDir?: string;
   deleteTosObjectKeys?: (keys: string[]) => Promise<TosDeleteResult>;
 }
 
-export interface SessionArtifactCleanupResult {
+interface SessionArtifactCleanupResult {
   deletedLocalMedia: string[];
   skippedLocalMedia: string[];
   failedLocalMedia: Array<{ url: string; path: string; error: string }>;

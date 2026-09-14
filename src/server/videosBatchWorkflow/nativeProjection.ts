@@ -8,7 +8,6 @@ import {
   contentHash as canonicalContentHash,
   normalizeStoryboardArtifact,
   semanticLabelText as canonicalSemanticLabelText,
-  type CanonicalStoryboardArtifact,
   type CanonicalStoryboardSegment
 } from "./canonicalStoryboard";
 import {

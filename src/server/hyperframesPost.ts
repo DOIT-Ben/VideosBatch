@@ -12,9 +12,9 @@ const DEFAULT_FFMPEG_SUBTITLE_CRF = "20";
 const DEFAULT_SUBTITLE_FONT = "Arial Unicode MS";
 const DEFAULT_SUBTITLE_FONTSDIR = "/System/Library/Fonts/Supplemental";
 
-export type PostProductionRenderer = "hyperframes" | "ffmpeg-subtitles";
+type PostProductionRenderer = "hyperframes" | "ffmpeg-subtitles";
 
-export interface HyperframesPostProductionSignatureInput {
+interface HyperframesPostProductionSignatureInput {
   finalVideoSignature: string;
   title?: string;
   subtitle?: string;
@@ -34,13 +34,13 @@ export interface HyperframesPostProductionSignatureInput {
   audioVolume?: number;
 }
 
-export interface PostProductionSubtitleCue {
+interface PostProductionSubtitleCue {
   startSec: number;
   endSec: number;
   text: string;
 }
 
-export interface BuildHyperframesIndexInput {
+interface BuildHyperframesIndexInput {
   compositionId: string;
   width: number;
   height: number;
@@ -54,12 +54,12 @@ export interface BuildHyperframesIndexInput {
   subtitleCues?: PostProductionSubtitleCue[];
 }
 
-export interface HyperframesProjectInput extends BuildHyperframesIndexInput {
+interface HyperframesProjectInput extends BuildHyperframesIndexInput {
   projectDir: string;
   outputPath: string;
 }
 
-export interface HyperframesRenderInput {
+interface HyperframesRenderInput {
   sessionId: string;
   signature: string;
   sourceVideoPath: string;
@@ -71,7 +71,7 @@ export interface HyperframesRenderInput {
   onProgress?: (phase: string) => Promise<void> | void;
 }
 
-export interface HyperframesRenderResult {
+interface HyperframesRenderResult {
   videoUrl: string;
   signature: string;
   builtForFinalVideoSignature: string;
