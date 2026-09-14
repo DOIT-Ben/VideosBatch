@@ -32,7 +32,7 @@ export function StoryStage({
     <StagePage
       stepId="story"
       title={artifact?.title || "故事文稿"}
-      lead="课程导入故事的完整文稿。编辑并保存后，后续资产、剧本和分镜都以这一版为准。"
+      lead="课程导入故事的完整文稿，可直接编辑。保存后后续内容都以这一版为准。"
       facts={hasContent ? (
         <>
           <StageFact value={(editing ? draft : content).length} label="当前字数" />

@@ -1,10 +1,10 @@
 import { StageEmpty, StageFact, StagePage } from "../components/StagePage";
 
 const CATEGORY_LABELS: Record<string, string> = {
-  CHARACTER: "人物 / 拟人动物",
-  SCENE: "场景 / 空间环境",
-  PROP: "兵器 / 法宝 / 道具",
-  CREATURE: "神兽 / 灵宠 / 非拟人生物"
+  CHARACTER: "人物",
+  SCENE: "场景",
+  PROP: "道具",
+  CREATURE: "生物"
 };
 
 export function AssetPlanStage({ artifact }: { artifact: any }) {
@@ -19,8 +19,8 @@ export function AssetPlanStage({ artifact }: { artifact: any }) {
   return (
     <StagePage
       stepId="asset-plan"
-      title={String(artifact?.title || "资产计划与生成提示词")}
-      lead="在生成图片前检查角色、场景和道具是否完整。稳定公开编号由服务端分配，模型只负责资产语义和 Prompt。"
+      title={String(artifact?.title || "资产计划")}
+      lead="检查角色、场景和道具是否齐全，再进入图片生成。"
       facts={<StageFact value={items.length} label="资产项" />}
     >
       {!items.length ? <StageEmpty>资产计划尚未生成。</StageEmpty> : (
@@ -34,9 +34,9 @@ export function AssetPlanStage({ artifact }: { artifact: any }) {
                     <div className="vbs-card-topline"><span className="vbs-code">{String(item.assetId || item.assetKey || "")}</span><span>{String(item.aspectRatio || "")}</span></div>
                     <h4>{String(item.name || "未命名资产")}</h4>
                     <p>{String(item.description || "")}</p>
-                    {item.sourceEvidence && <div className="vbs-source-evidence"><strong>来源情节</strong><span>{String(item.sourceEvidence)}</span></div>}
-                    {item.continuityNotes && <div className="vbs-source-evidence"><strong>连续性</strong><span>{String(item.continuityNotes)}</span></div>}
-                    <details><summary>查看图片 Prompt</summary><p className="vbs-prompt-copy">{String(item.prompt || "")}</p></details>
+                    {item.sourceEvidence && <div className="vbs-source-evidence"><strong>出处</strong><span>{String(item.sourceEvidence)}</span></div>}
+                    {item.continuityNotes && <div className="vbs-source-evidence"><strong>连贯性</strong><span>{String(item.continuityNotes)}</span></div>}
+                    <details><summary>查看生成提示词</summary><p className="vbs-prompt-copy">{String(item.prompt || "")}</p></details>
                   </article>
                 ))}
               </div>

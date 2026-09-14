@@ -200,7 +200,7 @@ export function storyboardSegmentFieldDefinitions(artifact: any, segment: any): 
     ["supportingElements", "辅助元素", true]
   ];
   return [
-    ["visualPrompt", "画面 Prompt", true],
+    ["visualPrompt", "画面提示词", true],
     ["teachingPurpose", "教学目的"],
     ["narration", "旁白"],
     ["subtitles", "字幕"],

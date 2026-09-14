@@ -15,10 +15,11 @@ function readDismissed() {
 
 /**
  * Every stage can run against deterministic stubs, and a stubbed run looks exactly like a broken
- * one: the asset cards sit on "等待图片" forever and nothing on screen explains why. The resolved
- * switches only ever lived in `.env`, so this banner says them out loud.
+ * one: the asset cards sit on "等待图片" forever and nothing on screen explains why.
  *
- * It is dismissible and remembers that for the browser session, so it informs without nagging.
+ * This is a product notice, not an operator note: it says what the user will and will not get,
+ * and leaves how to change it out of the interface. Dismissible, remembered for the browser
+ * session, so it informs without nagging.
  */
 export function ModeBanner({ runtime }: { runtime?: VideosBatchRuntimeSummary }) {
   const [dismissed, setDismissed] = useState(readDismissed);
@@ -44,15 +45,11 @@ export function ModeBanner({ runtime }: { runtime?: VideosBatchRuntimeSummary })
     <div className="vbs-mode-banner" role="status">
       <TriangleAlert size={16} className="vbs-mode-banner-icon" aria-hidden="true" />
       <div className="vbs-mode-banner-body">
-        <strong>模拟模式：{stubbed.length ? `${stubbed.join("、")}不会真实生成` : "环境配置有误"}</strong>
+        <strong>演示模式：{stubbed.length ? `${stubbed.join("、")}不会真正生成` : "配置有误"}</strong>
         {runtime.error ? (
-          <span>环境配置无法解析：{runtime.error}</span>
+          <span>暂时无法读取运行配置，请联系管理员。</span>
         ) : (
-          <span>
-            这一步的成果是示例数据，资产卡会停在「等待图片」。要真实出片，在 <code>.env</code> 里把
-            <code>VIDEOSBATCH_EXECUTOR_MODE</code> 设为 <code>llm</code>、
-            <code>VIDEOSBATCH_MEDIA_MODE</code> 设为 <code>native</code>；真实调用是付费的。
-          </span>
+          <span>当前展示的是示例内容，用来预览整个制作流程，可以放心操作。</span>
         )}
       </div>
       <button

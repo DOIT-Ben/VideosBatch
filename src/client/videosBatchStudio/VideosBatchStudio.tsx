@@ -274,7 +274,7 @@ export function VideosBatchStudio({
     const sourceRevision = Number(stage?.sourceRevision);
     const sourceHash = String(stage?.sourceHash || "").trim();
     if (!Number.isFinite(sourceRevision) || sourceRevision <= 0 || !sourceHash) {
-      setError("当前阶段缺少有效的来源版本，无法安全重试。");
+      setError("当前步骤还没有可重试的版本。");
       return;
     }
     const next = await perform("retry", () => api.retryVideosBatchStage(sessionId, retryStageId, {
@@ -286,7 +286,7 @@ export function VideosBatchStudio({
   }
 
   const primaryLabel = !workflow
-    ? "等待确认教案"
+    ? "请先确认教案"
     : !isAtCurrentStep
       ? `回到 ${currentStep.label}`
       : workflow.completed

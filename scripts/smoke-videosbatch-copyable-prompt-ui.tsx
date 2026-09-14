@@ -61,12 +61,12 @@ const markup = renderToStaticMarkup(
 );
 
 assert.ok(markup.includes("分镜结构"), "storyboard step must expose the storyboard structure tab");
-assert.ok(markup.includes("执行 Prompt"), "storyboard step must expose the copyable prompt tab");
+assert.ok(markup.includes("生成提示词"), "storyboard step must expose the copyable prompt tab");
 
 const source = readFileSync(new URL("../src/client/videosBatchStudio/stages/StoryboardStage.tsx", import.meta.url), "utf8");
 assert.ok(source.includes('Tabs'), "storyboard/copyable prompt switching must reuse Radix Tabs");
 assert.ok(source.includes("copyablePromptArtifact"), "StoryboardStage must consume COPYABLE_PROMPT as a first-class artifact");
-assert.ok(source.includes("复制全部 Prompt"), "copyable prompt UI must support copying the full execution prompt");
+assert.ok(source.includes("复制全部"), "copyable prompt UI must support copying the full execution prompt");
 assert.ok(source.includes("复制本段"), "copyable prompt UI must support per-segment copying");
 
 console.log("VideosBatch copyable prompt UI smoke: PASS");

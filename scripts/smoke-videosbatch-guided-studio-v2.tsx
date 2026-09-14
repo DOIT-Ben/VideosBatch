@@ -139,7 +139,7 @@ assert.ok(
   "execution progress label must be derived from actual shot activity"
 );
 assert.ok(
-  finalStageSource.includes("模拟成片已就绪"),
+  finalStageSource.includes("simulatedReady") && finalStageSource.includes("示例成片已就绪"),
   "final step must describe simulated media as ready instead of waiting for a stitch"
 );
 

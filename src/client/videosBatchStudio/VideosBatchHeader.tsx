@@ -98,8 +98,8 @@ export function VideosBatchHeader({
             <button
               type="button"
               className="vbs-v2-project-meta"
-              aria-label={`${ariaLabel}。打开会话列表`}
-              title="切换会话"
+              aria-label={`${ariaLabel}。打开任务列表`}
+              title="切换任务"
             >
               {meta}
               <ChevronDown size={14} className="vbs-v2-project-meta-chevron" aria-hidden="true" />
@@ -107,7 +107,7 @@ export function VideosBatchHeader({
           </DropdownMenu.Trigger>
           <DropdownMenu.Portal>
             <DropdownMenu.Content className="vbs-v2-menu vbs-v2-session-menu" align="end" sideOffset={8}>
-              <DropdownMenu.Label className="vbs-v2-menu-label">会话</DropdownMenu.Label>
+              <DropdownMenu.Label className="vbs-v2-menu-label">任务</DropdownMenu.Label>
               {sessions.length ? sessions.map((item) => (
                 <DropdownMenu.Item
                   key={item.id}
@@ -123,7 +123,7 @@ export function VideosBatchHeader({
               )) : (
                 <DropdownMenu.Item className="vbs-v2-menu-item" disabled>
                   <span className="vbs-v2-menu-slot" aria-hidden="true" />
-                  <span className="vbs-v2-menu-title">暂无其他会话</span>
+                  <span className="vbs-v2-menu-title">暂无其他任务</span>
                 </DropdownMenu.Item>
               )}
               {onNewSession ? (
@@ -131,7 +131,7 @@ export function VideosBatchHeader({
                   <DropdownMenu.Separator className="vbs-v2-menu-separator" />
                   <DropdownMenu.Item className="vbs-v2-menu-item" onSelect={onNewSession}>
                     <span className="vbs-v2-menu-slot" aria-hidden="true"><Plus size={13} /></span>
-                    <span className="vbs-v2-menu-title">新建 Session</span>
+                    <span className="vbs-v2-menu-title">新建任务</span>
                   </DropdownMenu.Item>
                 </>
               ) : null}
@@ -181,7 +181,7 @@ export function VideosBatchHeader({
               {onDownloadSession ? (
                 <DropdownMenu.Item className="vbs-v2-menu-item" onSelect={onDownloadSession}>
                   <span className="vbs-v2-menu-slot" aria-hidden="true"><Download size={13} /></span>
-                  <span className="vbs-v2-menu-title">下载 Session</span>
+                  <span className="vbs-v2-menu-title">下载任务包</span>
                 </DropdownMenu.Item>
               ) : null}
               {onToggleLanguage ? (

@@ -45,7 +45,7 @@ export function ScreenplayStage({
     <StagePage
       stepId="screenplay"
       title={artifact?.title || "正式视频剧本"}
-      lead="把故事转换成可执行的视频表达结构。编辑后会保存为新的正式剧本，并使下游分镜进入待更新状态。"
+      lead="逐场景写出画面、对白和声音，作为后续分镜依据。"
       facts={scenes.length ? (
         <>
           <StageFact value={`${duration || "—"}s`} label="目标时长" />
@@ -93,7 +93,7 @@ export function ScreenplayStage({
                       );
                     })}
                     {Array.isArray(scene.evidence) && scene.evidence.length > 0 && (
-                      <div className="vbs-locked-structure wide"><strong>来源证据已锁定</strong><span>{scene.evidence.length} 条 evidence 不会被表单编辑覆盖。</span></div>
+                      <div className="vbs-locked-structure wide"><strong>来源证据已锁定</strong><span>{scene.evidence.length} 条来源证据不会被覆盖。</span></div>
                     )}
                   </div>
                 ) : (

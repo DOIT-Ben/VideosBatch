@@ -77,7 +77,7 @@ export function StoryboardStage({
     <StagePage
       stepId="storyboard"
       title={artifact?.title || "最终分镜"}
-      lead="正式分镜是事实源；执行 Prompt 是从正式分镜派生的可复制执行副本。"
+      lead="逐镜头确认画面、动作和声音。"
       facts={
         <>
           <StageFact value={`${artifact?.targetDuration || "—"}s`} label="总时长" />
@@ -89,7 +89,7 @@ export function StoryboardStage({
       <Tabs.Root className="vbs-storyboard-tabs" defaultValue="structure">
         <Tabs.List className="vbs-tabs-list" aria-label="视频分镜视图">
           <Tabs.Trigger className="vbs-tab-trigger" value="structure">分镜结构</Tabs.Trigger>
-          <Tabs.Trigger className="vbs-tab-trigger" value="prompt">执行 Prompt</Tabs.Trigger>
+          <Tabs.Trigger className="vbs-tab-trigger" value="prompt">生成提示词</Tabs.Trigger>
         </Tabs.List>
 
         <Tabs.Content className="vbs-tab-content" value="structure">
@@ -136,7 +136,7 @@ export function StoryboardStage({
                           </div>
                           <div className="vbs-locked-structure">
                             <strong>结构锁定</strong>
-                            <span>主分镜时长 {segment.duration || 10}s · {references.length} 个语义资产引用 · {subshots.length} 个子镜头</span>
+                            <span>时长 {segment.duration || 10}s · {references.length} 个资产引用 · {subshots.length} 个子镜头，均不可编辑</span>
                           </div>
                           <div className="vbs-subshot-editor-list">
                             {subshots.map((subshot: any) => (
@@ -195,18 +195,18 @@ export function StoryboardStage({
         <Tabs.Content className="vbs-tab-content" value="prompt">
           {!copyablePromptArtifact ? (
             <StageEmpty>
-              <strong>执行 Prompt 尚未生成</strong>
-              <p>完成并保存正式分镜后，系统会生成只用于执行的可复制 Prompt 副本。</p>
+              <strong>提示词尚未生成</strong>
+              <p>保存分镜后，这里会生成可直接复制的提示词。</p>
             </StageEmpty>
           ) : (
             <div className="vbs-copyable-prompt-view">
-              {copyablePromptStatus === "stale" && <div className="vbs-inline-warning">正式分镜已修改，这份执行 Prompt 已过期，需要重新生成。</div>}
+              {copyablePromptStatus === "stale" && <div className="vbs-inline-warning">分镜有改动，这份提示词已过期，请重新生成。</div>}
               <section className="vbs-prompt-master-card">
                 <header>
-                  <div><small>完整执行副本</small><strong>全部分镜 Prompt</strong></div>
+                  <div><small>全部镜头</small><strong>提示词全文</strong></div>
                   <button type="button" className="vbs-secondary" onClick={() => void copy("all", String(copyablePromptArtifact.fullText || ""))}>
                     {copiedKey === "all" ? <Check size={15} /> : <Copy size={15} />}
-                    {copiedKey === "all" ? "已复制" : "复制全部 Prompt"}
+                    {copiedKey === "all" ? "已复制" : "复制全部"}
                   </button>
                 </header>
                 <pre>{String(copyablePromptArtifact.fullText || "")}</pre>
@@ -219,7 +219,7 @@ export function StoryboardStage({
                   return (
                     <article className="vbs-prompt-segment-card" key={key}>
                       <header>
-                        <div><span className="vbs-code">镜头 {String(segment.sequence).padStart(2, "0")}</span><small>{references.length} 个稳定资产引用</small></div>
+                        <div><span className="vbs-code">镜头 {String(segment.sequence).padStart(2, "0")}</span><small>{references.length} 个资产引用</small></div>
                         <button type="button" className="vbs-link-button" onClick={() => void copy(key, String(segment.text || ""))}>
                           {copiedKey === key ? <Check size={14} /> : <Copy size={14} />}
                           {copiedKey === key ? "已复制" : "复制本段"}

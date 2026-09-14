@@ -49,7 +49,7 @@ export function WorkflowFooter({
           {!completed && (
             <button type="button" className="vbs-secondary vbs-v2-auto-run" disabled={busy} onClick={onRunAll}>
               <Play size={14} />
-              自动运行到确认点
+              自动运行
             </button>
           )}
           <DropdownMenu.Root>
@@ -66,7 +66,7 @@ export function WorkflowFooter({
                 </DropdownMenu.Item>
                 <DropdownMenu.Item className="vbs-v2-menu-item" disabled={busy || !canRetry} onSelect={onRetry}>
                   <RefreshCw size={14} />
-                  修复后重试本阶段
+                  重试本步骤
                 </DropdownMenu.Item>
                 <DropdownMenu.Item className="vbs-v2-menu-item" disabled={!canDebug} onSelect={onDebug}>
                   <Code2 size={14} />

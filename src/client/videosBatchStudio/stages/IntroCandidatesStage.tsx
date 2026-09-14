@@ -53,11 +53,11 @@ export function IntroCandidatesStage({
     <StagePage
       stepId="intro"
       title="选择课程导入方案"
-      lead="系统生成三类九套候选。选择并锁定一套后，后续故事、资产和视频都沿用这一方向。"
+      lead="挑一套课程导入方案，后续内容都按这个方向展开。"
       facts={<StageFact value={candidates.length} label="候选方案" />}
     >
       {!candidates.length ? (
-        <StageEmpty>课程导入方案尚未生成。使用底部“自动运行到确认点”生成候选。</StageEmpty>
+        <StageEmpty>方案尚未生成。点击底部「自动运行」即可开始。</StageEmpty>
       ) : (
         <div className="vbs-intro-groups">
           {groups.map((group) => (

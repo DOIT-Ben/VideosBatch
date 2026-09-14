@@ -48,7 +48,7 @@ export function AssetGalleryStage({
     <StagePage
       stepId="assets"
       title="确认资产图片"
-      lead="逐个查看真实生成结果，为每个角色、场景和道具选定一张最终参考图。"
+      lead="为每个角色、场景和道具选一张参考图。"
       facts={<StageFact value={groups.length} label="个资产" />}
     >
       {!groups.length ? <StageEmpty>资产计划或候选图尚未生成。</StageEmpty> : (
@@ -57,6 +57,8 @@ export function AssetGalleryStage({
             {groups.map((group) => {
               const selectedId = selectedAssetIds[group.assetKey] || group.selectedAssetId;
               const confirmed = Boolean(confirmationArtifact?.confirmed && selectedId);
+              // Never surface the internal asset id — the user picks "候选 3", not "asset_e1029b75".
+              const selectedIndex = group.candidates.findIndex((candidate) => candidate.id === selectedId);
               return (
                 <article className={`vbs-asset-card ${confirmed ? "confirmed" : ""}`} key={group.assetKey}>
                   <div className="vbs-asset-card-copy">
@@ -104,7 +106,7 @@ export function AssetGalleryStage({
                     })}
                   </div>
                   <div className="vbs-asset-selection-state">
-                    <span>{selectedId ? `已选择 ${selectedId}` : "请选择一张候选图"}</span>
+                    <span>{selectedIndex >= 0 ? `已选择候选 ${selectedIndex + 1}` : "请选择一张候选图"}</span>
                     {confirmed && <strong><Check size={14} /> 已确认</strong>}
                   </div>
                 </article>
@@ -113,7 +115,7 @@ export function AssetGalleryStage({
           </div>
           {needsConfirmation && (
             <div className="vbs-stage-confirm-bar">
-              <div><strong>确认最终资产</strong><span>确认后，后续剧本和分镜只引用这里选定的图片；仍可从本步骤重新生成。</span></div>
+              <div><strong>确认最终资产</strong><span>确认后，后续剧本与分镜只使用这里选定的图片。</span></div>
               <button type="button" className="vbs-primary" disabled={busy || !readyToConfirm} onClick={onConfirmAll}>确认全部资产 →</button>
             </div>
           )}

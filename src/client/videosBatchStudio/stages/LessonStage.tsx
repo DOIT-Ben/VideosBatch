@@ -84,7 +84,7 @@ export function LessonStage({
 
   const parseFile = async (file: File) => {
     if (!onParseFile) {
-      setParseState({ kind: "error", message: "教案解析服务尚未连接。" });
+      setParseState({ kind: "error", message: "教案解析暂不可用，请稍后重试。" });
       return;
     }
     onParsedDraftChange?.(undefined);
@@ -152,7 +152,7 @@ export function LessonStage({
         stepId="lesson"
         className="vbs-lesson-stage vbs-v2-lesson-readonly"
         title="课程教案"
-        lead="这是后续课程导入、故事、资产和视频分镜的教学事实源。"
+        lead="后续所有内容都依据这份教案生成。"
         aside={
           <div className="vbs-v2-source-chip">
             <FileText size={16} />
@@ -188,7 +188,7 @@ export function LessonStage({
           <span className="vbs-stage-numeral" aria-hidden="true">{productStepIndexLabel("lesson")}</span>
           <div className="vbs-stage-heading">
             <p className="vbs-stage-kicker">{productStepName("lesson")}</p>
-            <p className="vbs-stage-lead">上传完整课程教案。系统先解析并让你确认内容，再生成三类九套课程导入方案。</p>
+            <p className="vbs-stage-lead">上传课程教案，作为整条制作流程的内容依据。</p>
           </div>
           <Tabs.List className="vbs-v2-tab-list" aria-label="教案输入方式">
             <Tabs.Trigger className="vbs-v2-tab-trigger" value="upload"><UploadCloud size={15} /> 上传文件</Tabs.Trigger>
@@ -225,7 +225,7 @@ export function LessonStage({
               )}
               <div className="vbs-v2-upload-note">
                 <CheckCircle2 size={15} />
-                <span>文件只用于提取教案文字；确认前不会启动生成流程。</span>
+                <span>文件只用于提取文字，不会提前开始生成。</span>
               </div>
             </>
           ) : (
@@ -257,8 +257,8 @@ export function LessonStage({
 
                   <div className="vbs-v2-source-preview">
                     <div className="vbs-v2-source-preview-heading">
-                      <strong>提取预览</strong>
-                      <small>原始解析文本</small>
+                      <strong>原文预览</strong>
+                      <small>解析结果</small>
                     </div>
                     <pre>{parsed.document.text || "暂无提取文本"}</pre>
                   </div>
@@ -298,7 +298,7 @@ export function LessonStage({
                         aria-live="polite"
                       >
                         <span aria-hidden="true" />
-                        {draftSaveState === "saved" ? "草稿已保存到本机" : "已修改，点击保存草稿"}
+                        {draftSaveState === "saved" ? "已保存" : "有未保存的修改"}
                       </small>
                     </div>
                     <span>{parsed.draftText.trim().length.toLocaleString()} 字</span>
@@ -367,7 +367,7 @@ export function LessonStage({
                 value={pasteDraft}
                 onChange={(event) => setPasteDraft(event.target.value)}
                 rows={18}
-                placeholder="粘贴教学目标、教学重难点、教学过程、课堂活动等完整教案内容……"
+                placeholder="粘贴完整教案文本……"
                 aria-label="完整教案文本"
               />
             </label>

@@ -38,14 +38,13 @@ export function ExecutionStage({
     <StagePage
       stepId="execution"
       title="批量生成视频"
-      lead="按最终分镜逐镜头执行。这里直接读取 SeeReel Shot/Render 状态，需要精调时进入制作画布。"
+      lead="按分镜逐镜头生成视频，可随时进入制作画布精调。"
       facts={totalCount ? <StageFact value={`${readyCount} / ${totalCount}`} label="镜头完成" /> : null}
       actions={<button type="button" className="vbs-secondary" onClick={onOpenCanvas}>在制作画布中打开</button>}
     >
       {quoteArtifact && (
         <div className="vbs-note-card">
-          <strong>执行快照</strong>
-          <p>目标时长 {quoteArtifact.targetDurationSeconds || "—"} 秒 · 资产顺序已锁定 {Array.isArray(quoteArtifact.assetOrder) ? quoteArtifact.assetOrder.length : 0} 项</p>
+          <strong>计划片长约 {quoteArtifact.targetDurationSeconds || "—"} 秒</strong>
         </div>
       )}
       {!executionArtifact && !orderedShots.length ? <StageEmpty>视频执行尚未开始。</StageEmpty> : (

@@ -20,8 +20,8 @@ export function FinalVideoStage({ artifact, session, onOpenCanvas }: { artifact:
         <div className="vbs-final-delivery-copy">
           <div className={`vbs-final-check ${settled ? "ready" : ""}`}>{settled ? "✓" : "○"}</div>
           <div className="vbs-final-hero">
-            <h2>{ready ? "课程视频已完成" : simulatedReady ? "模拟成片已就绪" : status === "running" ? "正在拼接最终视频" : "等待最终拼接"}</h2>
-            <p>{ready ? "当前播放器直接读取 SeeReel StitchJob 的最终成片，可下载交付或继续进入制作画布精修。" : simulatedReady ? "流程已全部完成。当前为 fake 模拟媒体，配置真实 provider 后重新生成分镜视频即可得到可播放成片。" : native.progress || "完成视频执行后，系统会把已确认镜头按顺序拼接。"}</p>
+            <h2>{ready ? "课程视频已完成" : simulatedReady ? "示例成片已就绪" : status === "running" ? "正在拼接最终视频" : "等待最终拼接"}</h2>
+            <p>{ready ? "可直接下载交付，或进入制作画布继续调整。" : simulatedReady ? "全流程已走完。这里是示例内容，不会生成真实视频文件。" : native.progress || "完成前面的镜头生成后，系统会把视频按顺序拼接。"}</p>
           </div>
         </div>
 
@@ -29,7 +29,7 @@ export function FinalVideoStage({ artifact, session, onOpenCanvas }: { artifact:
           {playbackUrl ? (
             <video className="vbs-final-player" src={playbackUrl} controls playsInline preload="metadata" />
           ) : (
-            <div className="vbs-final-player-placeholder"><span>{artifactUrl.startsWith("fake://") ? "模拟成片尚未映射为真实媒体" : "最终视频预览"}</span><small>{native.progress || (!artifactUrl.startsWith("fake://") ? artifactUrl : "") || "尚未生成"}</small></div>
+            <div className="vbs-final-player-placeholder"><span>{artifactUrl.startsWith("fake://") ? "示例成片，暂无视频文件" : "最终视频预览"}</span><small>{native.progress || (!artifactUrl.startsWith("fake://") ? artifactUrl : "") || "尚未生成"}</small></div>
           )}
         </div>
       </div>
