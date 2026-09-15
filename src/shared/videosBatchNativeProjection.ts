@@ -1,4 +1,7 @@
 import "./types";
+import type { VideosBatchBillingResult } from "./videosBatchBilling";
+
+export type { VideosBatchBillingResult } from "./videosBatchBilling";
 
 /**
  * One immutable VideosBatch reference binding. `ordinal` is the provider-facing
@@ -27,15 +30,6 @@ export interface VideosBatchReferenceBinding {
 }
 
 type VideosBatchPromptRendering = "full" | "compact";
-
-/**
- * Billing conclusion for one provider attempt, in the same vocabulary FrameFlow's
- * `ProviderApiError` uses. `NOT_CHARGED` means the attempt provably did not bill, so a
- * retry is safe; `CHARGED` means it did and a retry would bill twice; `UNKNOWN` means
- * only the provider can say. Kept in the shared domain module so the persisted render
- * record and the server-side adapter cannot drift apart.
- */
-export type VideosBatchBillingResult = "NOT_CHARGED" | "CHARGED" | "UNKNOWN";
 
 declare module "./types" {
   interface Asset {

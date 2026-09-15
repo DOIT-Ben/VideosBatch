@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto";
 import type { Asset, AssetImageModel, AssetPromptAdaptation, Shot, ShotRender } from "../../shared/types";
+import {
+  mergeVideosBatchBillingResult,
+  type VideosBatchBillingResult
+} from "../../shared/videosBatchBilling";
 import type { VideosBatchReferenceBinding } from "../../shared/videosBatchNativeProjection";
 import type {
   VideosBatchAudioDeliveryArtifact,
@@ -45,6 +49,7 @@ import {
   synthesizeMiniMaxSpeech
 } from "./minimaxTts";
 import type { H3ChargedEvidence } from "./newApiH3Video";
+import { sanitizeProviderDiagnosticText } from "./providerDiagnostics";
 
 /**
  * The AUDIO_DELIVERY artifact records which provider actually produced the speech
@@ -361,10 +366,9 @@ function errorRetryable(error: unknown, code: string) {
 function mediaError(error: unknown, fallbackCode: string, attempt: number): VideosBatchMediaError {
   const code = errorCode(error, fallbackCode);
   const rawMessage = text(error instanceof Error ? error.message : error) || fallbackCode;
-  const message = rawMessage
-    .replace(/Bearer\s+[^\s]+/giu, "Bearer [redacted]")
-    .replace(/(?:api[_-]?key|token|secret)\s*[:=]\s*[^,\s}]+/giu, "$1=[redacted]")
-    .slice(0, 2_000);
+  // Provider bodies echo the request, so strip tokens, inline media and signed URLs
+  // before this text can reach a persisted field.
+  const message = sanitizeProviderDiagnosticText(rawMessage);
   const provider = error && typeof error === "object" && "provider" in error
     ? text((error as { provider?: unknown }).provider) || null
     : null;
@@ -374,6 +378,7 @@ function mediaError(error: unknown, fallbackCode: string, attempt: number): Vide
   const taskId = error && typeof error === "object" && "taskId" in error
     ? text((error as { taskId?: unknown }).taskId)
     : "";
+  const billingResult = billingResultOf(error);
   return {
     code,
     message,
@@ -381,8 +386,21 @@ function mediaError(error: unknown, fallbackCode: string, attempt: number): Vide
     attempt: Math.max(1, attempt),
     provider,
     ...(model ? { model } : {}),
-    ...(taskId ? { taskId } : {})
+    ...(taskId ? { taskId } : {}),
+    // Keep the adapter's verdict. Dropping it here is what would leave a shot that may
+    // have been billed indistinguishable from one that provably was not.
+    ...(billingResult ? { billingResult } : {})
   };
+}
+
+/**
+ * Read the billing conclusion off a thrown provider error. A value outside the three
+ * known verdicts stays absent rather than being coerced into one of them.
+ */
+function billingResultOf(error: unknown): VideosBatchBillingResult | undefined {
+  if (!error || typeof error !== "object" || !("billingResult" in error)) return undefined;
+  const value = (error as { billingResult?: unknown }).billingResult;
+  return value === "NOT_CHARGED" || value === "CHARGED" || value === "UNKNOWN" ? value : undefined;
 }
 
 function stageSource(workflow: any, stageId: string) {
@@ -1415,10 +1433,16 @@ export function createVideosBatchNativeMediaStageRegistry(
           const info = mediaError(error, "SHOT_EXECUTION_FAILED", attempt);
           const unknown = isUnknownSubmission(error);
           const retainedTaskId = current.generationTaskId || info.taskId || undefined;
+          // Billing evidence only accumulates: a later attempt must never erase an earlier
+          // proof that money was spent, so keep the strongest conclusion this shot has.
+          const mergedBilling = mergeVideosBatchBillingResult(
+            current.videosBatchError?.billingResult,
+            info.billingResult
+          );
           const patch: Partial<Shot> = {
             status: "error",
             error: `${info.code}: ${info.message}`,
-            videosBatchError: info
+            videosBatchError: mergedBilling ? { ...info, billingResult: mergedBilling } : info
           };
           // A pre-submit failure has no remote task to resume; clear its timestamp so an
           // explicit retry gets a fresh idempotency key. Unknown submission state is retained.
@@ -1431,7 +1455,7 @@ export function createVideosBatchNativeMediaStageRegistry(
             status: unknown ? "blocked" : "failed",
             generationTaskId: retainedTaskId,
             attempt,
-            error: info
+            error: mergedBilling ? { ...info, billingResult: mergedBilling } : info
           };
           items.push(item);
         }

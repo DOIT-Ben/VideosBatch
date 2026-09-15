@@ -19,6 +19,8 @@ import {
   ResponseBodyLimitError
 } from "../src/server/videosBatchWorkflow/boundedResponse";
 import { h3DeclaredBillingResult } from "../src/server/videosBatchWorkflow/h3ProviderErrors";
+import { sanitizeProviderDiagnosticText } from "../src/server/videosBatchWorkflow/providerDiagnostics";
+import { mergeVideosBatchBillingResult } from "../src/shared/videosBatchBilling";
 import {
   H3_MAX_REFERENCE_BYTES,
   H3_REFERENCE_FETCH_CONCURRENCY,
@@ -554,6 +556,31 @@ try {
     provider.close();
     await once(provider, "close");
   }
+
+  // A provider error body echoes the request, so tokens, inline media payloads and
+  // signed reference URLs must be stripped before the text can be persisted.
+  const signedUrl = "https://cdn.invalid/ref.png?signature=abcdef123456&expires=9999999999";
+  const inlinePayload = "A".repeat(64);
+  const redacted = sanitizeProviderDiagnosticText(
+    `提交失败 Authorization: Bearer sk-live-abcdef api_key=sk-123 url=${signedUrl} image=data:image/png;base64,${inlinePayload}`
+  );
+  assert.ok(!redacted.includes("sk-live-abcdef"), "bearer token must be redacted");
+  assert.ok(!redacted.includes("sk-123"), "api key value must be redacted");
+  assert.ok(!redacted.includes("abcdef123456"), "signed URL must be redacted");
+  assert.ok(!redacted.includes(inlinePayload), "inline base64 media must be redacted");
+  assert.ok(redacted.includes("[url redacted]"), "urls must collapse to a placeholder");
+  assert.ok(redacted.includes("data:[redacted]"), "inline media must collapse to a placeholder");
+  // Idempotent, so a caller may safely apply it at more than one layer.
+  assert.equal(sanitizeProviderDiagnosticText(redacted), redacted);
+
+  // Billing evidence may only accumulate: losing a CHARGED verdict is what authorizes
+  // a duplicate paid submission.
+  assert.equal(mergeVideosBatchBillingResult(undefined, "UNKNOWN"), "UNKNOWN");
+  assert.equal(mergeVideosBatchBillingResult("UNKNOWN", "NOT_CHARGED"), "NOT_CHARGED");
+  assert.equal(mergeVideosBatchBillingResult("NOT_CHARGED", "UNKNOWN"), "NOT_CHARGED");
+  assert.equal(mergeVideosBatchBillingResult("CHARGED", "UNKNOWN"), "CHARGED");
+  assert.equal(mergeVideosBatchBillingResult("NOT_CHARGED", "CHARGED"), "CHARGED");
+  assert.equal(mergeVideosBatchBillingResult("CHARGED", undefined), "CHARGED");
 
   console.log("VideosBatch NewAPI H3 config and recovery smoke passed");
 } finally {

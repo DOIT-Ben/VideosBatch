@@ -338,7 +338,8 @@ try {
         throw Object.assign(new Error("temporary video provider timeout"), {
           code: "VIDEO_PROVIDER_TIMEOUT",
           retryable: true,
-          provider: "injected-video"
+          provider: "injected-video",
+          billingResult: "UNKNOWN"
         });
       }
       return `https://mock.invalid/videos/${shot.id}-${executionCalls.length}.mp4`;
@@ -356,6 +357,14 @@ try {
   assert.equal(firstExecutionArtifact.failedShots[0].shotId, failedShotId);
   assert.equal(firstExecutionArtifact.failedShots[0].status, "failed");
   assert.equal(firstExecutionRun.currentStage, "EXECUTION");
+  // A failure must persist the adapter's billing verdict, otherwise a shot that may
+  // have been billed reads exactly like one that provably was not.
+  assert.equal(firstExecutionArtifact.failedShots[0].error.billingResult, "UNKNOWN");
+  assert.equal(
+    store.getShot(failedShotId)!.videosBatchError?.billingResult,
+    "UNKNOWN",
+    "a failed attempt must persist its billing conclusion onto the shot"
+  );
 
   const executionRetry = runnerModule.restartFrom(firstExecutionRun, "EXECUTION");
   const secondExecutionRun = await runnerModule.runNext(context(executionFixture.sessionId, executionRetry), executionRegistry);
@@ -680,7 +689,8 @@ try {
       message: "提交状态未知",
       retryable: false,
       attempt: 1,
-      provider: "injected-h3"
+      provider: "injected-h3",
+      billingResult: "CHARGED"
     },
     error: "H3_SUBMISSION_STATE_UNKNOWN: 提交状态未知"
   });
@@ -695,6 +705,13 @@ try {
   assert.equal(unknownRun.stages.EXECUTION?.errorInfo?.retryable, false);
   assert.equal(unknownArtifact.failedShots[0].status, "blocked");
   assert.equal(executionCalls.length, callsBeforeUnknown, "unknown submission must not blindly resubmit");
+  // Billing evidence only accumulates: this attempt produced no verdict of its own, so
+  // the previously recorded CHARGED must survive rather than be cleared.
+  assert.equal(
+    store.getShot(failedShotId)!.videosBatchError?.billingResult,
+    "CHARGED",
+    "a later attempt without billing evidence must not downgrade a recorded CHARGED"
+  );
 
   console.log("VideosBatch native media resilience smoke passed");
 } finally {

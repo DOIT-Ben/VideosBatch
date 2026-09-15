@@ -1,3 +1,5 @@
+import type { VideosBatchBillingResult } from "./videosBatchBilling";
+
 export const VIDEOS_BATCH_STAGE_ORDER = [
   "LESSON_INPUT",
   "COURSE_INTRO_CANDIDATES",
@@ -77,6 +79,12 @@ export interface VideosBatchMediaError {
   model?: string | null;
   /** Provider task id, retained when submission succeeded but local persistence failed. */
   taskId?: string;
+  /**
+   * Billing conclusion for the failed attempt. Persisted so an operator can tell a
+   * failure that may have been billed (`UNKNOWN`) from one that provably was not
+   * (`NOT_CHARGED`); without it the adapter's verdict dies with the thrown error.
+   */
+  billingResult?: VideosBatchBillingResult;
 }
 
 export interface VideosBatchAudioEvent {

@@ -3,12 +3,12 @@
 Status: active
 Last Reviewed: 2026-09-15
 Spec ID: `VIDEOSBATCH_WORKFLOW_CANONICAL`
-Canonical Version: `1.4.5`
+Canonical Version: `1.4.6`
 Owner: VideosBatch 产品与运行时
 
 > 本文件是 VideosBatch 课程视频工作流的唯一有效设计真源。所有阶段顺序、提示词材料、字段语义、输出格式、人工门禁、版本血缘、重试、资产和媒体规则均以本文件为准。
 >
-> 阶段 1 的文档治理和阶段 2 的归档已经完成；1.1.0 增加参考图绑定合同，1.2.0 增加音频就绪门禁与 PARTIAL 重试合同，1.3.0 增加凭据卫生守卫，1.4.0 增加可插拔语音合成 Provider（MiniMax T2A v2），1.4.1 将静态提示词骨架外置为 `src/server/prompts/*.md` 加载器注入，1.4.2 按结构化范式重写全部骨架文本（要求集合与合同不变），1.4.3 依据 Tier 1 真实模型验收补齐确定性归一化合同（机械违规 sanitize、两档资产引用解析、预算感知提示注入、编译器自然中文斜杠分界），1.4.4 按 [`docs/adr/0001-videosbatch-align-frameflow-contracts.md`](../docs/adr/0001-videosbatch-align-frameflow-contracts.md) 对齐 FrameFlow 的工程合同纪律（H3 结构化失败与计费结论、参考图抓取纪律、绑定快照内容寻址、骨架版本与哈希钉），分别按对应落地文档执行；1.4.5 修正 1.4.4 复审发现的三处偏差（轮询阶段不得推断「未计费」且 Provider 显式计费结论优先、骨架版本必须可按版本回读、错误响应体有界读取）。
+> 阶段 1 的文档治理和阶段 2 的归档已经完成；1.1.0 增加参考图绑定合同，1.2.0 增加音频就绪门禁与 PARTIAL 重试合同，1.3.0 增加凭据卫生守卫，1.4.0 增加可插拔语音合成 Provider（MiniMax T2A v2），1.4.1 将静态提示词骨架外置为 `src/server/prompts/*.md` 加载器注入，1.4.2 按结构化范式重写全部骨架文本（要求集合与合同不变），1.4.3 依据 Tier 1 真实模型验收补齐确定性归一化合同（机械违规 sanitize、两档资产引用解析、预算感知提示注入、编译器自然中文斜杠分界），1.4.4 按 [`docs/adr/0001-videosbatch-align-frameflow-contracts.md`](../docs/adr/0001-videosbatch-align-frameflow-contracts.md) 对齐 FrameFlow 的工程合同纪律（H3 结构化失败与计费结论、参考图抓取纪律、绑定快照内容寻址、骨架版本与哈希钉），分别按对应落地文档执行；1.4.5 修正 1.4.4 复审发现的三处偏差（轮询阶段不得推断「未计费」且 Provider 显式计费结论优先、骨架版本必须可按版本回读、错误响应体有界读取）；1.4.6 补齐第二轮复审发现的失败侧计费证据持久化与单调合并、Provider 诊断文本脱敏。
 >
 > JSON 只承担传输和持久化结构；它不能删减、替代或改写上游手册规定的字段语义和创作约束。模型输出是建议稿，服务端校验、用户确认和版本血缘才决定可继续的事实。
 
@@ -2510,6 +2510,9 @@ P001-A004：黄色小花（道具）
 - **Provider 显式计费结论优先于本地推断**：响应体（含 `data` 包装）出现 `billing_result` / `billingResult` 且取值属于 `NOT_CHARGED | CHARGED | UNKNOWN` 时以之覆盖本地推断，本地推断只在其缺省时兜底；取值超出该词汇表时按缺省处理，不得强解为某个结论。该字段只用于**记账与对账**，不得据此放开自动重试——能否自动重试始终只由 `retryable` 决定。
 - 成片字节落盘成功即是一次**已计费的成功尝试**：适配器在返回 `/media/...` 之前必须把该次尝试的计费结论（`taskId`、计费结论、提交字节数、media URL）交给调用方记录，使成功路径与失败路径一样留下费用证据，而不是只在失败时才有结论。该记录失败时不得退化为普通错误（那会清掉尝试标记并诱发第二次付费提交）：必须以 `H3_BILLING_RECORD_FAILED`、`billingResult=CHARGED`、`retryable=false` 报出，并在消息中保留 `taskId` 与已保存的 media 路径，使成片与费用事实都仍可回收。
 - 错误响应体与 JSON 载荷的读取必须有界（沿用 FrameFlow 的 64 KiB 上限），超限时按状态码降级为通用错误消息，不得无界 `text()` 缓冲。
+- **失败路径必须把计费结论持久化**：适配器在错误对象上给出的 `billingResult` 必须随失败一起落到 `Shot.videosBatchError.billingResult`，不得只停留在瞬时异常里。一次「可能已计费」的失败与一次「证明未计费」的失败必须能从持久化状态区分——否则 D1 修好的结论在持久化边界被丢弃，人工对账无从判断。计费结论只作记账与对账，**不放宽 `retryable`**。
+- **计费证据单调合并**：同一镜头再次落账时，按 `CHARGED > NOT_CHARGED > UNKNOWN` 取最高优先级，等价于 FrameFlow 的 `mergeProviderBillingResult`（已判 `CHARGED` 永不被降级，已证 `NOT_CHARGED` 不被后续 `UNKNOWN` 抹掉）。理由：计费证据只增不减，丢失「已花钱」的事实会直接诱发重复提交。
+- **Provider 诊断文本必须先脱敏再持久化**：错误消息在写入任何持久化字段（`Shot.error`、`videosBatchError.message`）之前，必须剥掉 `Bearer` 令牌、`api_key`/`token`/`secret` 取值、内联 `data:<mime>;base64,…` 载荷与全部 `http(s)://` URL（替换为固定占位符）。这与 7.7 的请求日志纪律同源：参考图是签名 URL，Provider 错误体常回显请求内容，落库即等于把签名地址写进长期存储。
 - 未显式给出计费结论的错误必须保持 `UNKNOWN`，不得默认宣称未扣费。
 - `code` 一经发布即为稳定合同：下游（`nativeMediaStages`、`runner`）与 smokes 依赖 `H3_SUBMISSION_STATE_UNKNOWN`、`H3_SUBMISSION_REJECTED`、`H3_TASK_FAILED`、`H3_POLL_FAILED`、`H3_POLL_TIMEOUT` 等既有码值，不得重命名；新增码（配置、绑定计划、提示词、参考图、快照不一致、空视频、本地写入、计费记录失败）只允许追加。
 - `smoke:videosbatch-newapi-h3` 覆盖：配置与绑定错误的计费结论、4xx 与 5xx 提交的区分（含可重试性与计费结论）、轮询超时携带 taskId 并可重试、**轮询阶段任务被 Provider 判失败时结论为 `UNKNOWN` 且不宣称未计费**、**Provider 显式 `billing_result` 覆盖本地推断**、**成功路径回传已计费证据**、参考图 HTTPS 与内嵌凭据拒绝、以及有界读取按实际解码字节拒绝超限响应。
@@ -2561,6 +2564,7 @@ git diff --check
 - [x] TTS 开关只替换语音合成；音效与混音仍为本地实现，`AUDIO_DELIVERY` 产物 `provider` 如实反映实际语音来源。
 - [x] 静态提示词骨架外置于 `src/server/prompts/*.md` 并经 `loadPromptTemplate()` 注入；注册表与目录一一对应，内容与历史常量逐字节一致，加载器 fail-fast 与消费者接线被离线 smoke 覆盖；`promptCompiler`/`promptCompose`/`<contract_repair>` 保持代码内。
 - [ ] H3 适配器付费路径不抛裸错误；每个失败带 `code`/`retryable`/`billingResult`，失败分层与计费结论一致（付费前一律未计费、4xx 未计费、5xx 与网络中断未知、**任务号已存在之后的任何失败一律未知且不自动重试**、生成后本地写入失败已计费且不重试）；Provider 显式 `billing_result` 覆盖本地推断且不据此放开自动重试；成功路径回传已计费证据；错误响应体读取有界。
+- [ ] 失败的计费结论随 `Shot.videosBatchError.billingResult` 落库，并与既有结论按 `CHARGED > NOT_CHARGED > UNKNOWN` 单调合并（已计费证据不得被后续未知覆盖）；持久化的错误消息已剥除令牌、密钥、内联 data URL 与全部 URL。
 - [ ] 参考图抓取自带单次 30 秒超时、并发上限 2 与 `no-store`；URL 仅接受 HTTPS 且拒绝内嵌凭据；字节读取按实际解码字节有界，超限在读完前失败。
 - [ ] 绑定快照保存 `bytesSha256`/`byteSize`/`mimeType`；同一 URL 内容变化时以 `bytesSha256` 拦截，历史快照缺该字段时回退 `imageUrlHash` 比较。
 - [ ] 提示词骨架注册表携带版本与 SHA-256 钉，加载时校验漂移即 fail-fast；导出哈希等于磁盘实际字节哈希；历史版本可按版本回读，未登记版本 fail-fast。

@@ -1,3 +1,5 @@
+import type { VideosBatchBillingResult } from "./videosBatchBilling";
+
 export type AssetType = "image" | "character" | "scene" | "prop" | "style" | "voice" | "music" | "other";
 export type AssetMediaKind = "image" | "video" | "audio" | "none";
 export type AssetImageModel = "gpt-image-2" | "gpt-image-2-1k" | "seedream-4" | "seedream-4-5" | "seedream-5-lite";
@@ -211,6 +213,12 @@ export interface Asset {
     attempt: number;
     provider?: string | null;
     model?: string | null;
+    /**
+     * Billing conclusion for the failed attempt, accumulated across attempts
+     * (`CHARGED > NOT_CHARGED > UNKNOWN`). Kept so a failure that may have billed is
+     * distinguishable from one that provably did not, even after a later attempt.
+     */
+    billingResult?: VideosBatchBillingResult;
   };
   referenceImageUrl?: string;
   /** Voice node metadata: reusable voice identity for narration/dialogue consistency. */
@@ -458,6 +466,12 @@ export interface Shot {
     attempt: number;
     provider?: string | null;
     model?: string | null;
+    /**
+     * Billing conclusion for the failed attempt, accumulated across attempts
+     * (`CHARGED > NOT_CHARGED > UNKNOWN`). Kept so a failure that may have billed is
+     * distinguishable from one that provably did not, even after a later attempt.
+     */
+    billingResult?: VideosBatchBillingResult;
   };
   /**
    * Sub-phase of `status === "generating"` derived from the latest Seedance poll. The shot stays

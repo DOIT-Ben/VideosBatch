@@ -10,6 +10,7 @@ import { MAX_LESSON_FILE_BYTES, parseLessonDocument } from "./lessonDocumentPars
 import type { StageExecutionContext, StageRegistry } from "./stageContracts";
 import { reconcileVideosBatchReadiness, replaceStageArtifact, restartFrom, retryLineageIssues, runAll, runNext } from "./runner";
 import { contentHash } from "./canonicalStoryboard";
+import { sanitizeProviderDiagnosticText } from "./providerDiagnostics";
 
 function routeParam(req: Request, key: string) {
   const value = req.params[key];
@@ -60,12 +61,9 @@ function withWorkflowFlight<T>(sessionId: string, kind: string, operation: () =>
 
 function safeErrorMessage(value: unknown) {
   const raw = value instanceof Error ? value.message : String(value ?? "VideosBatch request failed");
-  return raw
-    .replace(/Bearer\s+[^\s]+/giu, "Bearer [redacted]")
-    .replace(/(?:api[_-]?key|token|secret)\s*[:=]\s*[^,\s}]+/giu, "$1=[redacted]")
-    .replace(/\s+/gu, " ")
-    .trim()
-    .slice(0, 2_000);
+  // Shared redaction set (tokens, inline data URLs, absolute URLs); collapse whitespace
+  // here so the single-line response envelope stays stable.
+  return sanitizeProviderDiagnosticText(raw, 0).replace(/\s+/gu, " ").trim().slice(0, 2_000);
 }
 
 function sendWorkflowError(

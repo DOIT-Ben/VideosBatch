@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { sanitizeProviderDiagnosticText } from "./providerDiagnostics";
 
 type VideosBatchLlmProvider = "openai-responses";
 /** @deprecated VideosBatch requests are always sent as json_schema. */
@@ -350,12 +351,7 @@ function retryableStatus(status: number) {
 }
 
 function safeProviderDetail(value: string) {
-  return value
-    .replace(/Bearer\s+[^\s]+/giu, "Bearer [redacted]")
-    .replace(/(?:api[_-]?key|token|secret)\s*[:=]\s*[^,\s}]+/giu, "$1=[redacted]")
-    .replace(/\s+/gu, " ")
-    .trim()
-    .slice(0, 240);
+  return sanitizeProviderDiagnosticText(value, 0).replace(/\s+/gu, " ").trim().slice(0, 240);
 }
 
 function safeAttemptMetadata(metadata: Record<string, string> | undefined) {
