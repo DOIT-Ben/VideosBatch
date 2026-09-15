@@ -94,6 +94,7 @@ Delivery record: 本文件同时承担 ADR、Phase Plan 与 Evidence（本仓库
 | P0 | DONE | `27edd90` | `tsc --noEmit` 通过；`smoke:videosbatch-newapi-h3` / `native-media-stages` / `native-media-resilience` / `shot-execution-package` / `specs` / `doc-consistency` / `secrets` 全绿 |
 | P1 | DONE | `6655455` | `tsc --noEmit` 通过；`smoke:videosbatch-newapi-h3` / `shot-execution-package` / `native-projection` / `native-media-stages` 全绿 |
 | P2 | DONE | `e8bf2de` | `tsc --noEmit` 通过；`smoke:videosbatch-prompt-templates` / `text-stage-specs` / `frameflow-canonical` / `llm-text-stages` 全绿 |
+| P0-R / P2-R / P4 | DONE | `a7f6d49` | 复审 D1/D2/D5 修复（见 §11 执行记录）；`tsc --noEmit` 通过；`smoke:videosbatch-newapi-h3` / `prompt-templates` / `doc-consistency` / `specs` 全绿；`npm run verify:offline` RC=0 |
 | 全量门禁 | 见下 | — | `npm run verify:offline`（跑前已腾空 5173） |
 
 **证据口径说明（有意偏离）**：P0–P2 各自用 `tsc --noEmit` + 该阶段的定向 smoke 收口，全量 `verify:offline` 在三个阶段代码齐备后跑一次。理由：同一轮内三阶段改动文件基本不相交（仅 `newApiH3Video.ts` 被 P0/P1 先后触碰），一次全量门禁即覆盖三者的合计影响面，避免三次构建与约 90 个 smoke 的重复成本。若全量门禁出现失败，按失败项归属到对应阶段修复。
@@ -110,7 +111,8 @@ Delivery record: 本文件同时承担 ADR、Phase Plan 与 Evidence（本仓库
 
 - ~~FrameFlow 的 `referenceId` 查重合同（`REFERENCE_ID_DUPLICATE`）是否需要同步进 VideosBatch 的绑定校验？~~ **已结**：VideosBatch 已在 `shotExecutionPackage.ts` 校验包内 `references` 的 `referenceId` 与 `assetId` 去重（"references contains duplicate referenceId"），并在构建期校验绑定与 `FINAL_STORYBOARD.references` 的 `referenceId`/`assetKey`/`semanticLabel` 一致，覆盖率不低于 FrameFlow 的对应合同。**无需新增工作**，故不纳入 P1 范围。
 - P3（结构化提示词文档 `promptDocument`）仍未授权，需要单独 ADR。
-- 见 §11：复审发现三条未修的偏差（D1 待授权修复、D2 待授权修复、D3 待裁定）。
+- ~~见 §11：复审发现三条未修的偏差（D1 待授权修复、D2 待授权修复、D3 待裁定）。~~ **部分结项**：D1、D2、D5 已修复（`a7f6d49`，见 §11 执行记录）；D3（内联 data URL 参考图）仍待产品裁定，见 §11 末。
+- **待裁定**：D3——参考图是否需支持内联 `data:image/...;base64,`（当前只接受 HTTPS 与 `/media/`）。裁定后要么补 `inlineImageFile` 分支，要么在 spec 里固化「只接受落盘资产」。**未裁定前不动。**
 
 ## 11. 复审发现（2026-09-15 深度审查）
 
@@ -171,3 +173,25 @@ Phase Log 标 DONE 后，按要求做了一次不依赖本文档、直接对照�
 | P4 | D3：裁定后决定是否补 inline data URL 参考图；D4/D5 顺带收口 | 需先裁定 | 视裁定范围 |
 
 **未授权前不动**：D1/D2 都是合同级变更（D1 改计费语义、D2 改加载签名），按 §7 Change Policy 必须先改 spec 再改代码；本 ADR 已按 §6 的边界要求停在「记录 + 建议」。
+
+### 执行记录（P0-R / P2-R / P4 · 2026-09-15 · 提交 `a7f6d49`）
+
+用户下达「优化」后按 §7 Change Policy 执行：先改 spec（`1.4.4 → 1.4.5`）再改代码，改完跑定向 smoke + 全量 `verify:offline`（RC=0）。
+
+| 条目 | 修复 | 落点 |
+| --- | --- | --- |
+| D1 计费判错 | 轮询阶段 `H3_TASK_FAILED` 的 `billingResult` 由 `NOT_CHARGED` 改为 `evidence.declared ?? "UNKNOWN"`，`retryable` 仍为 `false` | `newApiH3Video.ts` 轮询分支 |
+| D1 不读 Provider 结论 | 新增 `h3DeclaredBillingResult(payload)`（读裸体或 `data` 包装的 `billing_result`/`billingResult`，越界值忽略）；提交与轮询两处均以「Provider 显式值优先、本地推断兜底」取值 | `h3ProviderErrors.ts`、`newApiH3Video.ts` 提交/轮询分支 |
+| D1 成功路径无证据 | 新增 `H3ChargedEvidence` 与 `onCharged` 回调；`generators → nativeMediaStages` 全链透传，落库到 `ShotRender.videosBatchBillingResult`；回调自身异常抛 `H3_BILLING_RECORD_FAILED`（`CHARGED`、不可重试、保留 taskId 与 mediaUrl） | `newApiH3Video.ts`、`generators.ts`、`nativeMediaStages.ts`、`videosBatchNativeProjection.ts` |
+| D2 版本不可回读 | 新增 `PROMPT_TEMPLATE_VERSION_ORDER` 与 `PROMPT_TEMPLATE_HASHES_BY_VERSION`；`loadPromptTemplate(name, version?)` 支持按版本回读，当前版本读 `<name>.md`、历史版本读 `history/<name>/<version>.md`，未登记版本 fail-fast；导出 `promptTemplateRelativePath()` 供断言 | `promptTemplates.ts` |
+| D4 20MB 上限 | 复核为**已满足**（单消费者、已导出、被 smoke 钉值），**无代码改动** | `h3ReferenceMedia.ts`（未改） |
+| D5 错误体无界 | 新增 `readBoundedResponseText()`（`MAX_BOUNDED_RESPONSE_TEXT_BYTES = 64 KiB`，对齐 FrameFlow `MAX_ERROR_BODY_BYTES`）；`responseEvidence`/`responsePayload` 改用有界读取，超限按状态码降级、不当作可用载荷 | `boundedResponse.ts`、`newApiH3Video.ts` |
+
+**执行中新发现并一并修掉的一个隐患**：`onCharged` 记录失败若以普通错误逃逸，会清掉尝试标记、诱导第二次付费提交——正是 D1 要消除的失败类。已按上表第三行兜住，并新增 `H3_BILLING_RECORD_FAILED` 码（spec §8.5 允许追加码清单已同步）。
+
+**门禁证据**：`smoke:videosbatch-newapi-h3` 新增 `taskFailed` / `taskFailedDeclared` / `hugeError` 三种服务端模式与 `onCharged` 断言（成功报 `CHARGED`、轮询失败报 `UNKNOWN`、Provider 结论覆盖且仍不可重试、超大错误体降级、计费记录失败报 `H3_BILLING_RECORD_FAILED`）；`smoke:videosbatch-prompt-templates` 新增第 9 节（按版本回读、版本哈希表完整性、未知版本 fail-fast、历史路径解析）。`tsc --noEmit` 通过，`npm run verify:offline` RC=0。
+
+**仍未做（有意留出）**：
+- **D3**：内联 `data:image/...;base64,` 参考图——属产品策略选择（见 §10 待裁定），未授权前不动。
+- **P3**（结构化提示词文档 `promptDocument`）：需单独 ADR。
+- **推送远端 / 并入 `master`**：见 §9 分支记录，需用户单独授权。
