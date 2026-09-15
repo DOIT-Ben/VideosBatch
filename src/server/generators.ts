@@ -13,7 +13,7 @@ import { fetchWithRetry } from "./fetchWithRetry";
 import { arkMissingKeyMessage, BYTEPLUS_ARK_BASE, resolveArkCredential, VOLCENGINE_CN_ARK_BASE, type ArkCredential, type StandardCredentialRouteConfig } from "./arkCredentials";
 import { seedreamWebSearchPayload } from "./seedreamOptions";
 import { loadPromptTemplate } from "./prompts/promptTemplates";
-import { generateShotVideoViaNewApiH3 } from "./videosBatchWorkflow/newApiH3Video";
+import { generateShotVideoViaNewApiH3, type H3ChargedEvidence } from "./videosBatchWorkflow/newApiH3Video";
 import type { VideosBatchAudioTimeline } from "../shared/videosBatchWorkflow";
 import type { VideosBatchReferenceBinding } from "../shared/videosBatchNativeProjection";
 
@@ -37,6 +37,8 @@ export interface BuildSeedancePayloadOpts {
   onProviderReferenceBindingsPrepared?(bindings: VideosBatchReferenceBinding[]): Promise<void> | void;
   /** VideosBatch NewAPI H3 hook: capture the exact compiled prompt before the paid POST. */
   onProviderPromptPrepared?(prompt: string): Promise<void> | void;
+  /** VideosBatch NewAPI H3 hook: record the billing conclusion once paid bytes exist. */
+  onProviderCharged?(evidence: H3ChargedEvidence): Promise<void> | void;
   /** Resume an already-submitted NewAPI H3 task without issuing another POST. */
   taskId?: string | null;
 }
@@ -1045,7 +1047,8 @@ export async function generateShotVideo(shot: Shot, assets: Asset[], opts: Build
       taskId: opts.taskId ?? shot.generationTaskId,
       onTaskSubmitted: opts.onProviderTaskSubmitted,
       onReferenceBindingsPrepared: opts.onProviderReferenceBindingsPrepared,
-      onPromptPrepared: opts.onProviderPromptPrepared
+      onPromptPrepared: opts.onProviderPromptPrepared,
+      onCharged: opts.onProviderCharged
     });
   }
   if (process.env.SEEDANCE_API_URL && process.env.SEEDANCE_API_KEY) {

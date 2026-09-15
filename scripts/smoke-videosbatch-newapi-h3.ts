@@ -12,7 +12,13 @@ import {
   NewApiH3SubmissionStateUnknownError,
   NewApiH3ProviderError
 } from "../src/server/videosBatchWorkflow/newApiH3Video";
-import { readBoundedResponseBytes, ResponseBodyLimitError } from "../src/server/videosBatchWorkflow/boundedResponse";
+import {
+  MAX_BOUNDED_RESPONSE_TEXT_BYTES,
+  readBoundedResponseBytes,
+  readBoundedResponseText,
+  ResponseBodyLimitError
+} from "../src/server/videosBatchWorkflow/boundedResponse";
+import { h3DeclaredBillingResult } from "../src/server/videosBatchWorkflow/h3ProviderErrors";
 import {
   H3_MAX_REFERENCE_BYTES,
   H3_REFERENCE_FETCH_CONCURRENCY,
@@ -99,6 +105,21 @@ try {
     (error: unknown) => error instanceof ResponseBodyLimitError,
     "bounded reads must reject by actual decoded byte count instead of buffering first"
   );
+  assert.equal(await readBoundedResponseText(new Response("小错误体")), "小错误体");
+  assert.equal(
+    await readBoundedResponseText(new Response("x".repeat(MAX_BOUNDED_RESPONSE_TEXT_BYTES + 1))),
+    null,
+    "an oversized diagnostic body must degrade to null instead of buffering unbounded text"
+  );
+
+  // Billing conclusions parse from the provider's own field, in both the bare body and
+  // its data wrapper. An unrecognised value must be ignored rather than coerced, so a
+  // malformed field can never be read as "not charged".
+  assert.equal(h3DeclaredBillingResult({ billing_result: "NOT_CHARGED" }), "NOT_CHARGED");
+  assert.equal(h3DeclaredBillingResult({ data: { billingResult: "charged" } }), "CHARGED");
+  assert.equal(h3DeclaredBillingResult({ billing_result: "maybe" }), undefined);
+  assert.equal(h3DeclaredBillingResult({}), undefined);
+  assert.equal(h3DeclaredBillingResult(null), undefined);
 
   let postRequests = 0;
   let contentRequests = 0;
@@ -106,6 +127,9 @@ try {
   let timeoutMode = false;
   let rejectedMode = false;
   let unavailableMode = false;
+  let taskFailedMode = false;
+  let taskFailedDeclaredMode = false;
+  let hugeErrorMode = false;
   const provider = http.createServer(async (req, res) => {
     if (req.url === "/a1.png" || req.url === "/a2.png") {
       res.setHeader("content-type", "image/png");
@@ -129,6 +153,12 @@ try {
       }
       if (timeoutMode) {
         res.end(JSON.stringify({ task_id: "h3-timeout-task" }));
+      } else if (taskFailedMode) {
+        res.end(JSON.stringify({ task_id: "h3-failed-task" }));
+      } else if (taskFailedDeclaredMode) {
+        res.end(JSON.stringify({ task_id: "h3-failed-declared-task" }));
+      } else if (hugeErrorMode) {
+        res.end(JSON.stringify({ task_id: "h3-huge-error-task" }));
       } else if (conflict) {
         res.statusCode = 409;
         res.end(JSON.stringify({ detail: "idempotency_key 与其他请求冲突" }));
@@ -153,6 +183,24 @@ try {
       res.statusCode = 202;
       res.setHeader("content-type", "application/json");
       res.end(JSON.stringify({ status: "processing" }));
+      return;
+    }
+    if (req.method === "GET" && req.url === "/v1/videos/h3-failed-task/content") {
+      res.statusCode = 400;
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify({ error: { message: "任务执行失败" } }));
+      return;
+    }
+    if (req.method === "GET" && req.url === "/v1/videos/h3-failed-declared-task/content") {
+      res.statusCode = 400;
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify({ error: { message: "上游已拒绝且未计费" }, billing_result: "NOT_CHARGED" }));
+      return;
+    }
+    if (req.method === "GET" && req.url === "/v1/videos/h3-huge-error-task/content") {
+      res.statusCode = 400;
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify({ error: { message: "x".repeat(70 * 1024) } }));
       return;
     }
     res.statusCode = 404;
@@ -267,6 +315,20 @@ try {
         ],
         "the persisted snapshot must content-address the exact submitted bytes"
       );
+      // Once the bytes are on disk the attempt is paid for: a bookkeeping failure must
+      // not read as an ordinary error, or the retry would bill a second time.
+      await assert.rejects(
+        () => generateShotVideoViaNewApiH3(bindingShot, bindingAssets, {
+          onCharged: () => { throw new Error("billing ledger unavailable"); }
+        }),
+        (error: unknown) => error instanceof NewApiH3ProviderError
+          && error.code === "H3_BILLING_RECORD_FAILED"
+          && error.retryable === false
+          && error.billingResult === "CHARGED"
+          && error.taskId === "binding-task"
+          && /已生成并保存/u.test(error.message),
+        "a failed billing record must stay charged and non-retryable once the bytes exist"
+      );
       // A URL whose bytes changed must be refused before the POST rather than silently
       // regenerating with new content; this is what the byte fingerprint is for.
       await assert.rejects(
@@ -315,14 +377,30 @@ try {
     }) as typeof fetch;
     try {
       let persistedTaskId = "";
+      let chargedEvidence: { taskId?: string; billingResult?: string; byteSize?: number; mediaUrl?: string } | undefined;
       const firstUrl = await generateShotVideoViaNewApiH3(
         { ...shot, generationStartedAt: "2026-08-31T00:00:00.000Z" },
         httpsOnlyAssets,
-        { onTaskSubmitted: async (taskId) => { persistedTaskId = taskId; } }
+        {
+          onTaskSubmitted: async (taskId) => { persistedTaskId = taskId; },
+          onCharged: (evidence) => { chargedEvidence = evidence; }
+        }
       );
       assert.equal(persistedTaskId, "h3-task-1", "task id must be exposed for persistence before polling completes");
       assert.match(firstUrl, /^\/media\/videosbatch-h3-/);
       assert.equal(postRequests, 1);
+      // A successful generation is a charged one. Without this the only billing
+      // evidence a session produced would be its failures.
+      assert.deepEqual(
+        {
+          taskId: chargedEvidence?.taskId,
+          billingResult: chargedEvidence?.billingResult,
+          mediaUrl: chargedEvidence?.mediaUrl
+        },
+        { taskId: "h3-task-1", billingResult: "CHARGED", mediaUrl: firstUrl },
+        "a paid success must report its billing conclusion"
+      );
+      assert.ok((chargedEvidence?.byteSize || 0) > 0, "charged evidence must carry the submitted byte size");
 
       const resumedUrl = await generateShotVideoViaNewApiH3(
         { ...shot, generationTaskId: persistedTaskId, generationStartedAt: "2026-08-31T00:00:00.000Z" },
@@ -416,6 +494,59 @@ try {
         ),
         (error: unknown) => error instanceof NewApiH3SubmissionStateUnknownError && error.code === "H3_SUBMISSION_STATE_UNKNOWN"
       );
+      conflict = false;
+
+      // A failure reported after the task id exists can never prove the attempt was
+      // uncharged: the submission was already accepted upstream. Claiming NOT_CHARGED
+      // here would authorize a duplicate paid submission, so it must stay UNKNOWN.
+      taskFailedMode = true;
+      await assert.rejects(
+        () => generateShotVideoViaNewApiH3(
+          { ...shot, generationStartedAt: "2026-08-31T00:00:06.000Z" },
+          httpsOnlyAssets
+        ),
+        (error: unknown) => error instanceof NewApiH3ProviderError
+          && error.code === "H3_TASK_FAILED"
+          && error.status === 400
+          && error.taskId === "h3-failed-task"
+          && error.retryable === false
+          && error.billingResult === "UNKNOWN"
+          && error.responseMetadata?.status === 400,
+        "a post-submission failure must report an unknown billing outcome, never NOT_CHARGED"
+      );
+      taskFailedMode = false;
+
+      // The provider's own verdict is authoritative when it publishes one, and it only
+      // ever affects accounting: it must not by itself re-open automatic retries.
+      taskFailedDeclaredMode = true;
+      await assert.rejects(
+        () => generateShotVideoViaNewApiH3(
+          { ...shot, generationStartedAt: "2026-08-31T00:00:07.000Z" },
+          httpsOnlyAssets
+        ),
+        (error: unknown) => error instanceof NewApiH3ProviderError
+          && error.code === "H3_TASK_FAILED"
+          && error.billingResult === "NOT_CHARGED"
+          && error.retryable === false,
+        "an explicit provider billing verdict must override the local inference without loosening retry"
+      );
+      taskFailedDeclaredMode = false;
+
+      // A provider streaming an oversized diagnostic body must not be able to force
+      // unbounded buffering; the message degrades to the status instead.
+      hugeErrorMode = true;
+      await assert.rejects(
+        () => generateShotVideoViaNewApiH3(
+          { ...shot, generationStartedAt: "2026-08-31T00:00:08.000Z" },
+          httpsOnlyAssets
+        ),
+        (error: unknown) => error instanceof NewApiH3ProviderError
+          && error.code === "H3_TASK_FAILED"
+          && /HTTP 400/u.test(error.message)
+          && error.billingResult === "UNKNOWN",
+        "an oversized error body must degrade to a status-derived message"
+      );
+      hugeErrorMode = false;
     } finally {
       globalThis.fetch = originalFetch;
     }

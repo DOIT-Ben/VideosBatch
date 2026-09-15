@@ -28,6 +28,15 @@ export interface VideosBatchReferenceBinding {
 
 type VideosBatchPromptRendering = "full" | "compact";
 
+/**
+ * Billing conclusion for one provider attempt, in the same vocabulary FrameFlow's
+ * `ProviderApiError` uses. `NOT_CHARGED` means the attempt provably did not bill, so a
+ * retry is safe; `CHARGED` means it did and a retry would bill twice; `UNKNOWN` means
+ * only the provider can say. Kept in the shared domain module so the persisted render
+ * record and the server-side adapter cannot drift apart.
+ */
+export type VideosBatchBillingResult = "NOT_CHARGED" | "CHARGED" | "UNKNOWN";
+
 declare module "./types" {
   interface Asset {
     /** Stable VideosBatch business reference such as P001-A001. Native Asset.id remains runtime-owned. */
@@ -58,6 +67,12 @@ declare module "./types" {
     videosBatchBatchId?: string;
     /** Exact ordered references submitted for this render, with URL and byte hashes only. */
     videosBatchReferenceBindings?: VideosBatchReferenceBinding[];
+    /**
+     * Billing conclusion for the paid attempt that produced this render. A successful
+     * generation is a charged one, so the success path records it here; otherwise the
+     * only billing evidence in a session would be its failures.
+     */
+    videosBatchBillingResult?: VideosBatchBillingResult;
   }
 
   interface StitchJob {

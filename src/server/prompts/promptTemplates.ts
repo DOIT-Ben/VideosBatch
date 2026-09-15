@@ -18,9 +18,11 @@ import { fileURLToPath } from "node:url";
  * `<contract_repair>` template in llmTextStages.ts (runtime-constructed fields).
  *
  * Versioning follows FrameFlow's `video-creation-prompts/registry.ts`: a skeleton
- * is an immutable asset pinned by content hash. Editing a template without bumping
- * its version and pinning the new hash fails fast, so what the model receives can
- * never change silently.
+ * is an immutable asset pinned by content hash, and a version is a real load
+ * dimension rather than a label. `loadPromptTemplate(name, version)` reads back the
+ * exact bytes a historical run was compiled from, so replaying an old session never
+ * silently substitutes today's instructions. Editing a template without publishing a
+ * new version and pinning its hash fails fast.
  */
 export const PROMPT_TEMPLATE_NAMES = [
   "videosbatch-intro-candidates",
@@ -35,6 +37,15 @@ export const PROMPT_TEMPLATE_NAMES = [
 
 type PromptTemplateName = (typeof PROMPT_TEMPLATE_NAMES)[number];
 
+/**
+ * Every published skeleton revision, oldest first. Adding a version here means the
+ * new revision has its own file on disk and its own pinned hashes; the previous
+ * revision's bytes stay where they are.
+ */
+export const PROMPT_TEMPLATE_VERSION_ORDER = ["v1.0.0"] as const;
+
+export type PromptTemplateVersion = (typeof PROMPT_TEMPLATE_VERSION_ORDER)[number];
+
 /** Current reviewed version of each skeleton. Bump it together with the hash pin. */
 export const PROMPT_TEMPLATE_VERSIONS = {
   "videosbatch-intro-candidates": "v1.0.0",
@@ -45,9 +56,7 @@ export const PROMPT_TEMPLATE_VERSIONS = {
   "videosbatch-copyable-prompt": "v1.0.0",
   "short-film-outline": "v1.0.0",
   "short-film-casting": "v1.0.0"
-} as const satisfies Record<PromptTemplateName, string>;
-
-export type PromptTemplateVersion = (typeof PROMPT_TEMPLATE_VERSIONS)[PromptTemplateName];
+} as const satisfies Record<PromptTemplateName, PromptTemplateVersion>;
 
 /**
  * SHA-256 of the normalized template body (LF line endings, no trailing newline).
@@ -65,11 +74,40 @@ export const PROMPT_TEMPLATE_HASHES = {
   "short-film-casting": "05aa7c948a3f727fb9fb86bc7032cf8f71fafabb6f452e3d226452cf4b5f84c2"
 } as const satisfies Record<PromptTemplateName, string>;
 
-const cache = new Map<PromptTemplateName, string>();
+/**
+ * Hashes stay adjacent to every version, exactly like FrameFlow's
+ * `..._HASHES_BY_VERSION`: publishing a revision means adding a full table for it
+ * (spread the previous table and override what changed) so a version can never be
+ * loaded without a pin.
+ */
+export const PROMPT_TEMPLATE_HASHES_BY_VERSION = {
+  "v1.0.0": PROMPT_TEMPLATE_HASHES
+} as const satisfies Readonly<Record<PromptTemplateVersion, Readonly<Record<PromptTemplateName, string>>>>;
 
-function templatePath(name: PromptTemplateName): string {
+const cache = new Map<string, string>();
+
+function isKnownPromptTemplateVersion(value: string): value is PromptTemplateVersion {
+  return (PROMPT_TEMPLATE_VERSION_ORDER as readonly string[]).includes(value);
+}
+
+function isRegisteredPromptTemplateName(value: string): value is PromptTemplateName {
+  return (PROMPT_TEMPLATE_NAMES as readonly string[]).includes(value);
+}
+
+/**
+ * Relative path of one template revision. The current revision keeps the historical
+ * flat path; every earlier revision lives under `history/<name>/` and must still be
+ * present on disk. Exported so the contract can be asserted without writing fixtures.
+ */
+export function promptTemplateRelativePath(name: PromptTemplateName, version: PromptTemplateVersion): string {
+  return version === PROMPT_TEMPLATE_VERSIONS[name]
+    ? `${name}.md`
+    : `history/${name}/${version}.md`;
+}
+
+function templatePath(name: PromptTemplateName, version: PromptTemplateVersion): string {
   if (!/^[a-z0-9][a-z0-9-]*$/u.test(name)) throw new Error(`Invalid prompt template name: ${name}`);
-  return fileURLToPath(new URL(`./${name}.md`, import.meta.url));
+  return fileURLToPath(new URL(`./${promptTemplateRelativePath(name, version)}`, import.meta.url));
 }
 
 export function normalizePromptTemplateBody(raw: string): string {
@@ -81,42 +119,69 @@ export function hashPromptTemplateContent(content: string): string {
 }
 
 /**
- * Normalize a template body and verify it against the pinned hash. Exported so the
- * smoke can exercise the drift rejection without editing files on disk.
+ * Normalize a template body and verify it against the pinned hash for `version`.
+ * Exported so the smoke can exercise drift rejection without editing files on disk.
  */
-export function assertPromptTemplateIntegrity(name: PromptTemplateName, raw: string): string {
+export function assertPromptTemplateIntegrity(
+  name: PromptTemplateName,
+  raw: string,
+  version: PromptTemplateVersion = PROMPT_TEMPLATE_VERSIONS[name]
+): string {
   const normalized = normalizePromptTemplateBody(raw);
-  if (!normalized.trim()) throw new Error(`Prompt template is empty: src/server/prompts/${name}.md`);
-  const pinned = PROMPT_TEMPLATE_HASHES[name];
+  if (!normalized.trim()) {
+    throw new Error(`Prompt template is empty: src/server/prompts/${promptTemplateRelativePath(name, version)}`);
+  }
+  const pinned = PROMPT_TEMPLATE_HASHES_BY_VERSION[version]?.[name];
+  if (!pinned) throw new Error(`Prompt template ${name} has no pinned hash for version ${version}`);
   const actual = hashPromptTemplateContent(normalized);
   if (pinned !== actual) {
     throw new Error(
-      `Prompt template hash drift: src/server/prompts/${name}.md\n`
-      + `  pinned ${PROMPT_TEMPLATE_VERSIONS[name]}: ${pinned}\n`
+      `Prompt template hash drift: src/server/prompts/${promptTemplateRelativePath(name, version)}\n`
+      + `  pinned ${version}: ${pinned}\n`
       + `  actual: ${actual}\n`
-      + "Editing a prompt skeleton requires bumping PROMPT_TEMPLATE_VERSIONS and pinning the new hash in promptTemplates.ts."
+      + "Editing a prompt skeleton requires publishing a new PROMPT_TEMPLATE_VERSION_ORDER entry, "
+      + "keeping the previous revision on disk, and pinning the new hash in promptTemplates.ts."
     );
   }
   return normalized;
 }
 
-export function loadPromptTemplate(name: PromptTemplateName): string {
-  const cached = cache.get(name);
+/**
+ * Load one skeleton revision. Defaults to the template's current version; pass an
+ * explicit version to read back what a historical run used. An unpublished version
+ * fails fast instead of falling back to the current text, because silently loading
+ * different instructions is the exact failure versioning exists to prevent.
+ */
+export function loadPromptTemplate(
+  name: PromptTemplateName,
+  version?: PromptTemplateVersion
+): string {
+  if (!isRegisteredPromptTemplateName(name)) {
+    throw new Error(`Prompt template is missing or unreadable: src/server/prompts/${String(name)}.md`);
+  }
+  const target = version ?? PROMPT_TEMPLATE_VERSIONS[name];
+  if (!isKnownPromptTemplateVersion(target)) {
+    throw new Error(
+      `Unknown prompt template version: ${target}. Known versions: ${PROMPT_TEMPLATE_VERSION_ORDER.join(", ")}.`
+    );
+  }
+  const cacheKey = `${target}:${name}`;
+  const cached = cache.get(cacheKey);
   if (cached !== undefined) return cached;
   let raw: string;
   try {
-    raw = readFileSync(templatePath(name), "utf8");
+    raw = readFileSync(templatePath(name, target), "utf8");
   } catch {
-    throw new Error(`Prompt template is missing or unreadable: src/server/prompts/${name}.md`);
+    throw new Error(`Prompt template is missing or unreadable: src/server/prompts/${promptTemplateRelativePath(name, target)}`);
   }
-  const normalized = assertPromptTemplateIntegrity(name, raw);
-  cache.set(name, normalized);
+  const normalized = assertPromptTemplateIntegrity(name, raw, target);
+  cache.set(cacheKey, normalized);
   return normalized;
 }
 
 /**
- * Load and verify every registered template once. Use at startup or in smoke tests to
- * fail fast on a broken prompts directory.
+ * Load and verify every registered template at its current version once. Use at startup
+ * or in smoke tests to fail fast on a broken prompts directory.
  */
 export function warmPromptTemplates(): void {
   for (const name of PROMPT_TEMPLATE_NAMES) loadPromptTemplate(name);

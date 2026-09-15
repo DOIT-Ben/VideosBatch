@@ -5,7 +5,14 @@ import type { Asset, Shot } from "../../shared/types";
 import type { VideosBatchReferenceBinding } from "../../shared/videosBatchNativeProjection";
 import { mapWithConcurrency } from "./concurrency";
 import { H3_REFERENCE_FETCH_CONCURRENCY, h3ReferenceFile, type H3ReferenceFile } from "./h3ReferenceMedia";
-import { NewApiH3ProviderError, NewApiH3SubmissionStateUnknownError } from "./h3ProviderErrors";
+import {
+  h3DeclaredBillingResult,
+  h3ResponseMetadata,
+  NewApiH3ProviderError,
+  NewApiH3SubmissionStateUnknownError,
+  type H3BillingResult
+} from "./h3ProviderErrors";
+import { readBoundedResponseText } from "./boundedResponse";
 
 export { NewApiH3ProviderError, NewApiH3SubmissionStateUnknownError } from "./h3ProviderErrors";
 
@@ -24,6 +31,18 @@ const SIZE_BY_RATIO: Record<string, string> = {
   "21:9": "1568x672"
 };
 
+/**
+ * Evidence for a paid attempt that produced video bytes. FrameFlow carries the
+ * billing conclusion into every task it returns, so a successful run also reports
+ * what it cost; without this the success path leaves no billing record at all.
+ */
+export interface H3ChargedEvidence {
+  taskId: string;
+  billingResult: H3BillingResult;
+  byteSize: number;
+  mediaUrl: string;
+}
+
 interface NewApiH3GenerationOptions {
   taskId?: string | null;
   idempotencyKey?: string;
@@ -32,6 +51,8 @@ interface NewApiH3GenerationOptions {
   onReferenceBindingsPrepared?(bindings: VideosBatchReferenceBinding[]): Promise<void> | void;
   /** Called with the exact H3 prompt text, before the paid POST. */
   onPromptPrepared?(prompt: string): Promise<void> | void;
+  /** Called once the paid task produced video bytes, so the cost has a record. */
+  onCharged?(evidence: H3ChargedEvidence): Promise<void> | void;
 }
 
 type H3ReferenceEntry = {
@@ -221,19 +242,32 @@ function contentAddressFor(reference: H3ReferenceEntry) {
   };
 }
 
-async function responseMessage(response: Response) {
-  const text = await response.text().catch(() => "");
+/**
+ * Read a response body under a fixed ceiling and derive both the diagnostic message
+ * and the provider's declared billing verdict from a single bounded parse. An
+ * oversized or unreadable body degrades to a status-derived message.
+ */
+async function responseEvidence(response: Response): Promise<{ message: string; declared: H3BillingResult | undefined }> {
+  const text = await readBoundedResponseText(response).catch(() => null);
+  if (text === null) return { message: `HTTP ${response.status}`, declared: undefined };
+  let payload: Record<string, any> | undefined;
   try {
-    const payload = JSON.parse(text) as { error?: { message?: unknown }; message?: unknown };
-    const message = payload.error?.message ?? payload.message;
-    return typeof message === "string" ? message : text.slice(0, 300);
+    payload = JSON.parse(text) as Record<string, any>;
   } catch {
-    return text.slice(0, 300);
+    payload = undefined;
   }
+  const message = payload?.error?.message ?? payload?.message;
+  return {
+    message: typeof message === "string" ? message : text.slice(0, 300),
+    declared: h3DeclaredBillingResult(payload)
+  };
 }
 
 async function responsePayload(response: Response) {
-  const text = await response.text().catch(() => "");
+  const text = await readBoundedResponseText(response).catch(() => null);
+  // An unreadable or oversized body must never be mistaken for a usable payload:
+  // for a submission response that degrades to "no task id", which stops the retry.
+  if (text === null) return { message: `HTTP ${response.status}` } as Record<string, any>;
   try {
     return JSON.parse(text) as Record<string, any>;
   } catch {
@@ -315,6 +349,8 @@ export async function generateShotVideoViaNewApiH3(
   const timer = setTimeout(() => controller.abort(), Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 2_700_000);
   try {
     let taskId = String(options.taskId || "").trim();
+    /** Provider-declared verdict from the submission response, when it published one. */
+    let declaredBilling: H3BillingResult | undefined;
     if (!taskId) {
       const references = buildNewApiH3ReferencePlan(shot, assets);
       await resolveReferenceFiles(references, controller.signal);
@@ -361,8 +397,10 @@ export async function generateShotVideoViaNewApiH3(
       }
       const created = await responsePayload(createResponse);
       const returnedTaskId = payloadTaskId(created);
+      declaredBilling = h3DeclaredBillingResult(created);
       if (!createResponse.ok && createResponse.status !== 409) {
         // A 5xx response may still have created a task upstream; only 4xx proves rejection.
+        // The provider's own verdict wins when it publishes one.
         const rejected = createResponse.status < 500;
         throw new NewApiH3ProviderError(
           `NewAPI H3 提交失败：${payloadMessage(created)}`,
@@ -370,7 +408,10 @@ export async function generateShotVideoViaNewApiH3(
           !rejected,
           createResponse.status,
           undefined,
-          { billingResult: rejected ? "NOT_CHARGED" : "UNKNOWN" }
+          {
+            billingResult: declaredBilling ?? (rejected ? "NOT_CHARGED" : "UNKNOWN"),
+            responseMetadata: h3ResponseMetadata(createResponse, payloadMessage(created))
+          }
         );
       }
       if (!returnedTaskId) {
@@ -441,14 +482,51 @@ export async function generateShotVideoViaNewApiH3(
             { billingResult: "CHARGED" }
           );
         }
-        return `/media/${filename}`;
+        const mediaUrl = `/media/${filename}`;
+        // The bytes exist, so this attempt was paid for. Report it here so a successful
+        // run leaves the same billing evidence a failed one does; without this the only
+        // record of provider spend would be the failures.
+        try {
+          await options.onCharged?.({
+            taskId,
+            billingResult: declaredBilling ?? "CHARGED",
+            byteSize: bytes.length,
+            mediaUrl
+          });
+        } catch (error) {
+          // The video is already paid for and saved. Letting a bookkeeping failure escape
+          // as an ordinary error would clear the attempt marker and invite a second paid
+          // submission, so report it as charged and non-retryable, keeping both the task id
+          // and the saved path recoverable.
+          throw new NewApiH3ProviderError(
+            `NewAPI H3 视频已生成并保存至 ${mediaUrl}，但计费结论记录失败：${error instanceof Error ? error.message : String(error)}`,
+            "H3_BILLING_RECORD_FAILED",
+            false,
+            undefined,
+            taskId,
+            { billingResult: "CHARGED" }
+          );
+        }
+        return mediaUrl;
       }
       if (contentResponse.status === 400 || contentResponse.status === 409) {
-        const message = await responseMessage(contentResponse);
-        if (/IN_PROGRESS|not completed|处理中|processing/i.test(message)) continue;
-        throw new NewApiH3ProviderError(`NewAPI H3 任务失败：${message}`, "H3_TASK_FAILED", false, contentResponse.status, taskId, {
-          billingResult: "NOT_CHARGED"
-        });
+        const evidence = await responseEvidence(contentResponse);
+        if (/IN_PROGRESS|not completed|处理中|processing/i.test(evidence.message)) continue;
+        // The task id already exists, so the submission was accepted upstream and may
+        // well be billed. A failure here can never prove "not charged" by itself —
+        // claiming it would authorize a duplicate paid submission. Only the provider's
+        // own verdict may state that.
+        throw new NewApiH3ProviderError(
+          `NewAPI H3 任务失败：${evidence.message}`,
+          "H3_TASK_FAILED",
+          false,
+          contentResponse.status,
+          taskId,
+          {
+            billingResult: evidence.declared ?? "UNKNOWN",
+            responseMetadata: h3ResponseMetadata(contentResponse, evidence.message)
+          }
+        );
       }
       if (contentResponse.status === 202 || contentResponse.status === 404) continue;
       throw new NewApiH3ProviderError(

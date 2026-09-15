@@ -10,7 +10,38 @@
  * Kept in its own module so the reference-media fetcher can throw the same error type
  * without importing the orchestrator (which imports the fetcher).
  */
-export type H3BillingResult = "NOT_CHARGED" | "CHARGED" | "UNKNOWN";
+import type { VideosBatchBillingResult } from "../../shared/videosBatchNativeProjection";
+
+/**
+ * Billing conclusion vocabulary. Defined once in the shared domain module so the
+ * persisted render record and this adapter cannot drift; re-exported under the
+ * provider-facing name the H3 code uses.
+ */
+export type H3BillingResult = VideosBatchBillingResult;
+
+const H3_BILLING_RESULTS: readonly string[] = ["NOT_CHARGED", "CHARGED", "UNKNOWN"];
+
+/**
+ * The provider's own billing verdict, when it publishes one.
+ *
+ * FrameFlow treats `billing_result` as authoritative and falls back to a local
+ * inference only when the field is absent (`response.ts`), because whether a paid
+ * task was billed is a fact only the provider can state. An unrecognised value is
+ * ignored rather than coerced, so a malformed field can never be read as
+ * "not charged". Both the bare body and its `data` wrapper are inspected.
+ */
+export function h3DeclaredBillingResult(payload: unknown): H3BillingResult | undefined {
+  if (!payload || typeof payload !== "object") return undefined;
+  const body = payload as Record<string, unknown>;
+  const nested = body.data && typeof body.data === "object" ? (body.data as Record<string, unknown>) : undefined;
+  for (const source of nested ? [body, nested] : [body]) {
+    const value = source.billing_result ?? source.billingResult;
+    if (typeof value !== "string") continue;
+    const normalized = value.trim().toUpperCase();
+    if (H3_BILLING_RESULTS.includes(normalized)) return normalized as H3BillingResult;
+  }
+  return undefined;
+}
 
 export interface H3ResponseMetadata {
   status: number;

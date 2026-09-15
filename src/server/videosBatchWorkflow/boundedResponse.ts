@@ -6,6 +6,33 @@ export class ResponseBodyLimitError extends Error {
 }
 
 /**
+ * Ceiling for error and JSON payload bodies. FrameFlow bounds the same read with
+ * the same 64 KiB cap (`MAX_ERROR_BODY_BYTES` in its H3 transport); an error body
+ * is diagnostic text, so a provider streaming megabytes of it must not be able to
+ * grow our heap.
+ */
+export const MAX_BOUNDED_RESPONSE_TEXT_BYTES = 64 * 1024;
+
+/**
+ * Decode a response body under a byte ceiling. Returns `null` when the body exceeds
+ * the ceiling so callers fall back to a status-derived message instead of buffering
+ * unbounded text. Never trusts `content-length` on its own — the bound is enforced
+ * against actual decoded bytes by {@link readBoundedResponseBytes}.
+ */
+export async function readBoundedResponseText(
+  response: Response,
+  maxBytes: number = MAX_BOUNDED_RESPONSE_TEXT_BYTES,
+  signal?: AbortSignal
+): Promise<string | null> {
+  try {
+    return new TextDecoder().decode(await readBoundedResponseBytes(response, maxBytes, signal));
+  } catch (error) {
+    if (error instanceof ResponseBodyLimitError) return null;
+    throw error;
+  }
+}
+
+/**
  * Bound application buffering by actual decoded body bytes, never by a trusted header.
  *
  * Mirrors FrameFlow's `src/lib/http/bounded-response.ts` so both workstations fail the

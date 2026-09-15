@@ -44,6 +44,7 @@ import {
   resolveMiniMaxTtsConfig,
   synthesizeMiniMaxSpeech
 } from "./minimaxTts";
+import type { H3ChargedEvidence } from "./newApiH3Video";
 
 /**
  * The AUDIO_DELIVERY artifact records which provider actually produced the speech
@@ -143,6 +144,8 @@ export interface VideosBatchNativeMediaDeps {
       onProviderReferenceBindingsPrepared?(bindings: VideosBatchReferenceBinding[]): Promise<void> | void;
       /** Capture the exact compiled provider prompt before a provider POST. */
       onProviderPromptPrepared?(prompt: string): Promise<void> | void;
+      /** Record the billing conclusion once paid bytes exist. */
+      onProviderCharged?(evidence: H3ChargedEvidence): Promise<void> | void;
     }
   ): Promise<string>;
   cacheGeneratedVideo(url: string, renderId: string): Promise<NativeCachedVideoResult>;
@@ -176,7 +179,8 @@ export const defaultVideosBatchNativeMediaDeps: VideosBatchNativeMediaDeps = {
     taskId: options?.taskId,
     onProviderTaskSubmitted: options?.onProviderTaskSubmitted,
     onProviderReferenceBindingsPrepared: options?.onProviderReferenceBindingsPrepared,
-    onProviderPromptPrepared: options?.onProviderPromptPrepared
+    onProviderPromptPrepared: options?.onProviderPromptPrepared,
+    onProviderCharged: options?.onProviderCharged
   }),
   cacheGeneratedVideo,
   probeVideoDuration: async (url) => {
@@ -1311,6 +1315,7 @@ export function createVideosBatchNativeMediaStageRegistry(
 
           const activeAssets = store.getAssetsForShot(current);
           let submittedPrompt: string | undefined;
+          let charged: H3ChargedEvidence | undefined;
           const remoteUrl = assertRealMediaUrl(
             await deps.generateShotVideo(current, activeAssets, {
               taskId: current.generationTaskId,
@@ -1323,6 +1328,9 @@ export function createVideosBatchNativeMediaStageRegistry(
               },
               onProviderPromptPrepared: (prompt) => {
                 submittedPrompt = prompt;
+              },
+              onProviderCharged: (evidence) => {
+                charged = evidence;
               },
               onProviderTaskSubmitted: async (taskId) => {
                 const persisted = await store.updateShot(current.id, {
@@ -1361,6 +1369,9 @@ export function createVideosBatchNativeMediaStageRegistry(
               ? structuredClone(current.videosBatchReferenceBindings)
               : undefined,
             composedPrompt: submittedPrompt || current.rawPrompt || current.prompt,
+            // The paid attempt succeeded, so this render records what it billed. Without
+            // it the only billing evidence in the system would be the failures.
+            videosBatchBillingResult: charged?.billingResult,
             generationTaskId: current.generationTaskId,
             generationStartedAt,
             videosBatchBatchId: batch.batchId,

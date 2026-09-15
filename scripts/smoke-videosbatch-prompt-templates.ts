@@ -6,8 +6,11 @@ import {
   hashPromptTemplateContent,
   normalizePromptTemplateBody,
   PROMPT_TEMPLATE_HASHES,
+  PROMPT_TEMPLATE_HASHES_BY_VERSION,
   PROMPT_TEMPLATE_NAMES,
+  PROMPT_TEMPLATE_VERSION_ORDER,
   PROMPT_TEMPLATE_VERSIONS,
+  promptTemplateRelativePath,
   loadPromptTemplate,
   warmPromptTemplates
 } from "../src/server/prompts/promptTemplates";
@@ -137,4 +140,52 @@ assert.equal(
   "an unedited template must pass the integrity gate"
 );
 
-console.log(`ok: ${names.length} prompt templates, registry↔directory aligned, anchors intact, version+hash pinned, consumers wired`);
+// 9. A version is a load dimension, not a label (ADR-0001 P2-R). A historical run must
+//    be able to read back the exact skeleton it was compiled from, and an unpublished
+//    version must never silently substitute today's instructions.
+assert.deepEqual(
+  [...PROMPT_TEMPLATE_VERSION_ORDER].slice().sort(),
+  Array.from(new Set(Object.values(PROMPT_TEMPLATE_VERSIONS))).sort(),
+  "every version in use must be published in PROMPT_TEMPLATE_VERSION_ORDER"
+);
+assert.deepEqual(
+  Object.keys(PROMPT_TEMPLATE_HASHES_BY_VERSION).slice().sort(),
+  [...PROMPT_TEMPLATE_VERSION_ORDER].slice().sort(),
+  "every published version must carry a hash table"
+);
+for (const version of PROMPT_TEMPLATE_VERSION_ORDER) {
+  assert.deepEqual(
+    Object.keys(PROMPT_TEMPLATE_HASHES_BY_VERSION[version]).slice().sort(),
+    names.slice().sort(),
+    `version ${version} must pin every registered template`
+  );
+}
+assert.equal(
+  PROMPT_TEMPLATE_HASHES_BY_VERSION[PROMPT_TEMPLATE_VERSIONS[pinnedTemplate]],
+  PROMPT_TEMPLATE_HASHES,
+  "the current version's table must be the exported current-version pin"
+);
+for (const name of names) {
+  assert.equal(
+    loadPromptTemplate(name, PROMPT_TEMPLATE_VERSIONS[name]),
+    loadPromptTemplate(name),
+    `${name} must load identically through its explicit current version`
+  );
+  assert.equal(
+    promptTemplateRelativePath(name, PROMPT_TEMPLATE_VERSIONS[name]),
+    `${name}.md`,
+    `${name} current revision must keep the historical flat path`
+  );
+}
+assert.throws(
+  () => loadPromptTemplate(pinnedTemplate, "v9.9.9" as Parameters<typeof loadPromptTemplate>[1]),
+  /Unknown prompt template version/u,
+  "an unpublished version must fail fast rather than fall back to the current skeleton"
+);
+assert.equal(
+  promptTemplateRelativePath(pinnedTemplate, "v9.9.9" as Parameters<typeof loadPromptTemplate>[1]),
+  `history/${pinnedTemplate}/v9.9.9.md`,
+  "historical revisions must resolve under prompts/history/<name>/<version>.md"
+);
+
+console.log(`ok: ${names.length} prompt templates, registry↔directory aligned, anchors intact, version+hash pinned, versioned readback wired, consumers wired`);
