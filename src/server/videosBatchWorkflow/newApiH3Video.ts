@@ -38,7 +38,7 @@ type H3ReferenceEntry = {
   asset: Asset;
   binding: VideosBatchReferenceBinding;
   candidates: string[];
-  file?: File;
+  prepared?: H3ReferenceFile;
   submittedUrl?: string;
 };
 
@@ -201,8 +201,24 @@ function auditBindings(entries: readonly H3ReferenceEntry[]) {
     ordinal: entry.binding.ordinal,
     assetKey: entry.binding.assetKey,
     assetId: entry.binding.assetId,
-    imageUrlHash: imageUrlHash(entry.submittedUrl || entry.candidates[0] || "")
+    imageUrlHash: imageUrlHash(entry.submittedUrl || entry.candidates[0] || ""),
+    ...(entry.prepared ? { bytesSha256: entry.prepared.bytesSha256, byteSize: entry.prepared.byteSize } : {})
   }));
+}
+
+/**
+ * Carry whatever content address the run actually produced, falling back to a
+ * pre-existing snapshot value so a failed fetch cannot erase a good fingerprint.
+ */
+function contentAddressFor(reference: H3ReferenceEntry) {
+  const bytesSha256 = reference.prepared?.bytesSha256 ?? reference.binding.bytesSha256;
+  const byteSize = reference.prepared?.byteSize ?? reference.binding.byteSize;
+  const mimeType = reference.prepared?.mimeType ?? reference.binding.mimeType;
+  return {
+    ...(bytesSha256 ? { bytesSha256 } : {}),
+    ...(byteSize !== undefined ? { byteSize } : {}),
+    ...(mimeType ? { mimeType } : {})
+  };
 }
 
 async function responseMessage(response: Response) {
@@ -267,16 +283,20 @@ async function resolveReferenceFiles(
       if (lastError instanceof Error) throw lastError;
       throw unchargedError(`NewAPI H3 第 ${index + 1} 张参考图不可读取`, "INVALID_REFERENCE_IMAGE");
     }
-    if (reference.binding.imageUrlHash && reference.binding.imageUrlHash !== imageUrlHash(submittedUrl)) {
+    // Both fingerprints are checked when present. The byte hash catches a URL whose
+    // content changed; the URL hash still refuses a silently substituted address.
+    const snapshot = reference.binding;
+    if ((snapshot.imageUrlHash && snapshot.imageUrlHash !== imageUrlHash(submittedUrl))
+      || (snapshot.bytesSha256 && snapshot.bytesSha256 !== prepared.bytesSha256)) {
       throw unchargedError(
-        `NewAPI H3 第 ${index + 1} 张参考图与已保存快照不一致，请重新确认资产后再试`,
+        `NewAPI H3 第 ${index + 1} 张参考图的 URL 或字节内容与已保存快照不一致，请重新确认资产后再试`,
         "H3_REFERENCE_SNAPSHOT_MISMATCH"
       );
     }
     return { reference, prepared, submittedUrl };
   });
   for (const item of resolved) {
-    item.reference.file = item.prepared.file;
+    item.reference.prepared = item.prepared;
     item.reference.submittedUrl = item.submittedUrl;
   }
 }
@@ -300,7 +320,8 @@ export async function generateShotVideoViaNewApiH3(
       await resolveReferenceFiles(references, controller.signal);
       const preparedBindings = references.map((reference) => ({
         ...reference.binding,
-        imageUrlHash: imageUrlHash(reference.submittedUrl || reference.candidates[0] || "")
+        imageUrlHash: imageUrlHash(reference.submittedUrl || reference.candidates[0] || ""),
+        ...contentAddressFor(reference)
       }));
       await options.onReferenceBindingsPrepared?.(preparedBindings);
       console.info(`[videosbatch-h3] reference bindings ${JSON.stringify(auditBindings(references))}`);
@@ -314,10 +335,10 @@ export async function generateShotVideoViaNewApiH3(
       form.set("size", size);
       form.set("prompt_enhance", "false");
       for (const reference of references) {
-        if (!reference.file) {
+        if (!reference.prepared) {
           throw unchargedError(`NewAPI H3 第 ${reference.binding.ordinal} 张参考图未准备完成`, "H3_REFERENCE_PLAN_INVALID");
         }
-        form.append("images", reference.file, reference.file.name);
+        form.append("images", reference.prepared.file, reference.prepared.file.name);
       }
 
       let createResponse: Response;

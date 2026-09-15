@@ -255,6 +255,37 @@ try {
       ], "multipart files must follow the same ordinal list as the prompt");
       assert.deepEqual(preparedBindings.map((binding) => binding.ordinal), [1, 2]);
       assert.ok(preparedBindings.every((binding) => /^[a-f0-9]{64}$/u.test(binding.imageUrlHash || "")));
+      assert.deepEqual(
+        preparedBindings.map((binding) => ({
+          byteSize: binding.byteSize,
+          mimeType: binding.mimeType,
+          bytesSha256: binding.bytesSha256
+        })),
+        [
+          { byteSize: 3, mimeType: "image/png", bytesSha256: createHash("sha256").update(Buffer.from([2, 2, 2])).digest("hex") },
+          { byteSize: 3, mimeType: "image/png", bytesSha256: createHash("sha256").update(Buffer.from([1, 1, 1])).digest("hex") }
+        ],
+        "the persisted snapshot must content-address the exact submitted bytes"
+      );
+      // A URL whose bytes changed must be refused before the POST rather than silently
+      // regenerating with new content; this is what the byte fingerprint is for.
+      await assert.rejects(
+        () => generateShotVideoViaNewApiH3(
+          {
+            ...bindingShot,
+            videosBatchReferenceBindings: [
+              { ...bindingShot.videosBatchReferenceBindings[0], bytesSha256: "0".repeat(64) },
+              bindingShot.videosBatchReferenceBindings[1]
+            ]
+          },
+          bindingAssets
+        ),
+        (error: unknown) => error instanceof NewApiH3ProviderError
+          && error.code === "H3_REFERENCE_SNAPSHOT_MISMATCH"
+          && error.retryable === false
+          && error.billingResult === "NOT_CHARGED",
+        "a changed byte fingerprint must fail uncharged before the paid POST"
+      );
     } finally {
       globalThis.fetch = bindingOriginalFetch;
       if (bindingOldBase === undefined) delete process.env.VIDEOSBATCH_H3_BASE_URL;

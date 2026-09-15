@@ -19,6 +19,9 @@ import {
 } from "../../shared/videosBatchWorkflow";
 
 const HASH_PATTERN = /^[a-f0-9]{64}$/u;
+
+/** Content type allow-list shared with the H3 reference fetcher. */
+const REFERENCE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 const CHAPTER_PATTERN = /^第\d+章$/u;
 const TIME_RANGE_PATTERN = /^(\d+(?:\.\d+)?)\s*[-至]\s*(\d+(?:\.\d+)?)(?:秒|s)$/u;
 const DURATION_TOLERANCE_SEC = 1e-6;
@@ -56,6 +59,10 @@ export interface ShotExecutionReferenceBindingInput {
   assetId?: unknown;
   selectedAssetId?: unknown;
   imageUrlHash?: unknown;
+  /** Content address of the exact submitted bytes; catches a URL whose content changed. */
+  bytesSha256?: unknown;
+  byteSize?: unknown;
+  mimeType?: unknown;
   /** Accepted only to derive imageUrlHash; the URL is never persisted. */
   imageUrl?: unknown;
 }
@@ -641,6 +648,15 @@ export function validateShotExecutionPackage(
       if (reference.imageUrlHash !== undefined && (typeof reference.imageUrlHash !== "string" || !HASH_PATTERN.test(text(reference.imageUrlHash)))) {
         push(`references[${index}].imageUrlHash must be a lowercase SHA-256 hash when present`);
       }
+      if (reference.bytesSha256 !== undefined && (typeof reference.bytesSha256 !== "string" || !HASH_PATTERN.test(text(reference.bytesSha256)))) {
+        push(`references[${index}].bytesSha256 must be a lowercase SHA-256 hash when present`);
+      }
+      if (reference.byteSize !== undefined && (!Number.isSafeInteger(reference.byteSize) || Number(reference.byteSize) <= 0)) {
+        push(`references[${index}].byteSize must be a positive integer when present`);
+      }
+      if (reference.mimeType !== undefined && !REFERENCE_MIME_TYPES.has(text(reference.mimeType))) {
+        push(`references[${index}].mimeType must be a supported image content type when present`);
+      }
     });
   }
 
@@ -794,13 +810,21 @@ function buildReferences(
       : typeof binding.imageUrl === "string" && text(binding.imageUrl)
         ? hashRawText(text(binding.imageUrl))
         : undefined;
+    // Preserve the content address when the caller already resolved exact bytes;
+    // this package is the lineage record the media stage re-verifies before paying.
+    const bytesSha256 = hasOwn(binding, "bytesSha256") ? binding.bytesSha256 : undefined;
+    const byteSize = hasOwn(binding, "byteSize") ? binding.byteSize : undefined;
+    const mimeType = hasOwn(binding, "mimeType") ? binding.mimeType : undefined;
     result.push({
       referenceId: (hasOwn(binding, "referenceId") ? binding.referenceId : reference.referenceId) as string,
       ordinal: (hasOwn(binding, "ordinal") ? binding.ordinal : index + 1) as number,
       assetKey: (hasOwn(binding, "assetKey") ? binding.assetKey : reference.assetKey) as string,
       semanticLabel: (bindingSemanticLabel !== undefined ? bindingSemanticLabel : reference.label) as string,
       assetId: (bindingAssetId !== undefined ? bindingAssetId : reference.assetId) as string,
-      ...(imageUrlHash !== undefined ? { imageUrlHash: imageUrlHash as string } : {})
+      ...(imageUrlHash !== undefined ? { imageUrlHash: imageUrlHash as string } : {}),
+      ...(bytesSha256 !== undefined ? { bytesSha256: bytesSha256 as string } : {}),
+      ...(byteSize !== undefined ? { byteSize: byteSize as number } : {}),
+      ...(mimeType !== undefined ? { mimeType: mimeType as string } : {})
     });
   }
   if (usedIndexes.size !== provided.length) {

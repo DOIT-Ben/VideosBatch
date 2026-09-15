@@ -91,9 +91,17 @@ Delivery record: 本文件同时承担 ADR、Phase Plan 与 Evidence（本仓库
 | 阶段 | 状态 | 提交 | 证据 |
 | --- | --- | --- | --- |
 | 回退 FrameFlow | DONE | —（FrameFlow 不在本仓库） | 全库检索零残留 |
-| P0 | IN_PROGRESS | — | — |
-| P1 | PENDING | — | — |
+| P0 | DONE | `27edd90` | `tsc --noEmit` 通过；`smoke:videosbatch-newapi-h3` / `native-media-stages` / `native-media-resilience` / `shot-execution-package` / `specs` / `doc-consistency` / `secrets` 全绿 |
+| P1 | IN_PROGRESS | — | — |
 | P2 | PENDING | — | — |
+
+### 分支记录（偏离默认串行 main 约定）
+
+本仓库当前规范工作树停在本地分支 `feature/videosbatch-audio-readiness-gate`（无上游，领先 `master` 28 个提交），仓库内既无 `main` 也无 `docs/adr` 先例；本 ADR 之前的四次提交（`2ae3e47`、`cc18dfc`、`bddb79e`、`ce75991`）同样落在该分支上。
+
+- **决定**：P0–P2 继续在该分支上串行提交，不新建阶段分支或工作树，也不切到 `master`——切换会丢掉 28 个提交的在途上下文，且在共用仓库上单方面换分支风险高于收益。
+- **边界**：本地提交＝本地交付。推送到远端或并入 `master` 需要用户单独授权，不在本 ADR 范围内。阶段提交保持精确文件范围，不用 `git add -A`。
+- **后续**：如需并入 `master`，按仓库既有的分支流程另开一次显式操作。
 
 ## 10. Open Questions
 

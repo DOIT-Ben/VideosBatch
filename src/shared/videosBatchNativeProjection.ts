@@ -4,6 +4,12 @@ import "./types";
  * One immutable VideosBatch reference binding. `ordinal` is the provider-facing
  * 1-based position; the other fields keep the business identity and a
  * redacted audit fingerprint without putting stable public ids in provider text.
+ *
+ * `imageUrlHash` proves *which URL* was submitted; `bytesSha256` proves *which
+ * bytes*. The two are not interchangeable: a URL can keep its address while its
+ * content changes (re-signed CDN object, re-uploaded asset), and only the
+ * content address catches that before a paid generation. Fields are optional so
+ * snapshots written before this contract still load and still resume polling.
  */
 export interface VideosBatchReferenceBinding {
   referenceId: string;
@@ -12,6 +18,12 @@ export interface VideosBatchReferenceBinding {
   assetId: string;
   semanticLabel: string;
   imageUrlHash?: string;
+  /** SHA-256 of the exact submitted bytes. */
+  bytesSha256?: string;
+  /** Length of the exact submitted bytes. */
+  byteSize?: number;
+  /** Submitted content type, from the response header or the local extension. */
+  mimeType?: string;
 }
 
 type VideosBatchPromptRendering = "full" | "compact";
@@ -44,7 +56,7 @@ declare module "./types" {
   interface ShotRender {
     /** Snapshot of the VideosBatch storyboard batch that produced this render. */
     videosBatchBatchId?: string;
-    /** Exact ordered references submitted for this render, with URL hashes only. */
+    /** Exact ordered references submitted for this render, with URL and byte hashes only. */
     videosBatchReferenceBindings?: VideosBatchReferenceBinding[];
   }
 

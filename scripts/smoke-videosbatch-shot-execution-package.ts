@@ -1,4 +1,5 @@
 import { strict as assert } from "node:assert";
+import { createHash } from "node:crypto";
 import {
   buildShotExecutionPackageFromStoryboard,
   createShotExecutionPackage,
@@ -66,6 +67,61 @@ for (const storyType of ["STORY", "SCIENCE", "KNOWLEDGE"] as const) {
 
 const base = SHOT_EXECUTION_PACKAGE_FIXTURES.STORY;
 const baseInput = SHOT_EXECUTION_PACKAGE_FIXTURE_INPUTS.STORY;
+
+// ADR-0001 P1: the reference snapshot is content-addressed. A caller that already
+// resolved exact bytes must have them preserved in the package, and malformed
+// fingerprints must be rejected rather than silently dropped.
+const contentAddressedInput = {
+  finalStoryboard: baseInput.finalStoryboard,
+  segment: 1,
+  sourceRevision: 1,
+  screenplay: baseInput.screenplay,
+  assetPlan: baseInput.assetPlanStage,
+  assetPlanRevision: baseInput.assetPlanRevision,
+  assetPlanHash: baseInput.assetPlanHash,
+  expectedLineage: {
+    assetPlanRevision: baseInput.assetPlanRevision,
+    assetPlanHash: baseInput.assetPlanHash,
+    assetPlanStyleSpec: baseInput.assetPlan.styleSpec as string,
+    assetPlanNegativePrompt: baseInput.assetPlan.negativePrompt as string
+  }
+};
+const contentAddressed = buildShotExecutionPackageFromStoryboard({
+  ...contentAddressedInput,
+  referenceBindings: baseInput.referenceBindings.map((binding, index) => ({
+    ...binding,
+    bytesSha256: createHash("sha256").update(`bytes-${index}`).digest("hex"),
+    byteSize: 2048 + index,
+    mimeType: "image/png"
+  }))
+});
+assert.deepEqual(
+  contentAddressed.references.map((reference) => ({
+    bytesSha256: (reference as any).bytesSha256,
+    byteSize: (reference as any).byteSize,
+    mimeType: (reference as any).mimeType
+  })),
+  baseInput.referenceBindings.map((_, index) => ({
+    bytesSha256: createHash("sha256").update(`bytes-${index}`).digest("hex"),
+    byteSize: 2048 + index,
+    mimeType: "image/png"
+  })),
+  "resolved content addresses must survive into the execution package"
+);
+for (const broken of [
+  { bytesSha256: "not-a-hash", byteSize: 2048, mimeType: "image/png" },
+  { bytesSha256: createHash("sha256").update("x").digest("hex"), byteSize: 0, mimeType: "image/png" },
+  { bytesSha256: createHash("sha256").update("x").digest("hex"), byteSize: 2048, mimeType: "image/gif" }
+] as const) {
+  assert.throws(
+    () => buildShotExecutionPackageFromStoryboard({
+      ...contentAddressedInput,
+      referenceBindings: baseInput.referenceBindings.map((binding) => ({ ...binding, ...broken }))
+    } as any),
+    /bytesSha256|byteSize|mimeType/u,
+    `malformed reference content address must be rejected: ${JSON.stringify(broken)}`
+  );
+}
 const currentLineage = {
   sourceRevision: base.sourceRevision,
   sourceHash: base.sourceHash,

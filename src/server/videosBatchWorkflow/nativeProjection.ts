@@ -912,7 +912,12 @@ export async function applyConfirmedReferencesToNativeShots(
         assetKey: String(binding.assetKey),
         assetId: String(binding.assetId),
         semanticLabel: semanticDisplayText(binding.semanticLabel),
-        ...(previous?.imageUrlHash ? { imageUrlHash: previous.imageUrlHash } : {})
+        // Reprojection must not erase a resolved content address: the media stage
+        // re-verifies it against the exact bytes before any paid submission.
+        ...(previous?.imageUrlHash ? { imageUrlHash: previous.imageUrlHash } : {}),
+        ...(previous?.bytesSha256 ? { bytesSha256: previous.bytesSha256 } : {}),
+        ...(previous?.byteSize !== undefined ? { byteSize: previous.byteSize } : {}),
+        ...(previous?.mimeType ? { mimeType: previous.mimeType } : {})
       };
     });
     if (!bindings.length) throw new Error(`Final storyboard segment ${index + 1} has no resolvable confirmed asset references`);

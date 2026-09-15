@@ -187,6 +187,10 @@ export type ShotExecutionReference = {
   assetId: string;
   /** SHA-256 of the submitted image URL; the URL itself is never in the package. */
   imageUrlHash?: string;
+  /** SHA-256 of the exact submitted bytes; catches a URL whose content changed. */
+  bytesSha256?: string;
+  byteSize?: number;
+  mimeType?: string;
 };
 
 export interface ShotExecutionPackage {
