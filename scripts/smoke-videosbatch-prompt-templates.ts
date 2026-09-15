@@ -2,7 +2,12 @@ import { strict as assert } from "node:assert";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
+  assertPromptTemplateIntegrity,
+  hashPromptTemplateContent,
+  normalizePromptTemplateBody,
+  PROMPT_TEMPLATE_HASHES,
   PROMPT_TEMPLATE_NAMES,
+  PROMPT_TEMPLATE_VERSIONS,
   loadPromptTemplate,
   warmPromptTemplates
 } from "../src/server/prompts/promptTemplates";
@@ -86,4 +91,50 @@ assert.ok(generatorsSource.includes('loadPromptTemplate("short-film-outline")'),
 const indexSource = readFileSync(fileURLToPath(new URL("../src/server/index.ts", import.meta.url)), "utf8");
 assert.ok(indexSource.includes('loadPromptTemplate("short-film-casting")'), "index.ts must wire the casting prompt from the template registry");
 
-console.log(`ok: ${names.length} prompt templates, registry↔directory aligned, anchors intact, consumers wired`);
+// 8. Version + content-hash pins (ADR-0001 P2). A skeleton is an immutable asset:
+//    editing one without bumping its version and pinning the new hash must fail
+//    fast, because a silent prompt change silently changes every model output.
+assert.deepEqual(
+  Object.keys(PROMPT_TEMPLATE_VERSIONS).sort(),
+  names.slice().sort(),
+  "every registered template must declare a version"
+);
+assert.deepEqual(
+  Object.keys(PROMPT_TEMPLATE_HASHES).sort(),
+  names.slice().sort(),
+  "every registered template must pin a content hash"
+);
+for (const name of names) {
+  const content = loadPromptTemplate(name);
+  assert.match(PROMPT_TEMPLATE_VERSIONS[name], /^v\d+\.\d+\.\d+$/u, `${name} version must look like vX.Y.Z`);
+  assert.equal(
+    PROMPT_TEMPLATE_HASHES[name],
+    hashPromptTemplateContent(content),
+    `${name} pinned hash must equal the loaded template body`
+  );
+  assert.equal(
+    PROMPT_TEMPLATE_HASHES[name],
+    hashPromptTemplateContent(normalizePromptTemplateBody(readFileSync(`${promptsDir}${name}.md`, "utf8"))),
+    `${name} pinned hash must be derived from the normalized on-disk body`
+  );
+}
+// Positive control: the pin must actually discriminate a body edit, and the gate
+// must reject it. Without this, "the pin matches" could hold for a dead check.
+const pinnedTemplate = "videosbatch-asset-plan";
+assert.notEqual(
+  hashPromptTemplateContent(`${loadPromptTemplate(pinnedTemplate)} `),
+  PROMPT_TEMPLATE_HASHES[pinnedTemplate],
+  "the content hash must change when the template body changes"
+);
+assert.throws(
+  () => assertPromptTemplateIntegrity(pinnedTemplate, `${loadPromptTemplate(pinnedTemplate)} 新增一行`),
+  /hash drift/u,
+  "an unpinned template edit must be rejected instead of silently changing model input"
+);
+assert.equal(
+  assertPromptTemplateIntegrity(pinnedTemplate, readFileSync(`${promptsDir}${pinnedTemplate}.md`, "utf8")),
+  loadPromptTemplate(pinnedTemplate),
+  "an unedited template must pass the integrity gate"
+);
+
+console.log(`ok: ${names.length} prompt templates, registry↔directory aligned, anchors intact, version+hash pinned, consumers wired`);
