@@ -95,6 +95,7 @@ Delivery record: 本文件同时承担 ADR、Phase Plan 与 Evidence（本仓库
 | P1 | DONE | `6655455` | `tsc --noEmit` 通过；`smoke:videosbatch-newapi-h3` / `shot-execution-package` / `native-projection` / `native-media-stages` 全绿 |
 | P2 | DONE | `e8bf2de` | `tsc --noEmit` 通过；`smoke:videosbatch-prompt-templates` / `text-stage-specs` / `frameflow-canonical` / `llm-text-stages` 全绿 |
 | P0-R / P2-R / P4 | DONE | `a7f6d49` | 复审 D1/D2/D5 修复（见 §11 执行记录）；`tsc --noEmit` 通过；`smoke:videosbatch-newapi-h3` / `prompt-templates` / `doc-consistency` / `specs` 全绿；`npm run verify:offline` RC=0 |
+| 第二轮复审 | DONE | `da17298` | 扩大审查面后修 D7/D8、记录 D9（见 §12）；`tsc --noEmit` 通过；`smoke:videosbatch-native-media-resilience` / `newapi-h3` / `native-projection` / `store-save` / `secrets` 等全绿；`npm run verify:offline` RC=0 |
 | 全量门禁 | 见下 | — | `npm run verify:offline`（跑前已腾空 5173） |
 
 **证据口径说明（有意偏离）**：P0–P2 各自用 `tsc --noEmit` + 该阶段的定向 smoke 收口，全量 `verify:offline` 在三个阶段代码齐备后跑一次。理由：同一轮内三阶段改动文件基本不相交（仅 `newApiH3Video.ts` 被 P0/P1 先后触碰），一次全量门禁即覆盖三者的合计影响面，避免三次构建与约 90 个 smoke 的重复成本。若全量门禁出现失败，按失败项归属到对应阶段修复。
@@ -113,6 +114,7 @@ Delivery record: 本文件同时承担 ADR、Phase Plan 与 Evidence（本仓库
 - P3（结构化提示词文档 `promptDocument`）仍未授权，需要单独 ADR。
 - ~~见 §11：复审发现三条未修的偏差（D1 待授权修复、D2 待授权修复、D3 待裁定）。~~ **部分结项**：D1、D2、D5 已修复（`a7f6d49`，见 §11 执行记录）；D3（内联 data URL 参考图）仍待产品裁定，见 §11 末。
 - **待裁定**：D3——参考图是否需支持内联 `data:image/...;base64,`（当前只接受 HTTPS 与 `/media/`）。裁定后要么补 `inlineImageFile` 分支，要么在 spec 里固化「只接受落盘资产」。**未裁定前不动。**
+- **待授权**：D9——生成执行快照的「规范化 JSON + 载荷哈希 + 适配器版本闸」自校验层（见 §12）。规模较大，需另开阶段并单独授权。
 
 ## 11. 复审发现（2026-09-15 深度审查）
 
@@ -195,3 +197,40 @@ Phase Log 标 DONE 后，按要求做了一次不依赖本文档、直接对照�
 - **D3**：内联 `data:image/...;base64,` 参考图——属产品策略选择（见 §10 待裁定），未授权前不动。
 - **P3**（结构化提示词文档 `promptDocument`）：需单独 ADR。
 - **推送远端 / 并入 `master`**：见 §9 分支记录，需用户单独授权。
+
+## 12. 第二轮复审（2026-09-15，扩大审查面 · 提交 `da17298`）
+
+第一轮只审了 H3 适配器、参考图与骨架版本三个面。第二轮按原始对齐清单把**尚未覆盖的面**逐块对照 FrameFlow `bbb17414`：执行快照（`generation-execution-snapshot.ts`、`generations/runtime/*`）、计费证据累积（`response-metadata.ts`）、幂等（`client-idempotency.ts`）、诊断脱敏（`safeProviderDiagnosticMessage`）。
+
+### 复核通过项（无可执行动作）
+
+| 项 | 证据 |
+| --- | --- |
+| **提交幂等设计成立** | `newApiH3Video.ts:386` 的 `Idempotency-Key` = `videosbatch-<shotId>-<sha256(shotId + generationStartedAt)[:24]>`，键在付费 POST **之前**持久化（`nativeMediaStages.ts:1307`），恢复同一任务复用原键（`taskId` 存在时不清 `generationStartedAt`），只有**显式重试**才清 `generationStartedAt` 从而换新键。同内容重复提交会在 Provider 侧去重。**不加改动** |
+| 409 幂等冲突且未回原任务号 | 已由 `isUnknownSubmission` 的「幂等冲突且响应未返回原任务号」分支兜住，落到不可重试的未知态 |
+| 成功路径的计费证据 | 第一轮 P0-R 已把 `H3ChargedEvidence` 落到 `ShotRender.videosBatchBillingResult`，本轮确认每份 render 各带自己的结论、历史 render 不被覆盖 |
+| 失败分层与 `retryable` 解耦 | 计费结论只作记账；能否自动重试始终只由 `retryable` 决定 |
+
+### D7【高·D1 的镜像】失败路径丢弃计费结论，D1 的判定到不了持久化
+
+- **本仓**：`nativeMediaStages.ts` 的 `mediaError()` 只产出 `{code, message, retryable, attempt, provider, model?, taskId?}`，**没有 `billingResult`**；catch 块用 `patch.videosBatchError = info` 落库。于是适配器在错误对象上给出的 `billingResult`（第一轮 D1 的核心产出）在**持久化边界被丢掉**。
+- **FrameFlow**：`failGeneration(id, error, lease, billingResult: Exclude<ProviderBillingResult,'UNKNOWN'>, …)` —— 计费结论是**必填参数**且由 `mergeProviderBillingResult(generation.providerBillingResult, …)` **单调累积**到 `generation.providerBillingResult`；`UNKNOWN` 甚至被类型排除在 `failGeneration` 之外，必须走 `requireGenerationReconciliation` 的对账态。
+- **危害**：一次「可能已计费」的失败与一次「证明未计费」的失败在持久化状态里**完全同形**。D1 修好的结论只活在瞬时异常里——这与 D1 本身是同一类错误，只是发生在下一层。
+- **建议修复（已执行）**：`VideosBatchMediaError` 与 `Shot.videosBatchError` 增加 `billingResult`；`mediaError` 从错误对象读取并落库；落库前按 `CHARGED > NOT_CHARGED > UNKNOWN` **单调合并**（等价 `mergeProviderBillingResult`），已判 `CHARGED` 不被后续 `UNKNOWN` 抹掉。
+
+### D8【中·凭据卫生】Provider 诊断文本未脱敏 URL 与内联 data URL
+
+- **FrameFlow**：`safeProviderDiagnosticMessage` 依次剥掉 `Bearer`、`api_key|token|secret|password`、内联 `data:image/...;base64,…`、**全部 `http(s)://` URL**，再折叠空白并截断 500。
+- **本仓**：`nativeMediaStages.ts`、`api.ts`、`llmExecutor.ts` **三处各自**内联了同一对正则，且**只**处理 `Bearer` 与 `api_key|token|secret`——**不处理 URL，也不处理内联 data URL**。
+- **危害**：参考图是**签名 URL**，H3 的错误体常回显请求内容；`mediaError.message` 会进入 `Shot.error` 与 `videosBatchError.message` 长期存储。spec §7.7 已明文要求「请求日志…不记录签名 URL」，而错误消息这条通道没有同等约束——**同一份 spec 内部不自洽**，且三份实现会各自漂移。
+- **建议修复（已执行）**：抽出 `providerDiagnostics.ts` 的 `sanitizeProviderDiagnosticText()`（令牌 / 密钥 / 内联 data URL / URL，幂等），三处调用点统一改用它。
+
+### D9【中·能力缺口，未授权，仅记录】生成执行快照 schema
+
+- **FrameFlow**：`generation-execution-snapshot.ts` 用 zod 定义 `generationExecutionPayloadSchema`（`schemaVersion` / `publicModelId` / `runtimeModelId` / `creationMode` / `compiledPrompt` / `duration` / `aspectRatio` / `references[]`（`ordinal`+`role`+`storageKey`+`mimeType`+`byteSize`+`sha256`）/ 续写来源证据 / `segmentPlan`），配 `canonicalExecutionJson()`（键排序、禁 `undefined`）与 `executionPayloadSha256()`；`parseGenerationExecutionSnapshot()` 在读取时**重算哈希并逐字段校验**，再断言 `adapterKey:adapterVersion` 仍在能力矩阵内。
+- **本仓**：`shotExecutionPackage.ts` 有 schema 版本、有引用内容寻址（`bytesSha256`/`byteSize`/`mimeType`），但**没有**「规范化 JSON → 载荷哈希」这一自校验层，也没有 `adapterKey`/`adapterVersion` 版本闸。
+- **判定**：这是**规模较大的能力缺口**（涉及新契约 + 迁移 + 全链读写），不是一行修复。按 §6 边界**本轮只记录不动**，需要时另开阶段（建议命名 P5）并单独授权。
+
+### 结论
+
+第二轮确认 D7/D8 两条**真偏差**（均已按 §7 Change Policy 先改 spec 再改代码修掉），D9 一条能力缺口记录待授权，幂等一项复核通过、**刻意不加改动**——避免为「对齐」制造无意义的 diff。
