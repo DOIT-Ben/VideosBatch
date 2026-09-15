@@ -110,3 +110,64 @@ Delivery record: 本文件同时承担 ADR、Phase Plan 与 Evidence（本仓库
 
 - ~~FrameFlow 的 `referenceId` 查重合同（`REFERENCE_ID_DUPLICATE`）是否需要同步进 VideosBatch 的绑定校验？~~ **已结**：VideosBatch 已在 `shotExecutionPackage.ts` 校验包内 `references` 的 `referenceId` 与 `assetId` 去重（"references contains duplicate referenceId"），并在构建期校验绑定与 `FINAL_STORYBOARD.references` 的 `referenceId`/`assetKey`/`semanticLabel` 一致，覆盖率不低于 FrameFlow 的对应合同。**无需新增工作**，故不纳入 P1 范围。
 - P3（结构化提示词文档 `promptDocument`）仍未授权，需要单独 ADR。
+- 见 §11：复审发现三条未修的偏差（D1 待授权修复、D2 待授权修复、D3 待裁定）。
+
+## 11. 复审发现（2026-09-15 深度审查）
+
+Phase Log 标 DONE 后，按要求做了一次不依赖本文档、直接对照两侧源码的复审。方法：读 FrameFlow（`bbb17414`）的 `providers/contracts.ts`、`http/bounded-response.ts`、`providers/newapi-h3-dedicated/{reference-media,response,request,adapter}.ts`、`generations/video/{execution-payload,reference-plan}.ts`、`video-creation-prompts/{registry,loader}.ts`，逐行对照本仓对应实现。
+
+**结论：P0/P1/P2 的实现与门禁证据全部复核通过，但有 3 条偏差是本轮未覆盖的，其中 D1 方向危险。**
+
+### 复核通过项（无可执行动作）
+
+| 项 | 证据 |
+| --- | --- |
+| `boundedResponse.ts` 与 FrameFlow **逐行等价**（content-length 预检、按解码字节计数、每个错误分支 cancel body、abort 监听与 `releaseLock`） | 两文件 71 行全文比对，仅引号风格不同 |
+| 抓图纪律五条全部落地：30s 单次超时（`AbortSignal.any` 合并作业信号）、并发 2、`no-store`、HTTPS-only 且拒内嵌凭据、mime 白名单 | `h3ReferenceMedia.ts`；FrameFlow 的 `REFERENCE_FETCH_TIMEOUT_MS` 实为模块私有常量，本仓导出更利于验证 |
+| 内容寻址贯通 binding → package → 重投影，且抓取失败不擦掉既有好指纹 | `nativeProjection.ts:917-920` 显式保留三字段；`newApiH3Video.ts:213-222` `contentAddressFor` 回退 |
+| ADR 硬断言「付费路径无裸 `Error`」 | `newApiH3Video.ts` 23 处 throw 全为 `unchargedError` / `NewApiH3ProviderError` / `NewApiH3SubmissionStateUnknownError`，无一处 `throw new Error` |
+| `referenceId` 去重断言 | `shotExecutionPackage.ts:644-645` |
+| non-goal「不改 `.env` 变量名与语义」未被破坏 | `VIDEOSBATCH_H3_ALLOW_HTTP` 由 `ca6be03`/`d2f61ed`（2026-09-01）引入，非本轮新增 |
+| 20MB 上限数值与 FrameFlow 一致 | 两边均 `20 * 1024 * 1024` |
+| 计费分层的其余各格 | 提交 4xx→`NOT_CHARGED`、5xx→`UNKNOWN`+可重试、POST 网络中断→提交状态未知且不重试、存 taskId 失败→带 taskId 的未知、轮询超时/失败→`UNKNOWN`+可重试+taskId、空视频→`UNKNOWN`、**成片已返回但写盘失败→`CHARGED` 且不重试**（与 FrameFlow `response.ts:306` 的 UNKNOWN→CHARGED 升格语义一致） |
+
+### D1【高·方向危险】轮询阶段「任务失败」被判 `NOT_CHARGED`，比标准源乐观一格
+
+- **本仓**：`newApiH3Video.ts:446-451` —— 轮询 `/videos/{id}/content` 返回 400/409 且消息非「处理中」时，抛 `H3_TASK_FAILED`，`billingResult: "NOT_CHARGED"`。
+- **FrameFlow**：`response.ts:247` `billingResult: explicitBillingResult ?? (status === 'completed' ? 'CHARGED' : 'UNKNOWN')`。它**从不**在任务受理后推断未计费；`NOT_CHARGED` 只出现在**提交阶段**的本地校验与 4xx（`request.ts:9,20`）。任务已被受理意味着大概率已计费，只可能是 `CHARGED` 或 `UNKNOWN`。
+- **危害**：`NOT_CHARGED` 的语义是「可安全重试」。此处 `taskId` 已存在、任务已被上游受理，判成未计费会诱导重提 → 重复计费。当前由 `retryable: false` 兜住自动重试，但任何依据 `billingResult` 做对账、退费、告警的下游都会判错。
+- **两个次级缺陷**：
+  1. **不读 Provider 的权威结论**。FrameFlow 的 `response.ts:64-65` 把 `billing_result`/`billingResult` 纳入响应 schema，并在 `:235/:247` 以「Provider 显式值优先、本地推断兜底」取值。本仓完全没有读取该字段的能力，计费结论纯属本地推断。
+  2. **成功路径不产生「已计费」证据**。FrameFlow 的 `billingResult` 贯穿到 `ProviderTask`，成片拿到时 UNKNOWN 升格为 `CHARGED`。本仓 `generateShotVideoViaNewApiH3` 成功只返回 `mediaUrl: string`，费用事实没有出口。
+- **文档连带问题**：`specs/videosbatch-workflow-canonical.md` §8.5 正文（`2508`）已把这条错规则固化为「任务被 Provider 明确判失败为 `NOT_CHARGED` 且不重试」；而同文件 Acceptance Criteria（`2559`）只列了四类分层，**未包含这一格**——spec 正文与自身验收标准不一致，且这一格与标准源相反。§8.5 内部亦自相矛盾：同一条里「轮询失败/超时/空视频→`UNKNOWN`」与「任务失败→`NOT_CHARGED`」出自同一个轮询循环、同一份响应证据。
+- **建议修复（P0-R，待授权）**：轮询阶段任务失败改判 `UNKNOWN`（保留不重试）；`H3ResponseMetadata` 增加读取 Provider 显式 `billing_result` 并以之覆盖推断；成功路径把「已计费」结论回传给调用方。同步修 spec §8.5 正文 + 验收标准 + `smoke:videosbatch-newapi-h3`。
+
+### D2【中·只做了一半】P2 的「版本化」缺少可回读维度，未达 G4 声明的标准
+
+- **FrameFlow**：`registry.ts:46-57` `..._FILES_BY_VERSION` 与 `:73-84` `..._HASHES_BY_VERSION` 是**按版本索引**的两张表；历史资产（`final-storyboard/v1.0.0` 与 `v1.1.0` 并存）**留在磁盘**；`loader.ts:71-99` `loadVideoCreationPromptAsset(id, version)` 接受版本参数。`registry.ts:1-5` 注释明说其目的是让调用方「load the historical assets to read or recover old runs without silently substituting new instructions」。
+- **本仓**：`promptTemplates.ts` 的 `PROMPT_TEMPLATE_VERSIONS` 是**一张平表**，版本值只被 `assertPromptTemplateIntegrity` 的错误消息引用；`loadPromptTemplate(name)` **没有版本参数**，磁盘上每个模板只有一份 `name.md`。改骨架只能就地覆盖，旧版本字节永久丢失，历史 run 无法按当时的骨架复现。
+- **ADR 自身不一致**：§2 的 G4 标准列了「版本化不可变资产 / 每资产 sha256 钉 / **历史版本仍可读**」三条，§3 Decision 第 4 条只要求「补版本与哈希、加载校验漂移」，**悄悄缩掉了第三条且未给理由**。
+- **建议修复（P2-R，待授权）**：补 `..._FILES_BY_VERSION` / `..._HASHES_BY_VERSION` 与 `loadPromptTemplate(name, version = current)`，当前 8 个模板全部落在 `v1.0.0`，先只建机制不改内容——回读能力立即可用，此后改骨架时旧版自然留存。
+
+### D3【中·能力不对齐】不支持内联 `data:image/...;base64,` 参考图
+
+- **FrameFlow**：`reference-media.ts:5,13-25,104-107` 的 `imageFile` 第一步就试 `inlineImageFile()`，命中 data URL 直接 `Buffer.from(base64)` 成 `File`，**不发网络请求**；另有 `MAX_GENERATION_REFERENCE_DATA_URL_CHARS` 上限常量（`reference-limits.ts:3-4`）与 `reference-bounds.test.ts` 覆盖。
+- **本仓**：`newApiH3Video.ts:66-72` 的 `referenceCandidates` 在候选过滤阶段只保留 `https://` 与 `/media/`，data URL 被**静默丢弃**；若某资产只有 data URL，最终以 `H3_REFERENCE_PLAN_INVALID`（「没有可用的 HTTPS 或本地图片 URL」）失败。
+- **判定：非缺陷，是两种自洽策略**。本仓用「上游落盘」替代「inline 直传」——`generators.ts:1682-1688` 的 `cacheGeneratedImage` 会把 data URL 解 base64 写成 `/media/...`。**但要注意它的三个原样返回分支**（`:1678` 非匹配 scheme、`:1684` 正则不匹配的 data URL、`:1691` 非 http 值），这些值一旦进入绑定就是死路。
+- **建议**：列为待裁定项。若产品会出现 inline 参考图（例如前端直接粘贴 base64），按 FrameFlow 补 `inlineImageFile` 分支，成本约 20 行；若确认参考图只来自落盘资产，则维持现状并在 spec 里写明「只接受 HTTPS 与 `/media/`」以固化意图。
+
+### D4/D5/D6【低】治理型观察，不构成对齐偏差
+
+- **D4**：20MB 上限在 FrameFlow 是跨上传/存储/抓取**共用**的 `MAX_GENERATION_REFERENCE_BYTES`（`generations/contracts/reference-limits.ts`，有单测钉值），本仓是 `h3ReferenceMedia.ts` 内的本地常量。数值一致，但口径变更要改多处才能同步。
+- **D5**：`boundedResponse.ts` 建成后，成片下载路径 `newApiH3Video.ts:421` 仍是 `await contentResponse.arrayBuffer()` 无界读取。当时范围限定在参考图，不算偏差；但工具已在手，顺手收口成本极低。同类还有两处 FrameFlow 已做而本仓未做：**错误响应体**的有界读取——FrameFlow `transport.ts:7,23-42` 的 `boundedResponseText` 用 `MAX_ERROR_BODY_BYTES = 64 * 1024` 卡住错误体，本仓 `newApiH3Video.ts:225-232` 的 `responseMessage` 是裸 `await response.text()`；以及 FrameFlow 对 content 端点路径做了 `CONTENT_PATH_PATTERN` 白名单校验（本仓用 `encodeURIComponent(taskId)` 达成等效防护，无需改）。
+- **D6**：本仓在抓图纪律上**强于**标准源三处——超时归因（区分 `TimeoutError`）、HTTP 非 2xx 带 `responseMetadata`、本地 `/media/` 的 path-traversal 守卫 + `stat` 预检大小。FrameFlow 均无。建议保持，并在 spec 里登记为有意增强，避免后续被误当偏差回退。
+
+### 复审后的阶段追加建议（均待用户授权）
+
+| 阶段 | 范围 | 依赖 | 验收门 |
+| --- | --- | --- | --- |
+| P0-R | D1：轮询阶段计费结论改 `UNKNOWN`；读取 Provider 显式 `billing_result`；成功路径回传计费结论；同步 spec §8.5 正文与验收标准、`smoke:videosbatch-newapi-h3` | 无 | 定向 smoke + `tsc --noEmit` + `verify:offline` |
+| P2-R | D2：骨架按版本索引的 FILES/HASHES 表 + `loadPromptTemplate(name, version?)` | 无 | `smoke:videosbatch-prompt-templates` + `verify:offline` |
+| P4 | D3：裁定后决定是否补 inline data URL 参考图；D4/D5 顺带收口 | 需先裁定 | 视裁定范围 |
+
+**未授权前不动**：D1/D2 都是合同级变更（D1 改计费语义、D2 改加载签名），按 §7 Change Policy 必须先改 spec 再改代码；本 ADR 已按 §6 的边界要求停在「记录 + 建议」。
