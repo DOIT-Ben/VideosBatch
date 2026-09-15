@@ -92,8 +92,11 @@ Delivery record: 本文件同时承担 ADR、Phase Plan 与 Evidence（本仓库
 | --- | --- | --- | --- |
 | 回退 FrameFlow | DONE | —（FrameFlow 不在本仓库） | 全库检索零残留 |
 | P0 | DONE | `27edd90` | `tsc --noEmit` 通过；`smoke:videosbatch-newapi-h3` / `native-media-stages` / `native-media-resilience` / `shot-execution-package` / `specs` / `doc-consistency` / `secrets` 全绿 |
-| P1 | IN_PROGRESS | — | — |
-| P2 | PENDING | — | — |
+| P1 | DONE | `6655455` | `tsc --noEmit` 通过；`smoke:videosbatch-newapi-h3` / `shot-execution-package` / `native-projection` / `native-media-stages` 全绿 |
+| P2 | DONE | `e8bf2de` | `tsc --noEmit` 通过；`smoke:videosbatch-prompt-templates` / `text-stage-specs` / `frameflow-canonical` / `llm-text-stages` 全绿 |
+| 全量门禁 | 见下 | — | `npm run verify:offline`（跑前已腾空 5173） |
+
+**证据口径说明（有意偏离）**：P0–P2 各自用 `tsc --noEmit` + 该阶段的定向 smoke 收口，全量 `verify:offline` 在三个阶段代码齐备后跑一次。理由：同一轮内三阶段改动文件基本不相交（仅 `newApiH3Video.ts` 被 P0/P1 先后触碰），一次全量门禁即覆盖三者的合计影响面，避免三次构建与约 90 个 smoke 的重复成本。若全量门禁出现失败，按失败项归属到对应阶段修复。
 
 ### 分支记录（偏离默认串行 main 约定）
 
@@ -105,4 +108,5 @@ Delivery record: 本文件同时承担 ADR、Phase Plan 与 Evidence（本仓库
 
 ## 10. Open Questions
 
-- FrameFlow 的 `referenceId` 查重合同（`REFERENCE_ID_DUPLICATE`）是否需要同步进 VideosBatch 的绑定校验？当前 VideosBatch 只校验 `assetId` 重复与 ordinal 连续。**倾向**：P1 顺带补 `referenceId` 查重（成本低、与 assetId 查重同层）。待 P1 实施时确认。
+- ~~FrameFlow 的 `referenceId` 查重合同（`REFERENCE_ID_DUPLICATE`）是否需要同步进 VideosBatch 的绑定校验？~~ **已结**：VideosBatch 已在 `shotExecutionPackage.ts` 校验包内 `references` 的 `referenceId` 与 `assetId` 去重（"references contains duplicate referenceId"），并在构建期校验绑定与 `FINAL_STORYBOARD.references` 的 `referenceId`/`assetKey`/`semanticLabel` 一致，覆盖率不低于 FrameFlow 的对应合同。**无需新增工作**，故不纳入 P1 范围。
+- P3（结构化提示词文档 `promptDocument`）仍未授权，需要单独 ADR。
