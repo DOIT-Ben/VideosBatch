@@ -12,6 +12,13 @@ import {
   NewApiH3SubmissionStateUnknownError,
   NewApiH3ProviderError
 } from "../src/server/videosBatchWorkflow/newApiH3Video";
+import { readBoundedResponseBytes, ResponseBodyLimitError } from "../src/server/videosBatchWorkflow/boundedResponse";
+import {
+  H3_MAX_REFERENCE_BYTES,
+  H3_REFERENCE_FETCH_CONCURRENCY,
+  H3_REFERENCE_FETCH_TIMEOUT_MS,
+  h3ReferenceFile
+} from "../src/server/videosBatchWorkflow/h3ReferenceMedia";
 
 const old = {
   key: process.env.VIDEOSBATCH_H3_API_KEY,
@@ -31,20 +38,74 @@ const assets = [
 
 try {
   delete process.env.VIDEOSBATCH_H3_API_KEY;
-  await assert.rejects(() => generateShotVideoViaNewApiH3(shot, assets), /VIDEOSBATCH_H3_API_KEY/);
+  await assert.rejects(
+    () => generateShotVideoViaNewApiH3(shot, assets),
+    (error: unknown) => error instanceof NewApiH3ProviderError
+      && /VIDEOSBATCH_H3_API_KEY/u.test(error.message)
+      && error.code === "H3_CONFIG_INVALID"
+      && error.retryable === false
+      && error.billingResult === "NOT_CHARGED",
+    "a missing API key must surface as an uncharged structured provider error"
+  );
 
   process.env.VIDEOSBATCH_H3_API_KEY = "test-only-key";
   process.env.VIDEOSBATCH_H3_BASE_URL = "http://127.0.0.1:4399/v1";
   delete process.env.VIDEOSBATCH_H3_ALLOW_HTTP;
-  await assert.rejects(() => generateShotVideoViaNewApiH3(shot, assets), /ALLOW_HTTP=1/);
+  await assert.rejects(
+    () => generateShotVideoViaNewApiH3(shot, assets),
+    (error: unknown) => error instanceof NewApiH3ProviderError
+      && /ALLOW_HTTP=1/u.test(error.message)
+      && error.code === "H3_CONFIG_INVALID"
+      && error.billingResult === "NOT_CHARGED"
+  );
 
   process.env.VIDEOSBATCH_H3_ALLOW_HTTP = "1";
-  await assert.rejects(() => generateShotVideoViaNewApiH3(shot, [{ id: "a1", sourceImageUrl: "https://example.com/a1.png" }] as any), /需要 2-9 张/);
+  await assert.rejects(
+    () => generateShotVideoViaNewApiH3(shot, [{ id: "a1", sourceImageUrl: "https://example.com/a1.png" }] as any),
+    (error: unknown) => error instanceof NewApiH3ProviderError
+      && /需要 2-9 张/u.test(error.message)
+      && error.code === "H3_REFERENCE_PLAN_INVALID"
+      && error.retryable === false
+      && error.billingResult === "NOT_CHARGED",
+    "reference-plan violations must be structured and provably uncharged"
+  );
+
+  // Reference-media discipline, aligned with FrameFlow's reference-media adapter:
+  // a per-fetch timeout independent of the job budget, bounded parallelism, an
+  // HTTPS-only URL contract, and buffering bounded by actual decoded bytes.
+  assert.equal(H3_REFERENCE_FETCH_TIMEOUT_MS, 30_000, "each reference fetch must carry its own 30s timeout");
+  assert.equal(H3_REFERENCE_FETCH_CONCURRENCY, 2, "reference fetches must be bounded to two in flight");
+  assert.equal(H3_MAX_REFERENCE_BYTES, 20 * 1024 * 1024);
+  for (const insecure of [
+    "http://insecure.test/a1.png",
+    "https://user:secret@credentialed.test/a1.png"
+  ]) {
+    await assert.rejects(
+      () => h3ReferenceFile(insecure, 1),
+      (error: unknown) => error instanceof NewApiH3ProviderError
+        && error.code === "INVALID_REFERENCE_IMAGE"
+        && error.retryable === false
+        && error.billingResult === "NOT_CHARGED",
+      `reference URL must be rejected before any paid work: ${insecure}`
+    );
+  }
+  assert.equal(
+    (await readBoundedResponseBytes(new Response(new Uint8Array([1, 2, 3])), 8)).length,
+    3,
+    "bounded reads must pass through bodies inside the limit"
+  );
+  await assert.rejects(
+    () => readBoundedResponseBytes(new Response(new Uint8Array(16)), 8),
+    (error: unknown) => error instanceof ResponseBodyLimitError,
+    "bounded reads must reject by actual decoded byte count instead of buffering first"
+  );
 
   let postRequests = 0;
   let contentRequests = 0;
   let conflict = false;
   let timeoutMode = false;
+  let rejectedMode = false;
+  let unavailableMode = false;
   const provider = http.createServer(async (req, res) => {
     if (req.url === "/a1.png" || req.url === "/a2.png") {
       res.setHeader("content-type", "image/png");
@@ -56,6 +117,16 @@ try {
       assert.match(String(req.headers["idempotency-key"]), /^videosbatch-shot_h3_/);
       for await (const _chunk of req) { /* consume multipart body */ }
       res.setHeader("content-type", "application/json");
+      if (rejectedMode) {
+        res.statusCode = 422;
+        res.end(JSON.stringify({ error: { message: "参考图数量不合法" } }));
+        return;
+      }
+      if (unavailableMode) {
+        res.statusCode = 503;
+        res.end(JSON.stringify({ error: { message: "服务暂时不可用" } }));
+        return;
+      }
       if (timeoutMode) {
         res.end(JSON.stringify({ task_id: "h3-timeout-task" }));
       } else if (conflict) {
@@ -269,8 +340,42 @@ try {
         (error: unknown) => error instanceof NewApiH3ProviderError
           && error.code === "H3_POLL_TIMEOUT"
           && error.taskId === "h3-timeout-task"
+          && error.retryable === true
+          && error.billingResult === "UNKNOWN",
+        "a poll timeout with a known task id must stay retryable and report an unknown billing outcome"
       );
       timeoutMode = false;
+
+      // A rejected submission must prove it was not charged; a 5xx may have been
+      // accepted upstream, so it must stay retryable with an unknown outcome.
+      rejectedMode = true;
+      await assert.rejects(
+        () => generateShotVideoViaNewApiH3(
+          { ...shot, generationStartedAt: "2026-08-31T00:00:04.000Z" },
+          httpsOnlyAssets
+        ),
+        (error: unknown) => error instanceof NewApiH3ProviderError
+          && error.code === "H3_SUBMISSION_REJECTED"
+          && error.status === 422
+          && error.retryable === false
+          && error.billingResult === "NOT_CHARGED"
+      );
+      rejectedMode = false;
+
+      unavailableMode = true;
+      await assert.rejects(
+        () => generateShotVideoViaNewApiH3(
+          { ...shot, generationStartedAt: "2026-08-31T00:00:05.000Z" },
+          httpsOnlyAssets
+        ),
+        (error: unknown) => error instanceof NewApiH3ProviderError
+          && error.code === "H3_SUBMISSION_REJECTED"
+          && error.status === 503
+          && error.retryable === true
+          && error.billingResult === "UNKNOWN",
+        "a 5xx submission response cannot claim the attempt was uncharged"
+      );
+      unavailableMode = false;
 
       conflict = true;
       await assert.rejects(

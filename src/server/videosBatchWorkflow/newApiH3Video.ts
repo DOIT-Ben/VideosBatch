@@ -1,13 +1,17 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Asset, Shot } from "../../shared/types";
 import type { VideosBatchReferenceBinding } from "../../shared/videosBatchNativeProjection";
+import { mapWithConcurrency } from "./concurrency";
+import { H3_REFERENCE_FETCH_CONCURRENCY, h3ReferenceFile, type H3ReferenceFile } from "./h3ReferenceMedia";
+import { NewApiH3ProviderError, NewApiH3SubmissionStateUnknownError } from "./h3ProviderErrors";
+
+export { NewApiH3ProviderError, NewApiH3SubmissionStateUnknownError } from "./h3ProviderErrors";
 
 const H3_MODEL = "minimax_h3";
 const MAX_REFERENCE_IMAGES = 9;
 const MIN_REFERENCE_IMAGES = 2;
-const MAX_REFERENCE_BYTES = 20 * 1024 * 1024;
 const STABLE_PUBLIC_ASSET_ID_PATTERN = /\bP\d{3,}-A\d{3,}\b/u;
 const SIZE_BY_RATIO: Record<string, string> = {
   "16:9": "1376x768",
@@ -38,42 +42,23 @@ type H3ReferenceEntry = {
   submittedUrl?: string;
 };
 
-export class NewApiH3SubmissionStateUnknownError extends Error {
-  readonly code = "H3_SUBMISSION_STATE_UNKNOWN";
-  readonly retryable = false;
-  /** Present when the provider accepted a task but the local checkpoint failed. */
-  readonly taskId?: string;
-
-  constructor(message: string, taskId?: string) {
-    super(message);
-    this.name = "NewApiH3SubmissionStateUnknownError";
-    this.taskId = taskId?.trim() || undefined;
-  }
-}
-
-export class NewApiH3ProviderError extends Error {
-  readonly code: string;
-  readonly retryable: boolean;
-  readonly status?: number;
-  /** Known provider task id, retained so a poll timeout can be resumed safely. */
-  readonly taskId?: string;
-
-  constructor(message: string, code: string, retryable: boolean, status?: number, taskId?: string) {
-    super(message);
-    this.name = "NewApiH3ProviderError";
-    this.code = code;
-    this.retryable = retryable;
-    this.status = status;
-    this.taskId = taskId?.trim() || undefined;
-  }
+/**
+ * Every failure in this module is a `NewApiH3ProviderError` (or its
+ * submission-state-unknown subclass) carrying `code` + `retryable` +
+ * `billingResult`, so a caller can always tell whether a paid attempt may
+ * already be running. Local validation and config failures are provably
+ * uncharged; they are never reported as "unknown".
+ */
+function unchargedError(message: string, code: string, status?: number): NewApiH3ProviderError {
+  return new NewApiH3ProviderError(message, code, false, status, undefined, { billingResult: "NOT_CHARGED" });
 }
 
 function config() {
   const apiKey = process.env.VIDEOSBATCH_H3_API_KEY?.trim();
   const baseUrl = (process.env.VIDEOSBATCH_H3_BASE_URL?.trim() || "http://122.228.216.60:3000/v1").replace(/\/+$/, "");
-  if (!apiKey) throw new Error("NewAPI H3 视频需要配置 VIDEOSBATCH_H3_API_KEY");
+  if (!apiKey) throw unchargedError("NewAPI H3 视频需要配置 VIDEOSBATCH_H3_API_KEY", "H3_CONFIG_INVALID");
   if (new URL(baseUrl).protocol !== "https:" && process.env.VIDEOSBATCH_H3_ALLOW_HTTP !== "1") {
-    throw new Error("NewAPI H3 使用 HTTP 地址时必须显式设置 VIDEOSBATCH_H3_ALLOW_HTTP=1");
+    throw unchargedError("NewAPI H3 使用 HTTP 地址时必须显式设置 VIDEOSBATCH_H3_ALLOW_HTTP=1", "H3_CONFIG_INVALID");
   }
   return { apiKey, baseUrl };
 }
@@ -137,14 +122,18 @@ export function buildNewApiH3ReferencePlan(shot: Shot, assets: Asset[]): H3Refer
     for (const [index, binding] of snapshot.entries()) {
       const expectedOrdinal = index + 1;
       if (binding.ordinal !== expectedOrdinal || seenOrdinals.has(binding.ordinal)) {
-        throw new Error("VideosBatch H3 参考图 ordinal 必须从 1 连续编号");
+        throw unchargedError("VideosBatch H3 参考图 ordinal 必须从 1 连续编号", "H3_REFERENCE_PLAN_INVALID");
       }
-      if (seenAssetIds.has(binding.assetId)) throw new Error("VideosBatch H3 参考图不能重复绑定同一资产");
+      if (seenAssetIds.has(binding.assetId)) {
+        throw unchargedError("VideosBatch H3 参考图不能重复绑定同一资产", "H3_REFERENCE_PLAN_INVALID");
+      }
       if (declaredAssetIds.size && !declaredAssetIds.has(binding.assetId)) {
-        throw new Error(`VideosBatch H3 绑定资产不在 Shot.assetIds 声明中：${binding.assetId}`);
+        throw unchargedError(`VideosBatch H3 绑定资产不在 Shot.assetIds 声明中：${binding.assetId}`, "H3_REFERENCE_PLAN_INVALID");
       }
       const asset = byId.get(binding.assetId);
-      if (!asset) throw new Error(`VideosBatch H3 绑定资产不可读取：${binding.assetId}`);
+      if (!asset) {
+        throw unchargedError(`VideosBatch H3 绑定资产不可读取：${binding.assetId}`, "H3_REFERENCE_PLAN_INVALID");
+      }
       seenOrdinals.add(binding.ordinal);
       seenAssetIds.add(binding.assetId);
       entries.push({
@@ -176,14 +165,14 @@ export function buildNewApiH3ReferencePlan(shot: Shot, assets: Asset[]): H3Refer
   }
 
   if (entries.length > MAX_REFERENCE_IMAGES) {
-    throw new Error(`NewAPI H3 最多支持 ${MAX_REFERENCE_IMAGES} 张参考图，当前绑定 ${entries.length} 张`);
+    throw unchargedError(`NewAPI H3 最多支持 ${MAX_REFERENCE_IMAGES} 张参考图，当前绑定 ${entries.length} 张`, "H3_REFERENCE_PLAN_INVALID");
   }
   if (entries.length < MIN_REFERENCE_IMAGES) {
-    throw new Error(`NewAPI H3 多参考图模式需要 2-${MAX_REFERENCE_IMAGES} 张参考图，当前只有 ${entries.length} 张`);
+    throw unchargedError(`NewAPI H3 多参考图模式需要 2-${MAX_REFERENCE_IMAGES} 张参考图，当前只有 ${entries.length} 张`, "H3_REFERENCE_PLAN_INVALID");
   }
   if (entries.some((entry) => entry.candidates.length === 0)) {
     const missing = entries.findIndex((entry) => entry.candidates.length === 0) + 1;
-    throw new Error(`NewAPI H3 第 ${missing} 张绑定参考图没有可用的 HTTPS 或本地图片 URL`);
+    throw unchargedError(`NewAPI H3 第 ${missing} 张绑定参考图没有可用的 HTTPS 或本地图片 URL`, "H3_REFERENCE_PLAN_INVALID");
   }
   return entries;
 }
@@ -191,7 +180,7 @@ export function buildNewApiH3ReferencePlan(shot: Shot, assets: Asset[]): H3Refer
 export function compileNewApiH3Prompt(basePrompt: string, bindings: readonly VideosBatchReferenceBinding[]) {
   const body = basePrompt.trim();
   if (STABLE_PUBLIC_ASSET_ID_PATTERN.test(body)) {
-    throw new Error("NewAPI H3 prompt 不得包含稳定公开资产编号，请使用语义资产名称");
+    throw unchargedError("NewAPI H3 prompt 不得包含稳定公开资产编号，请使用语义资产名称", "H3_PROMPT_INVALID");
   }
   const lines = bindings.map((binding) => `Image ${binding.ordinal} = ${safeSemanticLabel(binding.semanticLabel, `参考图 ${binding.ordinal}`)}`);
   const mapping = [
@@ -214,31 +203,6 @@ function auditBindings(entries: readonly H3ReferenceEntry[]) {
     assetId: entry.binding.assetId,
     imageUrlHash: imageUrlHash(entry.submittedUrl || entry.candidates[0] || "")
   }));
-}
-
-async function imageFile(url: string, index: number, signal: AbortSignal) {
-  if (url.startsWith("/media/")) {
-    const mediaRoot = path.resolve(process.cwd(), "data", "media");
-    const relative = decodeURIComponent(url.slice("/media/".length));
-    const localPath = path.resolve(mediaRoot, relative);
-    if (!relative || (localPath !== mediaRoot && !localPath.startsWith(`${mediaRoot}${path.sep}`))) {
-      throw new Error("NewAPI H3 本地参考图路径不合法");
-    }
-    const extension = path.extname(localPath).toLowerCase();
-    const contentType = extension === ".png" ? "image/png" : extension === ".webp" ? "image/webp" : [".jpg", ".jpeg"].includes(extension) ? "image/jpeg" : "";
-    if (!contentType) throw new Error("NewAPI H3 本地参考图必须是 PNG/JPEG/WebP");
-    const bytes = new Uint8Array(await readFile(localPath));
-    if (!bytes.length || bytes.length > MAX_REFERENCE_BYTES) throw new Error("NewAPI H3 参考图不能超过 20MB");
-    return new File([bytes], `reference-${index}${extension}`, { type: contentType });
-  }
-  const response = await fetch(url, { signal, headers: { Accept: "image/png,image/jpeg,image/webp" } });
-  if (!response.ok) throw new Error(`NewAPI H3 参考图读取失败（HTTP ${response.status}）`);
-  const contentType = (response.headers.get("content-type") || "image/jpeg").split(";", 1)[0];
-  if (!/^image\/(png|jpeg|jpg|webp)$/i.test(contentType)) throw new Error("NewAPI H3 参考图必须是 PNG/JPEG/WebP");
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  if (!bytes.length || bytes.length > MAX_REFERENCE_BYTES) throw new Error("NewAPI H3 参考图不能超过 20MB");
-  const extension = contentType === "image/png" ? "png" : contentType === "image/webp" ? "webp" : "jpg";
-  return new File([bytes], `reference-${index}.${extension}`, { type: contentType });
 }
 
 async function responseMessage(response: Response) {
@@ -276,6 +240,47 @@ function idempotencyKeyForShot(shot: Shot) {
   return `videosbatch-${shot.id}-${digest}`;
 }
 
+/**
+ * Resolve every reference to exact bytes before the paid POST, keeping the plan
+ * order. Fetches run at H3_REFERENCE_FETCH_CONCURRENCY; each candidate falls
+ * through to the next URL, and the persisted snapshot is compared against the
+ * URL actually used so a retry cannot silently swap an image.
+ */
+async function resolveReferenceFiles(
+  references: H3ReferenceEntry[],
+  signal: AbortSignal
+): Promise<void> {
+  const resolved = await mapWithConcurrency(references, H3_REFERENCE_FETCH_CONCURRENCY, async (reference, index) => {
+    let prepared: H3ReferenceFile | undefined;
+    let submittedUrl = "";
+    let lastError: unknown;
+    for (const candidate of reference.candidates) {
+      try {
+        prepared = await h3ReferenceFile(candidate, index + 1, signal);
+        submittedUrl = candidate;
+        break;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    if (!prepared) {
+      if (lastError instanceof Error) throw lastError;
+      throw unchargedError(`NewAPI H3 第 ${index + 1} 张参考图不可读取`, "INVALID_REFERENCE_IMAGE");
+    }
+    if (reference.binding.imageUrlHash && reference.binding.imageUrlHash !== imageUrlHash(submittedUrl)) {
+      throw unchargedError(
+        `NewAPI H3 第 ${index + 1} 张参考图与已保存快照不一致，请重新确认资产后再试`,
+        "H3_REFERENCE_SNAPSHOT_MISMATCH"
+      );
+    }
+    return { reference, prepared, submittedUrl };
+  });
+  for (const item of resolved) {
+    item.reference.file = item.prepared.file;
+    item.reference.submittedUrl = item.submittedUrl;
+  }
+}
+
 export async function generateShotVideoViaNewApiH3(
   shot: Shot,
   assets: Asset[],
@@ -284,7 +289,7 @@ export async function generateShotVideoViaNewApiH3(
   const { apiKey, baseUrl } = config();
   const ratio = process.env.SEEDANCE_RATIO?.trim() || "16:9";
   const size = SIZE_BY_RATIO[ratio];
-  if (!size) throw new Error(`NewAPI H3 不支持画面比例：${ratio}`);
+  if (!size) throw unchargedError(`NewAPI H3 不支持画面比例：${ratio}`, "H3_CONFIG_INVALID");
   const controller = new AbortController();
   const timeoutMs = Number(process.env.VIDEOSBATCH_H3_TIMEOUT_MS || 2_700_000);
   const timer = setTimeout(() => controller.abort(), Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 2_700_000);
@@ -292,27 +297,7 @@ export async function generateShotVideoViaNewApiH3(
     let taskId = String(options.taskId || "").trim();
     if (!taskId) {
       const references = buildNewApiH3ReferencePlan(shot, assets);
-      for (const [index, reference] of references.entries()) {
-        let file: File | undefined;
-        let submittedUrl = "";
-        let lastError: unknown;
-        for (const candidate of reference.candidates) {
-          try {
-            file = await imageFile(candidate, index + 1, controller.signal);
-            submittedUrl = candidate;
-            break;
-          } catch (error) {
-            lastError = error;
-          }
-        }
-        if (!file) throw lastError instanceof Error ? lastError : new Error(`NewAPI H3 第 ${index + 1} 张参考图不可读取`);
-        const submittedHash = imageUrlHash(submittedUrl);
-        if (reference.binding.imageUrlHash && reference.binding.imageUrlHash !== submittedHash) {
-          throw new Error(`NewAPI H3 第 ${index + 1} 张参考图与已保存快照不一致，请重新确认资产后再试`);
-        }
-        reference.file = file;
-        reference.submittedUrl = submittedUrl;
-      }
+      await resolveReferenceFiles(references, controller.signal);
       const preparedBindings = references.map((reference) => ({
         ...reference.binding,
         imageUrlHash: imageUrlHash(reference.submittedUrl || reference.candidates[0] || "")
@@ -329,7 +314,9 @@ export async function generateShotVideoViaNewApiH3(
       form.set("size", size);
       form.set("prompt_enhance", "false");
       for (const reference of references) {
-        if (!reference.file) throw new Error(`NewAPI H3 第 ${reference.binding.ordinal} 张参考图未准备完成`);
+        if (!reference.file) {
+          throw unchargedError(`NewAPI H3 第 ${reference.binding.ordinal} 张参考图未准备完成`, "H3_REFERENCE_PLAN_INVALID");
+        }
         form.append("images", reference.file, reference.file.name);
       }
 
@@ -354,11 +341,15 @@ export async function generateShotVideoViaNewApiH3(
       const created = await responsePayload(createResponse);
       const returnedTaskId = payloadTaskId(created);
       if (!createResponse.ok && createResponse.status !== 409) {
+        // A 5xx response may still have created a task upstream; only 4xx proves rejection.
+        const rejected = createResponse.status < 500;
         throw new NewApiH3ProviderError(
           `NewAPI H3 提交失败：${payloadMessage(created)}`,
           "H3_SUBMISSION_REJECTED",
-          createResponse.status >= 500,
-          createResponse.status
+          !rejected,
+          createResponse.status,
+          undefined,
+          { billingResult: rejected ? "NOT_CHARGED" : "UNKNOWN" }
         );
       }
       if (!returnedTaskId) {
@@ -392,34 +383,63 @@ export async function generateShotVideoViaNewApiH3(
           signal: controller.signal
         });
       } catch (error) {
-        if (controller.signal.aborted) throw new NewApiH3ProviderError("NewAPI H3 视频生成超时", "H3_POLL_TIMEOUT", true, undefined, taskId);
+        if (controller.signal.aborted) {
+          throw new NewApiH3ProviderError("NewAPI H3 视频生成超时", "H3_POLL_TIMEOUT", true, undefined, taskId, { billingResult: "UNKNOWN" });
+        }
         throw new NewApiH3ProviderError(
           `NewAPI H3 查询失败：${error instanceof Error ? error.message : String(error)}`,
           "H3_POLL_FAILED",
           true,
           undefined,
-          taskId
+          taskId,
+          { billingResult: "UNKNOWN" }
         );
       }
       const contentType = (contentResponse.headers.get("content-type") || "").toLowerCase();
       if (contentResponse.ok && contentType.startsWith("video/mp4")) {
         const bytes = new Uint8Array(await contentResponse.arrayBuffer());
-        if (!bytes.length) throw new Error("NewAPI H3 返回了空视频");
+        if (!bytes.length) {
+          throw new NewApiH3ProviderError("NewAPI H3 返回了空视频", "H3_EMPTY_VIDEO", false, contentResponse.status, taskId, {
+            billingResult: "UNKNOWN"
+          });
+        }
         const mediaDir = path.resolve(process.cwd(), "data", "media");
         await mkdir(mediaDir, { recursive: true });
         const filename = `videosbatch-h3-${shot.id}-${Date.now()}.mp4`;
-        await writeFile(path.join(mediaDir, filename), bytes, { mode: 0o600 });
+        try {
+          await writeFile(path.join(mediaDir, filename), bytes, { mode: 0o600 });
+        } catch (error) {
+          // The provider already produced the video, so this attempt is charged.
+          // Retrying would submit a second paid task; stop and reconcile instead.
+          throw new NewApiH3ProviderError(
+            `NewAPI H3 视频已生成但本地写入失败：${error instanceof Error ? error.message : String(error)}`,
+            "H3_MEDIA_WRITE_FAILED",
+            false,
+            undefined,
+            taskId,
+            { billingResult: "CHARGED" }
+          );
+        }
         return `/media/${filename}`;
       }
       if (contentResponse.status === 400 || contentResponse.status === 409) {
         const message = await responseMessage(contentResponse);
         if (/IN_PROGRESS|not completed|处理中|processing/i.test(message)) continue;
-        throw new NewApiH3ProviderError(`NewAPI H3 任务失败：${message}`, "H3_TASK_FAILED", false, contentResponse.status, taskId);
+        throw new NewApiH3ProviderError(`NewAPI H3 任务失败：${message}`, "H3_TASK_FAILED", false, contentResponse.status, taskId, {
+          billingResult: "NOT_CHARGED"
+        });
       }
       if (contentResponse.status === 202 || contentResponse.status === 404) continue;
-      throw new NewApiH3ProviderError(`NewAPI H3 查询失败：HTTP ${contentResponse.status}`, "H3_POLL_FAILED", contentResponse.status >= 500, contentResponse.status, taskId);
+      throw new NewApiH3ProviderError(
+        `NewAPI H3 查询失败：HTTP ${contentResponse.status}`,
+        "H3_POLL_FAILED",
+        contentResponse.status >= 500,
+        contentResponse.status,
+        taskId,
+        { billingResult: "UNKNOWN" }
+      );
     }
-    throw new NewApiH3ProviderError("NewAPI H3 视频生成超时", "H3_POLL_TIMEOUT", true, undefined, taskId);
+    throw new NewApiH3ProviderError("NewAPI H3 视频生成超时", "H3_POLL_TIMEOUT", true, undefined, taskId, { billingResult: "UNKNOWN" });
   } finally {
     clearTimeout(timer);
   }

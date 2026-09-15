@@ -1,14 +1,14 @@
 # VideosBatch 工作流唯一规范
 
 Status: active
-Last Reviewed: 2026-09-12
+Last Reviewed: 2026-09-15
 Spec ID: `VIDEOSBATCH_WORKFLOW_CANONICAL`
-Canonical Version: `1.4.3`
+Canonical Version: `1.4.4`
 Owner: VideosBatch 产品与运行时
 
 > 本文件是 VideosBatch 课程视频工作流的唯一有效设计真源。所有阶段顺序、提示词材料、字段语义、输出格式、人工门禁、版本血缘、重试、资产和媒体规则均以本文件为准。
 >
-> 阶段 1 的文档治理和阶段 2 的归档已经完成；1.1.0 增加参考图绑定合同，1.2.0 增加音频就绪门禁与 PARTIAL 重试合同，1.3.0 增加凭据卫生守卫，1.4.0 增加可插拔语音合成 Provider（MiniMax T2A v2），1.4.1 将静态提示词骨架外置为 `src/server/prompts/*.md` 加载器注入，1.4.2 按结构化范式重写全部骨架文本（要求集合与合同不变），1.4.3 依据 Tier 1 真实模型验收补齐确定性归一化合同（机械违规 sanitize、两档资产引用解析、预算感知提示注入、编译器自然中文斜杠分界），分别按对应落地文档执行。
+> 阶段 1 的文档治理和阶段 2 的归档已经完成；1.1.0 增加参考图绑定合同，1.2.0 增加音频就绪门禁与 PARTIAL 重试合同，1.3.0 增加凭据卫生守卫，1.4.0 增加可插拔语音合成 Provider（MiniMax T2A v2），1.4.1 将静态提示词骨架外置为 `src/server/prompts/*.md` 加载器注入，1.4.2 按结构化范式重写全部骨架文本（要求集合与合同不变），1.4.3 依据 Tier 1 真实模型验收补齐确定性归一化合同（机械违规 sanitize、两档资产引用解析、预算感知提示注入、编译器自然中文斜杠分界），1.4.4 按 [`docs/adr/0001-videosbatch-align-frameflow-contracts.md`](../docs/adr/0001-videosbatch-align-frameflow-contracts.md) 对齐 FrameFlow 的工程合同纪律（H3 结构化失败与计费结论、参考图抓取纪律、绑定快照内容寻址、骨架版本与哈希钉），分别按对应落地文档执行。
 >
 > JSON 只承担传输和持久化结构；它不能删减、替代或改写上游手册规定的字段语义和创作约束。模型输出是建议稿，服务端校验、用户确认和版本血缘才决定可继续的事实。
 
@@ -2407,8 +2407,9 @@ P001-A004：黄色小花（道具）
 - H3 适配器在提交前建立 1-based `ordinal`，并由同一个有序列表同时生成 `Image N = 资产名称` 映射、multipart `images` 顺序和脱敏审计记录。稳定公开资产 ID不得进入 H3 prompt。
 - VideosBatch 原生执行入口和直接 `/api/shots/:shotId/generate` 入口必须使用同一绑定回调；旧入口不得绕过快照或使用另一套参考图排序。
 - H3 prompt 必须明确“严格按 Image N 对应图片，不得交换人物、场景和道具”；资产名称只作为语义别名，换行和控制字符须被规整。
-- 绑定快照至少保存 `referenceId`、`ordinal`、`assetKey`、native `assetId`、语义名称和实际提交 URL 的 `imageUrlHash`。快照在付费 POST 前持久化；已提交任务的恢复只轮询原 task，不重新解析或上传参考图。
+- 绑定快照至少保存 `referenceId`、`ordinal`、`assetKey`、native `assetId`、语义名称，以及提交 URL 的 `imageUrlHash` 与实际字节的内容寻址指纹（`bytesSha256`、`byteSize`、可选 `mimeType`）。`imageUrlHash` 只能证明「用的是哪个 URL」，`bytesSha256` 才能证明「用的是哪份字节」：同一 URL 内容变化时必须以 `bytesSha256` 拦截并要求重新确认资产，不得静默用新图生成。历史快照缺 `bytesSha256` 时回退 `imageUrlHash` 比较，仍可恢复轮询。快照在付费 POST 前持久化；已提交任务的恢复只轮询原 task，不重新解析或上传参考图。
 - 请求日志只能记录 `{ordinal, assetKey, assetId, imageUrlHash}` 等脱敏字段，不记录签名 URL、密钥或 Token。
+- 参考图抓取必须自带单次 30 秒超时（与作业信号合并）、并发上限 2、`cache: no-store`，并按实际解码字节做有界读取（先查 `content-length`，超限在读完前失败，每个错误分支都取消 body）；参考图 URL 只接受 HTTPS 且禁止内嵌凭据（`https://user:pass@…` 一律拒绝）。这条纪律独立于 45 分钟作业超时，单张挂死或超大参考图不得吃掉整个镜头预算或进程内存。抓图、配置与绑定校验失败一律在付费 POST 之前判为未计费（见 8.5）。
 - 旧 Shot 没有绑定快照时可从已按声明顺序读取的资产生成兼容快照；超过 H3 2–9 张限制、ordinal 重复/断号、资产缺失或图片不可读时必须在提交前失败，不得静默丢图或重排。
 - `COPYABLE_PROMPT.referenceAssetIds` 必须按当前 `FINAL_STORYBOARD.references` 解析顺序完整返回。稳定 ID 已解析但语义文字未出现在任何画面效果子镜头时，将标记插入第一个画面效果子镜头开头；去除标记后正文必须保持不变，不得仅因位置未命中把整条镜头标为 `PARTIAL`。
 
@@ -2446,6 +2447,7 @@ P001-A004：黄色小花（道具）
 - 三类提示词明确不外置：`promptCompiler.ts`（确定性编译器，骨架与代码同源）、`promptCompose.ts`（逐资产动态组装）、`llmTextStages.ts` 的 `<contract_repair>`（错误清单与修复范围均为运行时字段）。
 - `smoke:videosbatch-prompt-templates` 在 `verify:offline` 中覆盖：注册表↔目录一致性、逐模板锚点短语、缓存稳定性、未知/畸形名抛错，以及六个文本阶段 spec 与 generators/index 的加载器接线。
 - 骨架文本统一采用结构化范式（对齐 FrameFlow 阶段提示词写法）：角色与使命（含“不是 X 而是 Y”的任务边界）、安全边界/唯一真源、编号硬约束、优先级裁决、重骨架的输出前自检、输出契约。1.4.2 已按该范式重写全部八个骨架；重写或新增骨架必须维持该结构，且合同 token（如「200—300字」「600—800字」「推荐最值得继续制作的3套」「统一负面提示词」「模型不得填写或覆盖」）与 smoke 锚点不得丢失。
+- 1.4.4：骨架注册表必须携带版本与内容哈希。`PROMPT_TEMPLATE_VERSIONS` 给出每个骨架的当前版本（当前统一 `v1.0.0`），`PROMPT_TEMPLATE_HASHES` 给出钉住的 SHA-256；`loadPromptTemplate()` 在归一化后校验字节哈希，漂移即 fail-fast，使任何未同步升版的骨架改动立刻可见，而不是静默改变模型输入。沿用 FrameFlow 的不可变资产约定：改骨架＝升版本＋更新哈希，历史版本仍应可枚举。`smoke:videosbatch-prompt-templates` 必须断言导出哈希等于磁盘实际字节哈希。
 
 ### 7.9 凭据卫生
 
@@ -2500,6 +2502,14 @@ P001-A004：黄色小花（道具）
 - 语音合成按字符计费，属显式付费变更；离线合同验证必须在 `fake` 下运行，真实调用只在显式开关与真实凭据同时存在时发生。
 - 契约、错误码映射、语速推算、内容寻址复用与请求载荷要求见 §7.10；凭据卫生要求见 §7.9。
 
+### 8.5 H3 适配器的结构化失败与计费结论
+
+- VideosBatch 的 H3 适配器（`newApiH3Video.ts`）在付费路径上不得抛出无 `code` 的裸错误。每个失败都必须是带 `code`、`retryable`、`status`、可选 `taskId` 和 `billingResult` 的结构化错误；`billingResult` 取 `NOT_CHARGED | CHARGED | UNKNOWN`，与 FrameFlow 的 `ProviderApiError` 计费结论同词汇。缺少计费结论的调用无法区分「未扣费、可安全重试」与「可能已产生付费任务、必须停下对账」，这正是本节要消除的状态。
+- 计费结论由失败位置决定，不得默认宣告未计费：配置缺失、画面比例不支持、绑定/提示词校验、参考图抓取与格式校验发生在付费 POST 之前，一律 `NOT_CHARGED`；提交被 4xx 明确拒绝为 `NOT_CHARGED`，5xx 或网络中断导致提交状态不可知为 `UNKNOWN` 且只有 5xx 可重试；轮询失败、轮询超时与返回空视频为 `UNKNOWN` 且可重试；任务被 Provider 明确判失败为 `NOT_CHARGED` 且不重试；成片字节已返回但本地写入失败为 `CHARGED` 且不重试（重试会再次计费，必须先人工对账）。
+- 未显式给出计费结论的错误必须保持 `UNKNOWN`，不得默认宣称未扣费。
+- `code` 一经发布即为稳定合同：下游（`nativeMediaStages`、`runner`）与 smokes 依赖 `H3_SUBMISSION_STATE_UNKNOWN`、`H3_SUBMISSION_REJECTED`、`H3_TASK_FAILED`、`H3_POLL_FAILED`、`H3_POLL_TIMEOUT` 等既有码值，不得重命名；新增码（配置、绑定计划、提示词、参考图、快照不一致、空视频、本地写入）只允许追加。
+- `smoke:videosbatch-newapi-h3` 覆盖：配置与绑定错误的计费结论、4xx 与 5xx 提交的区分（含可重试性与计费结论）、轮询超时携带 taskId 并可重试、参考图 HTTPS 与内嵌凭据拒绝、以及有界读取按实际解码字节拒绝超限响应。
+
 ## 8.4 Standalone Local Runtime Boundary
 
 VideosBatch 的独立 Skill 默认使用本地运行目录，不要求启动 VideosBatch Web 服务。运行目录是 Planner、Worker、artifact、媒体路径、事件和最终交付的持久化事实源；Web API/Session 仅作为显式远程适配模式保留。
@@ -2512,7 +2522,7 @@ Skill 分发包携带本文件的指纹化快照和 manifest。仓库内以 `spe
 
 ## 9. Testing Strategy
 
-离线合同验证至少覆盖手册来源、阶段顺序和九步映射；六个文本阶段的提示词边界、专用 Schema、禁止项和字段顺序；九套导入、600–800 字故事、四类资产、目标时长集合和三类分镜 canonical `oneOf` 语义（以及 provider wire Schema 不使用 `oneOf` 的适配）；错误类型/章节、漏场次、缺标签、稳定 ID 混入、旁白超句、音效超长、提前给答案、版本过期、资产归属错误、重复旁白和非 10 秒片段；参考图声明顺序、ordinal、H3 `Image N` 映射、multipart 同源顺序、脱敏哈希快照、旧任务恢复和 `COPYABLE_PROMPT` 首个画面子镜头回退；派生 artifact PARTIAL 失败化、legacy 状态收敛、lineage 重试、音频 structural/delivery 门禁、`AUDIO_TIMELINE_NOT_READY` 和无音频 StitchJob 禁止创建；`AUDIO_DELIVERY` 逐事件 TTS/音效产出、混音前置条件、双来源血缘、缺 EXECUTION 时间线时失败关闭、幂等复用与 fake/native 产物同构；TTS Provider 开关解析与缺钥匙失败关闭、MiniMax 请求形状（`GroupId` 只走 query、正文无该字段）、hex 解码与畸形载荷拒绝、`base_resp.status_code` 到稳定错误码的映射、空 `data`/空音频判定、语速夹取到 `[0.5, 2]`、内容寻址复用不重复计费、以及音效/混音不被 TTS 开关改写；提示词骨架目录的注册表↔文件一致性、逐模板锚点短语、缓存稳定性、未知名 fail-fast 与六个文本阶段及 generators/index 的加载器接线；重试预算、主备切换、幂等键、未知提交对账、失败隔离、断点恢复和拼接门禁。
+离线合同验证至少覆盖手册来源、阶段顺序和九步映射；六个文本阶段的提示词边界、专用 Schema、禁止项和字段顺序；九套导入、600–800 字故事、四类资产、目标时长集合和三类分镜 canonical `oneOf` 语义（以及 provider wire Schema 不使用 `oneOf` 的适配）；错误类型/章节、漏场次、缺标签、稳定 ID 混入、旁白超句、音效超长、提前给答案、版本过期、资产归属错误、重复旁白和非 10 秒片段；参考图声明顺序、ordinal、H3 `Image N` 映射、multipart 同源顺序、脱敏哈希快照、旧任务恢复和 `COPYABLE_PROMPT` 首个画面子镜头回退；派生 artifact PARTIAL 失败化、legacy 状态收敛、lineage 重试、音频 structural/delivery 门禁、`AUDIO_TIMELINE_NOT_READY` 和无音频 StitchJob 禁止创建；`AUDIO_DELIVERY` 逐事件 TTS/音效产出、混音前置条件、双来源血缘、缺 EXECUTION 时间线时失败关闭、幂等复用与 fake/native 产物同构；TTS Provider 开关解析与缺钥匙失败关闭、MiniMax 请求形状（`GroupId` 只走 query、正文无该字段）、hex 解码与畸形载荷拒绝、`base_resp.status_code` 到稳定错误码的映射、空 `data`/空音频判定、语速夹取到 `[0.5, 2]`、内容寻址复用不重复计费、以及音效/混音不被 TTS 开关改写；提示词骨架目录的注册表↔文件一致性、逐模板锚点短语、缓存稳定性、未知名 fail-fast 与六个文本阶段及 generators/index 的加载器接线；重试预算、主备切换、幂等键、未知提交对账、失败隔离、断点恢复和拼接门禁；H3 适配器的计费结论与失败分层（配置/绑定/提示词/抓图＝未计费，4xx 拒绝＝未计费，5xx 与网络中断＝未知，轮询失败/超时/空视频＝未知可重试，生成后本地写入失败＝已计费且不重试）、参考图单次 30 秒超时与并发上限 2 和 `no-store`、参考图 HTTPS 与内嵌凭据拒绝、有界读取按实际解码字节拒绝超限响应、绑定快照内容寻址（`bytesSha256`/`byteSize`/`mimeType`）及其缺失时回退 `imageUrlHash`、以及提示词骨架版本与哈希钉。
 
 ## Verification
 
@@ -2546,6 +2556,10 @@ git diff --check
 - [x] MiniMax T2A v2 请求形状、`GroupId` 仅走 query、hex 解码、`status_code` 错误映射、空音频判定、语速夹取与内容寻址复用均被离线验证覆盖，且无网络无凭据即可通过。
 - [x] TTS 开关只替换语音合成；音效与混音仍为本地实现，`AUDIO_DELIVERY` 产物 `provider` 如实反映实际语音来源。
 - [x] 静态提示词骨架外置于 `src/server/prompts/*.md` 并经 `loadPromptTemplate()` 注入；注册表与目录一一对应，内容与历史常量逐字节一致，加载器 fail-fast 与消费者接线被离线 smoke 覆盖；`promptCompiler`/`promptCompose`/`<contract_repair>` 保持代码内。
+- [ ] H3 适配器付费路径不抛裸错误；每个失败带 `code`/`retryable`/`billingResult`，失败分层与计费结论一致（付费前一律未计费、4xx 未计费、5xx 与网络中断未知、生成后本地写入失败已计费且不重试）。
+- [ ] 参考图抓取自带单次 30 秒超时、并发上限 2 与 `no-store`；URL 仅接受 HTTPS 且拒绝内嵌凭据；字节读取按实际解码字节有界，超限在读完前失败。
+- [ ] 绑定快照保存 `bytesSha256`/`byteSize`/`mimeType`；同一 URL 内容变化时以 `bytesSha256` 拦截，历史快照缺该字段时回退 `imageUrlHash` 比较。
+- [ ] 提示词骨架注册表携带版本与 SHA-256 钉，加载时校验漂移即 fail-fast；导出哈希等于磁盘实际字节哈希。
 - [ ] 阶段 1 不修改业务代码、`.env` 或旧文件，不调用真实 Provider；现有脏工作树保持不变。
 
 ## Change Policy
