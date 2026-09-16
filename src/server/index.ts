@@ -98,6 +98,7 @@ import { directoryStats, fileSize, productionPaths, readableFileStatus, snapshot
 import { incCounter, metricsText, observeHttpRequest, setGauge, setHttpInflight } from "./metrics";
 import { collectVisitorMetrics, visitorMetricsMiddleware } from "./visitorMetrics";
 import { cleanupDeletedSessionArtifacts, collectDeletedSessionArtifacts, collectDeletedSessionsArtifacts } from "./sessionCleanup";
+import { responseCompression } from "./responseCompression";
 import { resolveNodeReviewEnabled } from "../shared/reviewSettings";
 import { hasActiveShotGeneration, selectedShotPendingRender } from "../shared/shotGenerationState";
 import { resolveVideoDeliveryUrl, shouldRedirectVideoDelivery, type VideoDeliveryInput } from "../shared/videoDelivery";
@@ -297,6 +298,9 @@ app.use((req, res, next) => {
   next();
 });
 
+// Registered before the static handler and every route, so JSON, HTML, JS and CSS all go out
+// encoded. Streamed bodies (static files, video, Range) are detected and passed through untouched.
+app.use(responseCompression());
 app.use(cors());
 if (isProduction) {
   app.use(

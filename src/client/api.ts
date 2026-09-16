@@ -82,7 +82,31 @@ function accessHeaders(): Record<string, string> {
   return token ? { "x-seereel-access": token, "x-reelyai-access": token } : {};
 }
 
-async function request<T>(url: string, options?: RequestInit): Promise<T> {
+/**
+ * Last `ETag` seen per URL, populated opportunistically by every idempotent `request()`.
+ *
+ * Why this exists: the shell polls `/api/state` every 5s and that payload is the whole store
+ * (~1.3 MB with a realistic number of sessions and shots). Express already emits a weak ETag for
+ * the route and answers a matching `If-None-Match` with `304`, but a plain `fetch()` never sends
+ * the header — so every tick re-sent 1.3 MB (~900 MB/hour on an idle open tab). Remembering the
+ * ETag here means the poll can revalidate from its very first tick, and neither the initial
+ * `refresh()` nor the ~20 post-mutation call sites have to change or hand anything over.
+ */
+const lastEtagByUrl = new Map<string, string>();
+
+/**
+ * Performs the request with the shared resilience contract, and returns the raw `Response` so
+ * callers can inspect status/headers (the conditional poll needs both) before decoding.
+ *
+ *  1. **Network-error retry** for idempotent verbs (GET / HEAD): one 600ms retry absorbs a dev
+ *     server restart or a transient TCP reset instead of surfacing a hard error.
+ *  2. **Banner events**: network-level failures emit `api-network-down` / `api-network-up` so the
+ *     shell can show "服务端不可达" and auto-clear. 4xx/5xx are real server decisions, not a down
+ *     server, so they never toggle the banner.
+ *  3. **Access-token prompt**: a `401 access_token_required` asks once for the deployed token and
+ *     replays the request.
+ */
+async function fetchWithRetry(url: string, options?: RequestInit): Promise<Response> {
   const method = (options?.method || "GET").toUpperCase();
   const idempotent = method === "GET" || method === "HEAD";
   let lastErr: unknown;
@@ -99,7 +123,9 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
       });
       // We got a response — server is alive even if it returned 5xx. Clear any down-banner.
       if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("api-network-up"));
-      if (!response.ok) {
+      // `304` is not `ok` (ok means 2xx) but it is a successful outcome: the caller's cached copy
+      // is still current. Let it through; only `requestConditional()` ever provokes one.
+      if (!response.ok && response.status !== 304) {
         const body = await response.json().catch(() => ({}));
         // The shared access gate rejected us: prompt once for the token and retry this request.
         if (response.status === 401 && body?.code === "access_token_required" && !promptedForToken) {
@@ -119,7 +145,11 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
               : `${response.status} ${response.statusText}`;
         throw new Error(message);
       }
-      return response.json() as Promise<T>;
+      if (idempotent) {
+        const etag = response.headers.get("etag");
+        if (etag) lastEtagByUrl.set(url, etag);
+      }
+      return response;
     } catch (err) {
       lastErr = err;
       // TypeError on fetch is "network down / server crashed / Vite HMR mid-restart". For
@@ -140,6 +170,27 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   throw lastErr;
 }
 
+async function request<T>(url: string, options?: RequestInit): Promise<T> {
+  const response = await fetchWithRetry(url, options);
+  return response.json() as Promise<T>;
+}
+
+/**
+ * Idempotent GET that revalidates instead of re-downloading: sends the ETag remembered for `url`
+ * (if any) and returns `null` when the server answers `304`, meaning "keep what you have".
+ *
+ * Reserved for the high-frequency snapshot poll. Everything else keeps calling `request()`,
+ * because a conditional hit there would silently skip a refresh the caller is waiting on.
+ */
+async function requestConditional<T>(url: string): Promise<T | null> {
+  const etag = lastEtagByUrl.get(url);
+  const response = await fetchWithRetry(url, etag ? { headers: { "If-None-Match": etag } } : undefined);
+  if (response.status === 304) return null;
+  const etagFromResponse = response.headers.get("etag");
+  if (etagFromResponse) lastEtagByUrl.set(url, etagFromResponse);
+  return response.json() as Promise<T>;
+}
+
 async function downloadFile(url: string) {
   const response = await fetch(url, { headers: accessHeaders() });
   if (!response.ok) {
@@ -154,6 +205,12 @@ async function downloadFile(url: string) {
 
 export const api = {
   state: () => request<StoreSnapshot>("/api/state"),
+  /**
+   * Conditional `/api/state` for the 5s background poll. Resolves to `null` on `304`, which the
+   * caller must treat as "nothing changed, keep the current snapshot" — that is the whole point:
+   * an unchanged store costs an empty 304 instead of re-sending ~1.3 MB.
+   */
+  pollState: () => requestConditional<StoreSnapshot>("/api/state"),
   gallery: () => request<{ items: GalleryItem[] }>("/api/gallery"),
   galleryItem: (galleryId: string) => request<GalleryItem>(`/api/gallery/${galleryId}`),
   publishSessionToGallery: (sessionId: string, payload: GalleryPublishPayload) =>

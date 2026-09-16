@@ -823,6 +823,12 @@ export function App() {
   // 5s cadence + visibility gate: when the tab is hidden we pause to avoid burning bandwidth on
   // an unattended tab. mergeStateById preserves row references for unchanged content so this
   // poll doesn't bust node-level memo equality.
+  //
+  // The poll revalidates instead of re-downloading: `pollState()` carries the ETag of the last
+  // snapshot and resolves to `null` on 304, which we skip. Without that, each tick moved the whole
+  // store (~1.3 MB) even when nothing had changed — measured at ~900 MB/hour on an idle open tab.
+  // `/api/sessions/:id/videosbatch` is not used here on purpose: the store snapshot already embeds
+  // each session's workflow, so one conditional request covers every session.
   useEffect(() => {
     let cancelled = false;
     let timer: number | undefined;
@@ -830,8 +836,8 @@ export function App() {
       if (cancelled) return;
       if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
       try {
-        const next = await api.state();
-        if (cancelled) return;
+        const next = await api.pollState();
+        if (cancelled || !next) return;
         setState((prev) => mergeStateForDisplay({
           prev,
           next,
@@ -1989,6 +1995,7 @@ export function App() {
                   className="session-delete danger"
                   onClick={() => deleteSession(latestSession)}
                   title={t.app.deleteSessionTitle}
+                  aria-label={t.app.deleteSessionTitle}
                 >
                   <Trash2 size={14} />
                 </button>
@@ -2026,6 +2033,7 @@ export function App() {
                   className="session-delete danger"
                   onClick={() => deleteSession(session)}
                   title={t.app.delete}
+                  aria-label={t.app.delete}
                   disabled={busy === `delete-session-${session.id}`}
                 >
                   <Trash2 size={14} />
