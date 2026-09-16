@@ -33,8 +33,23 @@ export class CinemaStore {
         shots: parsed.shots || [],
         gallery: parsed.gallery || []
       };
-    } catch {
-      this.data = emptyStore();
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
+        // First boot: an absent store is the normal empty state.
+        this.data = emptyStore();
+      } else {
+        // A store that exists but cannot be parsed must NEVER be treated as
+        // empty: the next save() would atomically overwrite it with an empty
+        // snapshot and every session, shot and asset would be gone for good,
+        // with no warning (2026-09-16). Quarantine the bytes instead.
+        const quarantined = `${STORE_FILE}.corrupt-${Date.now()}`;
+        await rename(STORE_FILE, quarantined).catch(() => undefined);
+        console.error(
+          `[store] ${STORE_FILE} could not be read (${(error as Error)?.message}); `
+          + `preserved at ${quarantined} and starting from an empty store`
+        );
+        this.data = emptyStore();
+      }
     }
 
     // Older sessions carry the store-generated "unnamed session N" title, which makes a list of

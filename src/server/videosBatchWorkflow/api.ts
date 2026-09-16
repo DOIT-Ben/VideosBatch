@@ -59,6 +59,21 @@ function withWorkflowFlight<T>(sessionId: string, kind: string, operation: () =>
   });
 }
 
+/**
+ * Flight key for a write whose outcome depends on the request body.
+ *
+ * `withWorkflowFlight` collapses concurrent calls that share a key into a single
+ * execution. Keying only on route+stage silently dropped the second of two
+ * concurrent saves carrying *different* artifacts — it resolved with the first
+ * request's workflow while the user's second edit was never persisted
+ * (2026-09-16). Folding in the body keeps genuine duplicates collapsed (the
+ * useful case: a double click) while letting distinct writes both apply, still
+ * serialized in arrival order.
+ */
+function writeFlightKind(prefix: string, body: unknown) {
+  return `${prefix}:${contentHash(body ?? null)}`;
+}
+
 function safeErrorMessage(value: unknown) {
   const raw = value instanceof Error ? value.message : String(value ?? "VideosBatch request failed");
   // Shared redaction set (tokens, inline data URLs, absolute URLs); collapse whitespace
@@ -301,9 +316,14 @@ export function registerVideosBatchWorkflowApi(
     const stageId = routeParam(req, "stageId");
     const sessionId = routeParam(req, "sessionId");
     if (!isStageId(stageId)) return sendWorkflowError(res, 400, { code: "UNKNOWN_STAGE", message: "Unknown VideosBatch stage" });
-    if (!Object.hasOwn(req.body || {}, "artifact")) return sendWorkflowError(res, 400, { code: "ARTIFACT_REQUIRED", message: "artifact is required" });
+    // `null` is not an artifact. A stage with no registered validator (LESSON_INPUT
+    // is in no registry) would otherwise accept it, be marked READY and let the
+    // cursor advance on an empty lesson (2026-09-16).
+    if (!Object.hasOwn(req.body || {}, "artifact") || req.body.artifact === null) {
+      return sendWorkflowError(res, 400, { code: "ARTIFACT_REQUIRED", message: "artifact is required" });
+    }
     try {
-      const next = await withWorkflowFlight(sessionId, `artifact:${stageId}`, async () => {
+      const next = await withWorkflowFlight(sessionId, writeFlightKind(`artifact:${stageId}`, req.body?.artifact ?? null), async () => {
         const latestSession = store.getSession(sessionId);
         const latestWorkflow = latestSession?.videosBatchWorkflow
           ? await reconcilePersistedWorkflow(store, sessionId, latestSession.videosBatchWorkflow)
@@ -402,7 +422,7 @@ export function registerVideosBatchWorkflowApi(
     }
 
     try {
-      const next = await withWorkflowFlight(sessionId, `retry:${stageId}`, async () => {
+      const next = await withWorkflowFlight(sessionId, writeFlightKind(`retry:${stageId}`, req.body ?? null), async () => {
         const latestSession = store.getSession(sessionId);
         const latestWorkflow = latestSession?.videosBatchWorkflow
           ? await reconcilePersistedWorkflow(store, sessionId, latestSession.videosBatchWorkflow)

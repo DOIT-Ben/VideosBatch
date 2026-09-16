@@ -667,6 +667,32 @@ async function buildAudioDelivery(
   const previousByEvent = new Map(
     (Array.isArray(previous?.items) ? previous.items : []).map((item: any) => [text(item?.eventId), item])
   );
+  // Reuse is only safe while the clip still matches the event it was produced
+  // from. `eventId` alone cannot decide that: ids are positional
+  // (`shot-<seq>-voice-<n>`), so editing a line keeps its id and the previous
+  // clip would be carried into the new film while every gate still passes
+  // (2026-09-16). Index the previous delivery timeline's text/timing window too.
+  const previousIntentByEvent = new Map<string, { text: string; startSec: number; endSec: number }>();
+  for (const entry of [
+    ...(Array.isArray(previous?.audioTimeline?.streams?.tts) ? previous.audioTimeline.streams.tts : []),
+    ...(Array.isArray(previous?.audioTimeline?.streams?.soundEffects) ? previous.audioTimeline.streams.soundEffects : [])
+  ] as any[]) {
+    const eventId = text(entry?.id).replace(/^tts-/u, "");
+    if (!eventId) continue;
+    previousIntentByEvent.set(eventId, {
+      text: text(entry?.text),
+      startSec: Number(entry?.startSec),
+      endSec: Number(entry?.endSec)
+    });
+  }
+  /** True when the recorded clip was made from exactly this event's text and window. */
+  const matchesRecordedIntent = (event: VideosBatchAudioEvent) => {
+    const recorded = previousIntentByEvent.get(text(event.id));
+    if (!recorded) return false;
+    return recorded.text === text(event.text)
+      && Math.abs(recorded.startSec - Number(event.startSec)) <= DURATION_TOLERANCE_SEC
+      && Math.abs(recorded.endSec - Number(event.endSec)) <= DURATION_TOLERANCE_SEC;
+  };
 
   const timeline = execution.audioTimeline;
   if (!timeline || typeof timeline !== "object") {
@@ -690,7 +716,7 @@ async function buildAudioDelivery(
     try {
       const reused = stream === "soundEffects" || stream === "mix"
         ? undefined
-        : previousItem?.status === "ready" && isUsableAudioUrl(previousItem?.audioUrl)
+        : previousItem?.status === "ready" && matchesRecordedIntent(event) && isUsableAudioUrl(previousItem?.audioUrl)
           ? text(previousItem.audioUrl)
           : undefined;
       const audioUrl = reused || (stream === "narration" || stream === "dialogue"

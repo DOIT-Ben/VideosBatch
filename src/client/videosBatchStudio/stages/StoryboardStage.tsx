@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Accordion, Tabs } from "radix-ui";
 import { Check, ChevronDown, Copy, Pencil, Save, X } from "lucide-react";
 import { StageEmpty, StageFact, StagePage } from "../components/StagePage";
@@ -54,14 +54,27 @@ export function StoryboardStage({
     : [];
 
   const save = async () => {
-    await onSaveArtifact?.(draft);
-    setEditing(false);
+    try {
+      await onSaveArtifact?.(draft);
+      setEditing(false);
+    } catch {
+      // The studio reports the failure inline; keep the draft open so a rejected
+      // save does not silently discard the user's edit.
+    }
   };
+
+  // The "copied" badge clears itself after 1.6s; cancel the pending timer when
+  // the step is switched away so it cannot fire into an unmounted tree.
+  const copyTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => {
+    if (copyTimer.current !== undefined) window.clearTimeout(copyTimer.current);
+  }, []);
 
   const copy = async (key: string, text: string) => {
     if (!(await copyText(text))) return;
     setCopiedKey(key);
-    window.setTimeout(() => setCopiedKey((current) => current === key ? "" : current), 1600);
+    if (copyTimer.current !== undefined) window.clearTimeout(copyTimer.current);
+    copyTimer.current = window.setTimeout(() => setCopiedKey((current) => current === key ? "" : current), 1600);
   };
 
   const editActions = editing ? (

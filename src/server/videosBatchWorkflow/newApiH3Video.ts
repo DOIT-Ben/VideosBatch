@@ -14,7 +14,6 @@ import {
 } from "./h3ProviderErrors";
 import { readBoundedResponseText } from "./boundedResponse";
 import {
-  assertVideosBatchAdapterAvailable,
   assertVideosBatchAdapterSupports,
   parseVideosBatchExecutionSnapshot,
   serializeVideosBatchExecutionSnapshot,

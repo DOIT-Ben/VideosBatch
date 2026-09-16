@@ -37,8 +37,13 @@ export function ScreenplayStage({
 
   const draftScenes = Array.isArray(draft?.scenes) ? draft.scenes : [];
   const save = async () => {
-    await onSaveArtifact?.(draft);
-    setEditing(false);
+    try {
+      await onSaveArtifact?.(draft);
+      setEditing(false);
+    } catch {
+      // The studio reports the failure inline; keep the draft open so a rejected
+      // save does not silently discard the user's edit.
+    }
   };
 
   return (

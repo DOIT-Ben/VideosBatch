@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Asset } from "../src/shared/types";
+import { createVideosBatchWorkflow } from "../src/shared/videosBatchWorkflow";
+import { assetConfirmationReady, restartFrom } from "../src/server/videosBatchWorkflow/runner";
 import { isAssetConfirmationComplete } from "../src/client/videosBatchStudio/contentModel";
 import { AssetGalleryStage } from "../src/client/videosBatchStudio/stages/AssetGalleryStage";
 import { assetsNeedConfirmation } from "../src/client/videosBatchStudio/stageModel";
@@ -174,6 +176,30 @@ const stageModelSource = readFileSync(new URL("../src/client/videosBatchStudio/s
 assert.ok(
   stageModelSource.includes("isAssetConfirmationComplete"),
   "stageModel must derive assetsNeedConfirmation from the shared completeness rule"
+);
+
+// --- restartFrom must genuinely RE-ARM the manual gate ---
+// (2026-09-16) ASSET_CONFIRMATION derives its readiness from the stage artifact.
+// Marking the stage `pending` while a `confirmed: true` artifact survived left the
+// gate satisfied: "restart from this step" behaved like a no-op and an auto-run
+// sailed straight past the confirmation. COURSE_INTRO_SELECTION already re-arms via
+// clearIntroSelection; the asset gate must do the equivalent.
+
+const gateBefore = createVideosBatchWorkflow({ projectId: "P001", lessonText: "教案内容" }, "2026-09-16T00:00:00.000Z");
+gateBefore.stages.ASSET_PLAN = { status: "ready", revision: 1, artifact: plan, updatedAt: "2026-09-16T00:00:00.000Z" };
+gateBefore.stages.ASSET_CANDIDATES = { status: "ready", revision: 1, artifact: candidatesAfterRegeneration, updatedAt: "2026-09-16T00:00:00.000Z" };
+gateBefore.stages.ASSET_CONFIRMATION = { status: "ready", revision: 1, artifact: completeArtifact, updatedAt: "2026-09-16T00:00:00.000Z" };
+gateBefore.currentStage = "SCREENPLAY";
+
+assert.equal(assetConfirmationReady(gateBefore), true, "a complete confirmation must satisfy the gate before a restart");
+
+const gateRestarted = restartFrom(gateBefore, "ASSET_CONFIRMATION");
+assert.equal(gateRestarted.currentStage, "ASSET_CONFIRMATION", "restart must move the cursor back onto the gate");
+assert.equal(gateRestarted.stages.ASSET_CONFIRMATION?.status, "pending", "restart must set the gate back to pending");
+assert.equal(
+  assetConfirmationReady(gateRestarted),
+  false,
+  "restarting the asset-confirmation gate must re-arm it; a surviving confirmed artifact would let auto-run skip the gate"
 );
 
 console.log("asset confirmation gate smoke passed");

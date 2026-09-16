@@ -10,6 +10,7 @@ import { VideosBatchHeader, type VideosBatchSessionOption } from "./VideosBatchH
 import { WorkflowFooter } from "./WorkflowFooter";
 import { ArtifactDebugDrawer } from "./components/ArtifactDebugDrawer";
 import { ModeBanner } from "./components/ModeBanner";
+import { StudioErrorBoundary } from "./components/StudioErrorBoundary";
 import { WorkflowProgressRail } from "./components/WorkflowProgressRail";
 import { StageWorkspace } from "./stages/StageWorkspace";
 import type { VideosBatchLessonDraft } from "./stages/LessonStage";
@@ -74,25 +75,7 @@ function writeLessonDraft(sessionId: string, draft: VideosBatchLessonDraft | und
   }
 }
 
-export function VideosBatchStudio({
-  sessionId,
-  sessionTitle,
-  session,
-  nativeAssets = [],
-  nativeShots = [],
-  workflow,
-  runtime,
-  onWorkflowChange,
-  onOpenCanvas,
-  sessions = [],
-  language = "zh",
-  onBackToSessions,
-  onSelectSession,
-  onNewSession,
-  onDownloadSession,
-  onToggleUsage,
-  onToggleLanguage
-}: {
+type VideosBatchStudioProps = {
   sessionId: string;
   sessionTitle: string;
   session?: Session;
@@ -113,7 +96,27 @@ export function VideosBatchStudio({
   onDownloadSession?: () => void;
   onToggleUsage?: () => void;
   onToggleLanguage?: () => void;
-}) {
+};
+
+function VideosBatchStudioView({
+  sessionId,
+  sessionTitle,
+  session,
+  nativeAssets = [],
+  nativeShots = [],
+  workflow,
+  runtime,
+  onWorkflowChange,
+  onOpenCanvas,
+  sessions = [],
+  language = "zh",
+  onBackToSessions,
+  onSelectSession,
+  onNewSession,
+  onDownloadSession,
+  onToggleUsage,
+  onToggleLanguage
+}: VideosBatchStudioProps) {
   const currentStepId = workflow ? deriveCurrentProductStep(workflow) : "lesson";
   const [selectedStepId, setSelectedStepId] = useState<VideosBatchProductStepId>(currentStepId);
   const [selectedAssetIds, setSelectedAssetIds] = useState<Record<string, string>>({});
@@ -179,8 +182,20 @@ export function VideosBatchStudio({
     ? VIDEOS_BATCH_PRODUCT_STEPS.filter((step) => deriveProductStepStatus(workflow, step) === "ready").length
     : 0;
 
-  const statusForStep = (step: (typeof VIDEOS_BATCH_PRODUCT_STEPS)[number]) =>
-    workflow ? deriveProductStepStatus(workflow, step) : "pending" as const;
+  // A run is driven by a single request that persists nothing until it returns,
+  // so `/api/state` polling cannot reveal intermediate progress and the rail
+  // used to sit frozen for the whole (minutes-long) auto-run — indistinguishable
+  // from a hang. Mark the step the run is working on as running instead
+  // (2026-09-16).
+  const runInFlight = busy === "next" || busy === "all";
+  const statusForStep = (step: (typeof VIDEOS_BATCH_PRODUCT_STEPS)[number]) => {
+    if (!workflow) return "pending" as const;
+    if (runInFlight && step.stages.some((stageId) => workflow.stages[stageId]?.status === "running")) {
+      return "running" as const;
+    }
+    if (runInFlight && step.id === selectedStepId) return "running" as const;
+    return deriveProductStepStatus(workflow, step);
+  };
 
   async function perform(label: string, operation: () => Promise<VideosBatchWorkflowState>) {
     setBusy(label);
@@ -192,6 +207,29 @@ export function VideosBatchStudio({
     } catch (err) {
       setError(err instanceof Error ? err.message : "VideosBatch 操作失败");
       return undefined;
+    } finally {
+      setBusy("");
+    }
+  }
+
+  /**
+   * Same as `perform`, except the failure reaches the caller. The advanced drawer
+   * has its own inline error surface, so it must not report a rejected save as
+   * success just because the shared performer swallows errors (2026-09-16): the
+   * real message ended up behind the dialog overlay while the panel exited edit
+   * mode, which reads as "saved".
+   */
+  async function performOrThrow(label: string, operation: () => Promise<VideosBatchWorkflowState>) {
+    setBusy(label);
+    setError("");
+    try {
+      const next = await operation();
+      onWorkflowChange(next);
+      return next;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "VideosBatch 操作失败";
+      setError(message);
+      throw new Error(message);
     } finally {
       setBusy("");
     }
@@ -231,7 +269,9 @@ export function VideosBatchStudio({
 
   async function saveStructuredArtifact(stageId: "SCREENPLAY" | "FINAL_STORYBOARD", artifact: any) {
     if (!workflow) return;
-    await perform(stageId === "SCREENPLAY" ? "save-screenplay" : "save-storyboard", () =>
+    // Throws on rejection so the editors keep the draft open instead of exiting
+    // edit mode over an unsaved change.
+    await performOrThrow(stageId === "SCREENPLAY" ? "save-screenplay" : "save-storyboard", () =>
       api.saveVideosBatchArtifact(sessionId, stageId, artifact)
     );
   }
@@ -387,10 +427,23 @@ export function VideosBatchStudio({
         artifact={debugArtifact}
         onClose={() => setDebugOpen(false)}
         onSave={workflow ? async (artifact) => {
-          const next = await perform("save-debug", () => api.saveVideosBatchArtifact(sessionId, debugStageId, artifact));
-          if (next) setDebugOpen(false);
+          await performOrThrow("save-debug", () => api.saveVideosBatchArtifact(sessionId, debugStageId, artifact));
+          setDebugOpen(false);
         } : undefined}
       />
     </section>
+  );
+}
+
+/**
+ * A render failure anywhere inside the studio must degrade to an actionable
+ * panel, never to a blank page. See StudioErrorBoundary for the 2026-09-16
+ * white-screen incident this guards against.
+ */
+export function VideosBatchStudio(props: VideosBatchStudioProps) {
+  return (
+    <StudioErrorBoundary>
+      <VideosBatchStudioView {...props} />
+    </StudioErrorBoundary>
   );
 }

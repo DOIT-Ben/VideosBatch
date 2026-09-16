@@ -92,7 +92,7 @@ VideosBatch 不另建 Session、Canvas、Agent 图、Asset 库、Shot 模型、R
 
 ## 7. UI 投影
 
-Guided Studio 将 canonical 的 13 个机器阶段分组为 9 个产品步骤。分组标签、状态颜色和按钮只负责展示与控制，
+Guided Studio 将 canonical 的 14 个机器阶段分组为 9 个产品步骤（`AUDIO_DELIVERY` 与 `STITCH` 同属「最终成片」）。分组标签、状态颜色和按钮只负责展示与控制，
 不得派生第二套阶段合同。每个步骤应显示当前 artifact、版本/stale 状态、失败原因和可继续条件；原生 Canvas 仍是
 Asset、Shot、Render、Stitch 的高级检查与接管界面。
 

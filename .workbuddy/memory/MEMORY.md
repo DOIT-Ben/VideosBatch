@@ -17,6 +17,17 @@
 - **模型输出容错**：凡拿模型输出的分类名/枚举做分组，**一律不要精确相等**——要在字符串任意
   位置匹配规范名，匹配不到退化为取首段，保证任何输入都有归处（`IntroCandidatesStage` 教训：
   精确匹配导致 9 张候选卡全消失、步骤显示完成但正文空白）。
+- **两个人工闸门的「已答复」来源不同，回退必须按来源清**：`COURSE_INTRO_SELECTION` 的就绪来自
+  **工作流级字段**（`introLocked`/`selectedIntroId`/`selectionMode` → `clearIntroSelection`）；
+  `ASSET_CONFIRMATION` 的就绪来自**阶段产物自身**（`confirmed:true` → `clearAssetConfirmation`）。
+  只把 `status` 改回 `pending` 而保留产物，闸门仍判定就绪，「重新开始」成空操作、自动运行直接
+  冲过确认。契约见 spec §7.13。**凡「就绪态由产物派生」的闸门，回退必须删产物（连 `contentHash`）。**
+- **「写了 smoke」≠「有回归网」**：新增/修改任何 smoke 后，必须确认它出现在 `package.json` 的
+  `verify:offline` 链里——本仓库曾出现 8 个 VideosBatch smoke 只注册不入链、1 个连脚本条目都没有
+  （`product-ui-foundation`），导致最关键的两条守卫长期不跑。`verify:offline` 是唯一回归网。
+- **客户端顶层调用即抛 = 整页白屏**：`VideosBatchStudio` 在渲染期同步调 `productStepForStage`
+  等会 `throw` 的映射函数；映射集合必须用**集合相等**断言守（单点检查抓不到「漏一个」），
+  外层由 `StudioErrorBoundary` 兜底降级。
 
 ## 二、设计 token 与样式分层
 

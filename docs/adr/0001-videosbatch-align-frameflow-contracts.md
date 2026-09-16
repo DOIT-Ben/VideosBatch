@@ -287,3 +287,91 @@ Phase Log 标 DONE 后，按要求做了一次不依赖本文档、直接对照�
 ### 本轮复核通过、刻意未改
 
 `/api/sessions/:id/videosbatch` 对未启动工作流的会话返回 409 `WORKFLOW_NOT_STARTED`——**设计内**，客户端有空态兜底。`projectId` 由服务端校验为 `^P\d{3,}-A\d{3,}$`，UI 固定发 `P001`——单项目产品下 `publicAssetId` 全局唯一，非缺陷。历史会话里 3 处 `failed` 步骤（LLM 超时、`omissionCheck` 校验、`COPYABLE_PROMPT PARTIAL`）均来自 2026-09-01 的真实模式运行，非当前代码的活缺陷。
+
+## 15. 第五轮：深层扫查与修复落地（2026-09-16 · 用户「修复啊」全量授权）
+
+方法：在 §14 浏览器复核之上，扩大为**四个面**的静态 + 实证双向扫查（服务端状态机 / 媒体生成 / 前端组件 / 规范漂移）。每条发现**先写可复现探针再动手**（`output/probe-*.mjs`、`output/check-*.ts`，均在 gitignore 内），修完用**同一探针取反证**——这是本轮与 §14 最大的方法差异：§14 靠观察，本轮靠「改前必红、改后必绿」。spec 仍为 **1.4.10**（本轮新增条款并入同一条目，尚无提交固化）。
+
+### F3【高·整页白屏】`AUDIO_DELIVERY` 未归属任何产品步骤，工作台渲染期抛错
+
+- **现象**：会话跑到 `AUDIO_DELIVERY` 后，`/canvas/<id>` **整页白屏**，`#root` 内文本长度 0，`pageerror` 一条 `productStepForStage` 抛出的异常；同一会话在 `STITCH` 时正常。
+- **根因**：规范 §0.1 的 9 步映射表把 `AUDIO_DELIVERY` 漏掉（表里 08 行重复、机器阶段数自相矛盾地写着 13）。`stageModel.productStepForStage()` 用 `throw` 表达「未映射」，而 `VideosBatchStudio` 在**组件顶层同步调用**它 → 首次渲染即抛，且没有任何 ErrorBoundary 接住 → React 卸载整棵树。
+- **修复**：① `stageModel.ts` 把 `AUDIO_DELIVERY` 与 `STITCH` 同归「最终成片」；② spec §0.1 合并重复的 08 行、计数订正为 14（含此前的 13 处与 §0.3 标题）；③ 新增 `StudioErrorBoundary` 包住工作台视图，任何渲染期异常降级为「这一步暂时无法显示 + 刷新」，**永不再白屏**。
+- **证据**：真实浏览器复现——修复前 `restart-from EXECUTION` → `run-next` 到 `AUDIO_DELIVERY` 时 `#root` 长度 0 / 1 条 pageerror / 截图 4KB（白）；修复后同路径长度 16815 / pageerror 0 / 截图 317KB。`smoke:videosbatch-product-ui-foundation` 新增**集合相等**断言：`flatMap(product steps)` 的机器阶段集合必须与 `VIDEOS_BATCH_STAGE_ORDER` **逐项相等且无重复**——单点断点检查天生抓不到「漏一个」，只有比集合能。
+
+### F4【高·音频错位】混音未按 `startSec` 定位，特效音全部塌到 0 秒
+
+- **现象**：`AUDIO_DELIVERY` 产出时长正确，但**听感上所有事件挤在开头**；5 秒处的音效实际在 0 秒。
+- **根因**：`mixFakeAudioTimeline` 把每条输入直接 `amix`，丢弃了事件的 `startSec`（`narration.ts` 里正确用了 `adelay`，混音路径没有）。
+- **修复**：抽出 `buildAudioMixChains()`，逐输入生成 `[i:a]aformat=channel_layouts=stereo{,adelay=ms|ms},apad,atrim=0:<duration>[p<i>]`；并**失败关闭**——声明事件数与可解析源数不一致时抛 `AUDIO_MIX_SOURCE_UNRESOLVED`，不再静默漏混。
+- **证据**：`smoke:videosbatch-audio-delivery` 用 ffmpeg `silencedetect` 测**首个声音起始秒**。阳性对照：移除 `adelay` → 首个声音落在 `20.0156s`（5 秒音效塌到 0，断言立刻红）；修复后落在 5s。
+
+### F5【高·静默复用陈旧音频】复用只校验「URL 可用」，不校验文本与时间窗
+
+- **现象**：改写某句台词后重跑 `AUDIO_DELIVERY`，该句仍沿用**旧文本**的音轨（时长、内容都不匹配）。
+- **根因**：复用判定只看上一轮产物 `status==="ready"` 且 URL 可用，与当前事件的 `text`/`startSec`/`endSec` 无关。
+- **修复**：`nativeMediaStages.ts` 维护 `previousIntentByEvent`（按事件 id 去重前缀 `tts-`），复用须同时满足 `matchesRecordedIntent(event)`（文本 + 时间窗一致）且 URL 可用。
+- **证据**：阳性对照——回退该判定后「改写后的台词复用旧音轨」断言立刻红；修复后绿。
+
+### F6【中·校验不可伪证】`hydrateArtifactHashes` 覆盖式回填 `contentHash`
+
+- **根因**：每次 hydrate 都用「当前产物重新算哈希」覆盖落库哈希，于是「依赖哈希是否失配」的比较**恒等**，永远发现不了产物被外部改写。
+- **修复**：改为 **fill-only**（仅当缺失才补），落库哈希从此具备可信度。
+- **安全性论证**：先审计 14 个已存会话——103 个带产物阶段，**0 处哈希失配**（仅 13 处历史缺失），故「只补不覆盖」不会对既有数据产生行为变化。
+
+### F7【中·数据丢失】存储文件解析失败被静默吞掉，静默从空启动
+
+- **现象**：`cinema-store.json` 被写坏（半截 JSON）时，`load()` 直接吞异常、当空库启动，用户所有会话**无声消失**且坏文件被下一次保存覆盖。
+- **修复**：区分 `ENOENT`（正常空库）与解析错误；后者把坏文件 `rename` 成 `cinema-store.json.corrupt-<ts>` 并 `console.error`，再以空库启动——**坏数据留证，不销毁**。
+- **证据**：`smoke:store-concurrent-save` 增断言：写入坏文件后启动必须产出 `.corrupt-*` 隔离文件且服务可用。
+
+### F8【中·并发写碰撞】异步「飞行中」去重键不含内容哈希
+
+- **根因**：`artifact:` / `retry:` 两类飞行键只用 stage id，**同一阶段两次内容不同的写**会被误判为重复请求而合并，后到者被丢弃。
+- **修复**：api.ts 增 `writeFlightKind(prefix, body)` = `` `${prefix}:${contentHash(body)}` ``，同阶段不同内容不再互吞。
+
+### F9【中·失败被吞】前端「调试抽屉保存」与「结构化产物保存」失败无反馈
+
+- **根因**：两处调用把 promise 的 rejection 吞掉，用户以为已保存。
+- **修复**：新增 `performOrThrow(label, op)`，失败时抛错并由调用点的既有错误提示呈现。
+
+### F10【中·闸门可被陈旧上游通过】`assetConfirmationReady` 不校验上游阶段状态
+
+- **现象**：上游 `ASSET_CANDIDATES` / `ASSET_PLAN` 已被标注非 `ready`（编辑后续作废），确认记录却仍满足闸门，被作废的图片被带进 `SCREENPLAY`。
+- **修复**：闸门判定增补 `ASSET_CANDIDATES.status !== "ready"` 与 `ASSET_PLAN.status !== "ready"` 即判不通过。
+- **性质**：与 §14 的 F1 同源——**「编辑上游后确认仍生效」**这一类陈旧态，是这套状态机的系统性薄弱点。
+
+### F11【中·空产物被当作已完成】`LESSON_INPUT` 的 `null` 产物 + PUT 接受 `null`
+
+- **根因**：`LESSON_INPUT` 无注册校验器，`artifact === null` 被当成「已存在」标 `ready`；`PUT .../artifact` 也接受 `body.artifact = null`。
+- **修复**：运行分支改为 `artifact === undefined || artifact === null` 均判 `LESSON_INPUT_MISSING`；PUT 显式拒绝 `null` 返回 `ARTIFACT_REQUIRED`。
+
+### F12【中·闸门回退失效】`restart-from` 落到资产确认闸门时没有重新武装
+
+- **现象**：在 `ASSET_CONFIRMATION` 上执行「重新生成本步骤」，再点自动运行——**直接冲过确认**，等于什么都没重做。
+- **根因**：**两个人工闸门的「已答复」来源不同**。课程导入闸门的就绪来自工作流级字段（`introLocked`/`selectedIntroId`/`selectionMode`），`restartFrom` 有 `clearIntroSelection` 清空；而资产确认闸门的就绪来自**阶段产物自身**（`confirmed === true`），`restartFrom` 只把 `status` 改回 `pending`、**产物原样保留** → 闸门仍判定就绪。
+- **修复**：新增 `clearAssetConfirmation()`（删除产物与其 `contentHash`），在 `restartFrom` 中「目标阶段为 `ASSET_CONFIRMATION`」时调用，与课程导入闸门对称。
+- **证据**：探针 `output/probe-f12-restart-gate.mjs`——修复前 `restart-from ASSET_CONFIRMATION` 后 `assetConfirmationReady === true`（对照：课程导入闸门 `introLocked=false`，正确重武装）；修复后为 `false` 且产物已清空。契约写入规范 §7.13，断言并入 `smoke:videosbatch-asset-confirmation-gate`。
+
+### F13【低·前端杂项，逐条独立】
+
+| 位置 | 缺陷 | 修复 |
+| --- | --- | --- |
+| `AssetGalleryStage` | 徽章自相矛盾：显示「已确认」却仍要求确认 | `confirmed = !needsConfirmation && Boolean(confirmationArtifact?.confirmed && selectedId)` |
+| `AssetPlanStage` | 用分类名**精确相等**做分组键，模型返回别名时整组卡片消失 | 增 `categoryKey()` + `CATEGORY_ALIASES`，**子串匹配 + 原值兜底**，任何输入都有归处 |
+| `StoryboardStage` | 保存失败丢草稿；复制成功的 `setTimeout` 未清理（组件卸载后触发 setState） | 保存包 try/catch；定时器 `useRef` + 卸载 `useEffect` 清理 |
+| `ScreenplayStage` | 保存失败无兜底 | 包 try/catch |
+| `VideosBatchStudio` | `busy==="next"/"all"` 期间步骤状态未标 `running`，自动运行看起来像卡死 | `statusForStep` 在 `runInFlight` 时返回 `running` |
+
+### 附带发现【中·质量基建】8 个 VideosBatch smoke 从未进入 `verify:offline`，1 个甚至未注册
+
+- **现象**：本轮改动最重的两条守卫——F3 的映射完整性断言、F4/F5 的音频定位与复用断言——**跑不到**。`scripts/smoke-videosbatch-product-ui-foundation.tsx` 存在但 `package.json` 里既无脚本条目、也无任何引用（孤儿文件）；`smoke:videosbatch-audio-delivery` 已注册但不在 `verify:offline` 链内。
+- **扩大排查**：逐条比对「已注册 vs 在链内」，另有 `doc-consistency`、`frameflow-canonical`、`stage-registry-injection`、`text-stage-specs`、`native-media-stages`、`runtime-provider` 共 6 条同属漏挂。**全部直接运行均通过**——不是「红了被摘掉」，是纯漏挂。
+- **修复**：注册 `product-ui-foundation`；把 8 条全部并入 `verify:offline` 链。唯一**刻意排除**的是 `smoke:videosbatch-real-text-server`（占**固定端口 5187** 且拉起子应用进程，属重量级集成用例，其覆盖面已被 `e2e` 涵盖）；`runtime-provider` 用 `listen(0)` 取临时端口，可安全入链。
+- **教训**：`verify:offline` 是这套仓库唯一的回归网，而**「写了 smoke」不等于「有回归网」**。新增守卫必须同时确认它出现在链里。
+
+### 本轮复核通过、刻意未改
+
+- `F12` 之外的人工闸门路径（`COURSE_INTRO_SELECTION` 回退）复核正确，未改动。
+- G1（工作台整块未接入 i18n）仍为产品级范围决策，§14 结论不变，本轮不动。
+- `smoke:videosbatch-real-text-server` 未入链（理由见上），保留为手动/集成用例。

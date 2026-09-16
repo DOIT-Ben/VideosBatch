@@ -56,7 +56,10 @@ export function AssetGalleryStage({
           <div className="vbs-asset-gallery vbs-asset-gallery-detailed">
             {groups.map((group) => {
               const selectedId = selectedAssetIds[group.assetKey] || group.selectedAssetId;
-              const confirmed = Boolean(confirmationArtifact?.confirmed && selectedId);
+              // A stale confirmation (upstream regenerated) must not keep claiming
+              // "已确认" on every card while the bar below asks for confirmation
+              // again — both read the same `needsConfirmation` verdict.
+              const confirmed = !needsConfirmation && Boolean(confirmationArtifact?.confirmed && selectedId);
               // Never surface the internal asset id — the user picks "候选 3", not "asset_e1029b75".
               const selectedIndex = group.candidates.findIndex((candidate) => candidate.id === selectedId);
               return (

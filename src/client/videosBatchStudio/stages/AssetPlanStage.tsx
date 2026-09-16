@@ -7,10 +7,36 @@ const CATEGORY_LABELS: Record<string, string> = {
   CREATURE: "生物"
 };
 
+const CATEGORY_ALIASES: Array<{ key: string; needles: string[] }> = [
+  { key: "CHARACTER", needles: ["CHARACTER", "人物", "角色"] },
+  { key: "SCENE", needles: ["SCENE", "场景"] },
+  { key: "PROP", needles: ["PROP", "道具"] },
+  { key: "CREATURE", needles: ["CREATURE", "生物"] }
+];
+
+/**
+ * Resolve an asset item's canonical category.
+ *
+ * Never compare the model's category text with `===`: real output carries a
+ * sub-direction alongside the canonical name, and an exact key splits one
+ * category into several groups whose titles fall back to raw English. Match the
+ * canonical name anywhere in the string and fall back to the raw value so every
+ * item still has a home (same failure mode as IntroCandidatesStage).
+ */
+function categoryKey(value: unknown) {
+  const raw = String(value || "").trim();
+  if (!raw) return "OTHER";
+  const upper = raw.toUpperCase();
+  for (const { key, needles } of CATEGORY_ALIASES) {
+    if (needles.some((needle) => upper.includes(needle.toUpperCase()))) return key;
+  }
+  return raw;
+}
+
 export function AssetPlanStage({ artifact }: { artifact: any }) {
   const items: any[] = Array.isArray(artifact?.items) ? artifact.items : [];
   const grouped = items.reduce((acc: Record<string, any[]>, item: any) => {
-    const key = String(item?.category || "OTHER");
+    const key = categoryKey(item?.category);
     (acc[key] ||= []).push(item);
     return acc;
   }, {});

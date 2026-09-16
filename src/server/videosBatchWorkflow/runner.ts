@@ -43,11 +43,20 @@ function artifactHash(artifact: unknown): string | undefined {
   return artifact === undefined ? undefined : contentHash(artifact);
 }
 
+/**
+ * Stamp `contentHash` onto stages persisted before the field existed.
+ *
+ * Deliberately fill-only. The previous "recompute whenever it differs" form made
+ * the dependency check below unfalsifiable: by the time `dependencyIssues` ran,
+ * every hash had just been rewritten from its own artifact, so a stage whose
+ * artifact no longer matched its recorded stamp could never be reported. Every
+ * write path stamps the hash it persists, so a mismatch really does mean the
+ * artifact or the stamp moved behind the workflow's back (spec §0.2).
+ */
 function hydrateArtifactHashes(workflow: VideosBatchWorkflowState) {
   for (const stage of Object.values(workflow.stages)) {
     if (!stage || stage.artifact === undefined) continue;
-    const calculated = artifactHash(stage.artifact);
-    if (!stage.contentHash || stage.contentHash !== calculated) stage.contentHash = calculated;
+    if (!stage.contentHash) stage.contentHash = artifactHash(stage.artifact);
   }
 }
 
@@ -157,6 +166,12 @@ function assetConfirmationReady(workflow: VideosBatchWorkflowState, ctx?: StageE
   const candidates = workflow.stages.ASSET_CANDIDATES?.artifact as any;
   const confirmation = workflow.stages.ASSET_CONFIRMATION?.artifact as any;
   if (confirmation?.confirmed !== true) return false;
+  // Confirming keys and counts is not enough for a *manual gate*: it must also
+  // require the candidate set to still be current. Otherwise a stale
+  // ASSET_CANDIDATES (upstream edited after confirmation) sails through and the
+  // superseded images are carried into SCREENPLAY (2026-09-16).
+  if (workflow.stages.ASSET_CANDIDATES?.status !== "ready") return false;
+  if (workflow.stages.ASSET_PLAN?.status !== "ready") return false;
   const planItems = Array.isArray(plan?.items) ? plan.items : [];
   const candidateItems = Array.isArray(candidates?.items) ? candidates.items : [];
   const confirmedItems = Array.isArray(confirmation?.items) ? confirmation.items : [];
@@ -202,6 +217,19 @@ function clearIntroSelection(workflow: VideosBatchWorkflowState) {
   workflow.selectionMode = undefined;
   workflow.selectionReason = undefined;
   workflow.introLocked = false;
+}
+
+function clearAssetConfirmation(workflow: VideosBatchWorkflowState) {
+  // Unlike COURSE_INTRO_SELECTION (whose readiness lives in workflow-level fields),
+  // ASSET_CONFIRMATION derives its readiness from the stage artifact itself. A
+  // surviving `confirmed: true` therefore keeps the gate satisfied, so
+  // "restart from this step" would NOT re-arm it and an auto-run would sail
+  // straight past the confirmation. Drop the payload and let the operator confirm
+  // again (2026-09-16).
+  const stage = workflow.stages.ASSET_CONFIRMATION;
+  if (!stage) return;
+  delete stage.artifact;
+  stage.contentHash = undefined;
 }
 
 function stageErrorInfo(error: unknown): VideosBatchStageError {
@@ -354,7 +382,9 @@ export async function runNext(ctx: StageExecutionContext, registry: StageRegistr
   const current = workflow.stages[stageId] || { status: "pending" as const, revision: 0 };
 
   if (stageId === "LESSON_INPUT") {
-    if (current.artifact === undefined) {
+    // `null` counts as missing: LESSON_INPUT has no registered validator, so a
+    // null artifact would otherwise be accepted and the lesson step marked done.
+    if (current.artifact === undefined || current.artifact === null) {
       const updatedAt = nowIso();
       workflow.stages.LESSON_INPUT = { ...current, status: "failed", error: "LESSON_INPUT artifact is missing", errorInfo: { code: "LESSON_INPUT_MISSING", message: "LESSON_INPUT artifact is missing", retryable: false, attempt: 0, provider: null }, updatedAt };
       workflow.updatedAt = updatedAt;
@@ -632,6 +662,8 @@ export function restartFrom(source: VideosBatchWorkflowState, stageId: VideosBat
   workflow.stages[stageId] = { ...current, status: "pending", error: undefined, errorInfo: undefined, staleReason: undefined, updatedAt };
   markDescendantsStale(workflow, stageId, `从 ${stageId} 重新开始`);
   if (VIDEOS_BATCH_STAGE_ORDER.indexOf(stageId) <= VIDEOS_BATCH_STAGE_ORDER.indexOf("COURSE_INTRO_SELECTION")) clearIntroSelection(workflow);
+  // Re-arm the asset gate so "restart from here" genuinely requires a fresh confirmation.
+  if (stageId === "ASSET_CONFIRMATION") clearAssetConfirmation(workflow);
   workflow.updatedAt = updatedAt;
   return workflow;
 }

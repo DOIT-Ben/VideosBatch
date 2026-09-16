@@ -39,7 +39,7 @@ export const VIDEOS_BATCH_PRODUCT_STEPS: readonly VideosBatchProductStep[] = [
   { id: "screenplay", label: "视频剧本", stages: ["SCREENPLAY"] },
   { id: "storyboard", label: "视频分镜", stages: ["FINAL_STORYBOARD", "COPYABLE_PROMPT"] },
   { id: "execution", label: "视频生成", stages: ["QUOTE", "EXECUTION"] },
-  { id: "final", label: "最终成片", stages: ["STITCH"] }
+  { id: "final", label: "最终成片", stages: ["AUDIO_DELIVERY", "STITCH"] }
 ] as const;
 
 const STEP_BY_STAGE = new Map<VideosBatchStageId, VideosBatchProductStepId>(

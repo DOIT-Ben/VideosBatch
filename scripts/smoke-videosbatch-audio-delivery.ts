@@ -15,9 +15,30 @@
  * real local audio files so the ffmpeg-backed mix path is genuinely exercised.
  */
 import { strict as assert } from "node:assert";
+import { spawn } from "node:child_process";
 import { mkdtemp, rm, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import ffmpeg from "@ffmpeg-installer/ffmpeg";
+
+/** Seconds at which the mixed track first stops being silent. */
+function firstSoundOnsetSeconds(filePath: string): Promise<number | undefined> {
+  return new Promise((resolve) => {
+    const child = spawn(
+      ffmpeg.path,
+      ["-hide_banner", "-i", filePath, "-af", "silencedetect=noise=-45dB:d=0.2", "-f", "null", "-"],
+      { stdio: ["ignore", "ignore", "pipe"] }
+    );
+    let stderr = "";
+    child.stderr?.setEncoding("utf8");
+    child.stderr?.on("data", (chunk: string) => { stderr += chunk; });
+    child.on("error", () => resolve(undefined));
+    child.on("close", () => {
+      const match = /silence_end:\s*([\d.]+)/u.exec(stderr);
+      resolve(match ? Number(match[1]) : undefined);
+    });
+  });
+}
 
 const originalCwd = process.cwd();
 const tmp = await mkdtemp(path.join(os.tmpdir(), "videosbatch-audio-delivery-"));
@@ -152,6 +173,38 @@ try {
     (second.artifact as any).audioTimeline.streams.mix.audioUrl,
     delivered.audioTimeline.streams.mix.audioUrl,
     "repeated runs with identical input must reuse the cached mix"
+  );
+
+  // 5. The mix must reproduce the timeline's TIMING, not just its clip set.
+  //    Every fake voice clip is silence, so the only audible content is the
+  //    660 Hz sound effect declared at 5s. A mixer that ignored `startSec` would
+  //    place that tone at 0s and this measures where sound actually begins.
+  const onset = await firstSoundOnsetSeconds(mixLocal);
+  assert.ok(
+    onset !== undefined && onset > 4 && onset < 6.5,
+    `mix must place the 5s sound effect at ~5s (first audible frame measured at ${onset}s)`
+  );
+
+  // 6. Reuse must be tied to the text, not just the event id. Ids are positional
+  //    (`shot-<seq>-voice-<n>`), so an edited line keeps its id; without the
+  //    check the clip synthesized from the previous text silently ships in the
+  //    new film while every gate still passes.
+  const editedWorkflow = buildWorkflow({
+    ...timelineWithEvents(),
+    streams: {
+      ...timelineWithEvents().streams,
+      narration: [{ id: "shot-1-voice-1", startSec: 0, endSec: 5, text: "改写过的一句台词，和上一版不同。", source: "FINAL_STORYBOARD" }]
+    }
+  }) as any;
+  editedWorkflow.stages.AUDIO_DELIVERY = { status: "ready", revision: 1, artifact: delivered };
+  const edited = await audioStage.execute({ session, workflow: editedWorkflow, assets: [], shots: [] });
+  const editedTts = (edited.artifact as any).audioTimeline.streams.tts.find((event: any) => event.id === "tts-shot-1-voice-1");
+  const previousTts = delivered.audioTimeline.streams.tts.find((event: any) => event.id === "tts-shot-1-voice-1");
+  assert.ok(editedTts && previousTts, "both runs must produce the shot-1 narration clip");
+  assert.notEqual(
+    editedTts.audioUrl,
+    previousTts.audioUrl,
+    "an edited line must not reuse the clip synthesized from the previous text"
   );
 
   console.log("VideosBatch AUDIO_DELIVERY smoke passed");
