@@ -259,3 +259,31 @@ Phase Log 标 DONE 后，按要求做了一次不依赖本文档、直接对照�
 ### P3（未实现，转 ADR-0002）
 
 调研结论：FrameFlow 的 `VideoPromptDocument` 依赖正文里**可标记的引用锚点**（其教学原型用 `【P###-A###】`）。本仓 §7.7 明文禁止稳定 ID 进入 H3 prompt、正文只用语义标签，因此机械构造只会得到单 text 节点的**退化解**（零信息增益）。故 P3 **不是照搬**，已出 [`0002`](./0002-videosbatch-structured-prompt-document.md) 记录方案对比、分阶段与三个待产品确认的前提问题；答案到位前维持扁平字符串。
+
+## 14. 第四轮：主动 bug 扫查（2026-09-16）
+
+方法：**不再重读既有结论，改用真实浏览器跑一遍 9 步流程**（仓库内 `playwright-core` + 本机 chromium，headless）交叉验证代码。扫描面覆盖：新建会话从 `LESSON_INPUT` 跑到 `STITCH`、全部 12 个已存在会话的每个步骤、非画布路由（`/`、`/gallery`、`/canvas`）、头部 ⋯ 菜单、流程制作／制作画布切换、上一步、语言切换、`restart-from` 与 `retry`。
+
+### F1【高·功能死锁】`stale` 被当成阻断条件：回退过任何一步，流程再也跑不完
+
+- **现象**：对任一上游阶段执行 `restart-from`（UI 上是「重新生成本步骤」，也等价于编辑上游产物／撤销确认）后，下游被正确标记 `stale`，但 `run-all` **永久停在原地**。实测：`restart-from SCREENPLAY` 后连打 4 次 `run-all` 均返回 200 且 `currentStage` 不变，`FINAL_STORYBOARD` 始终 `stale`、`completed` 永远为 `false`。
+- **无解**：`retry` 只对 `failed` 生效（返回 409 `STAGE_NOT_FAILED`）；连在卡住的那一步再点一次「重新生成本步骤」也无效——`restart-from` 会把该步置 `pending`，但 lineage 不匹配的判定不受 `requiresLineage` 门控，仍判 `stale`。**该状态无任何 API 或 UI 出口**。
+- **根因**：`runner.ts` 的 `dependencyIssues()` 把两类性质完全不同的问题合并成一个阻断清单：依赖未就绪（真的不能跑）与**本步产物的来源版本过期**（恰恰是「需要重跑」的定义）。`restart-from` 为保留可检视的历史产物而**不删除下游 artifact**，于是下游记录的 `sourceHashes`/`sourceRevisions` 永远落后于刚重跑的上游，`runNext` 每次都用不匹配把自己重新判成 `stale` 并 `return`，游标不动。
+- **修复**（spec 升 **1.4.9**）：从 `dependencyIssues()` 移除两处 **mismatch** 判定，只保留真正的阻断项——依赖未 `ready`、依赖 `contentHash` 与产物不自洽、以及**本步 lineage 完全缺失**（伪造/遗留的 `ready` 态不得被静默接受，这条仍阻断并保留原有用例守它）。于是 lineage 过期不再是阻断条件，`runNext` 正常执行并以 `dependencySnapshot` 落**全新血缘**；`stale` 回到「重跑信号」的语义，与 spec §0.2「保留旧成果只作历史读取，不得静默复用」一致。
+- **真实复验**：同一个此前彻底死锁的会话，修复后 `restart-from SCREENPLAY` → `run-all` 直接 `completed=true`，下游 7 个阶段全部 `ready`，且 `FINAL_STORYBOARD.sourceRevisions.SCREENPLAY` 等于 SCREENPLAY 当前 `revision`。
+- **证据**：`smoke:videosbatch-runner` 增两组回归断言（回退后 `run-all` 必须能重跑到完成 + 新血缘一致；对已 stale 的阶段再次 `restart-from` 必须能恢复）——原用例**只断言了下游被标 `stale`，从未断言过之后能否恢复**，这正是缺口。相邻 7 个 smoke（`native-media-resilience`／`llm-text-stages`／`e2e`／`api`／`native-media-stages`／`api-retry`／`newapi-h3`）全绿。
+
+### F2【低】缺 favicon：每次加载都报 404
+
+- `index.html` 未声明图标，浏览器默认请求 `/favicon.ico` → 每次页面加载都在 console 留一条 404。仓库已有 `public/seereel-mark.png` 可直接用。
+- 修复：`index.html` 增 `<link rel="icon" type="image/png" href="/seereel-mark.png" />`。复验：整页加载 console 错误数 **0**。
+
+### G1【能力缺口·未修·需产品裁定】VideosBatch 工作台整块未接入 i18n
+
+- 头部 ⋯ 菜单提供「Switch to English」，切换后 `document.documentElement.lang` 与 `localStorage["uiLanguage:v2"]` 都正确变化，**同一会话的「制作画布」也确实变成英文**（`图片→Image`、`未生成→Not generated`），但**「流程制作」9 步工作台一个字符串都不变**。
+- 事实：`src/client/i18n.tsx` 的词典只覆盖 SeeReel 的 `app`/`flow`/`nodes`/`inspector` 等；`src/client/videosBatchStudio/` **零 `useI18n` 引用**，21 个文件共 1759 个中文字符。即工作台从未本地化，不是接线漏了。
+- **未动**：整块本地化是产品级范围决策（要么给全部文案建词典条目，要么把该开关在工作台模式下收窄/隐藏），成本差异极大，留待裁定。
+
+### 本轮复核通过、刻意未改
+
+`/api/sessions/:id/videosbatch` 对未启动工作流的会话返回 409 `WORKFLOW_NOT_STARTED`——**设计内**，客户端有空态兜底。`projectId` 由服务端校验为 `^P\d{3,}-A\d{3,}$`，UI 固定发 `P001`——单项目产品下 `publicAssetId` 全局唯一，非缺陷。历史会话里 3 处 `failed` 步骤（LLM 超时、`omissionCheck` 校验、`COPYABLE_PROMPT PARTIAL`）均来自 2026-09-01 的真实模式运行，非当前代码的活缺陷。

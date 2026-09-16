@@ -99,6 +99,20 @@ function markDescendantsStale(workflow: VideosBatchWorkflowState, stageId: Video
   }
 }
 
+/**
+ * Pre-flight guard for "may the runner execute `stageId` right now?".
+ *
+ * Only two things make that impossible: a dependency that is not current, or a
+ * stage whose own lineage was never recorded (a forged/legacy `ready` state we
+ * must not silently accept). A *mismatched* recorded lineage is deliberately NOT
+ * listed here: that is the definition of a stale stage, and the answer is to
+ * regenerate it from the current dependency — which the execute path below does,
+ * writing a fresh dependency snapshot. Treating the mismatch as a blocker used
+ * to dead-lock every workflow that was ever rewound: `restart-from` keeps the
+ * downstream artifacts (for inspection) while their recorded revisions go out of
+ * date, so nothing could ever clear the mismatch and `run-all` spun in place
+ * forever. See spec `1.4.9`.
+ */
 function dependencyIssues(workflow: VideosBatchWorkflowState, stageId: VideosBatchStageId): string[] {
   const issues: string[] = [];
   const current = workflow.stages[stageId];
@@ -113,13 +127,9 @@ function dependencyIssues(workflow: VideosBatchWorkflowState, stageId: VideosBat
     if (source.contentHash && source.contentHash !== calculated) issues.push(`${dependency} contentHash is stale`);
     const recorded = current?.sourceHashes?.[dependency];
     if (requiresLineage && !recorded) issues.push(`${stageId} has no recorded source hash for ${dependency}`);
-    if (recorded && recorded !== calculated) issues.push(`${stageId} was produced from an older ${dependency} revision`);
     const recordedRevision = current?.sourceRevisions?.[dependency]
       ?? (dependency === VIDEOS_BATCH_STAGE_DEPENDENCIES[stageId]?.[0] ? current?.sourceRevision : undefined);
     if (requiresLineage && typeof recordedRevision !== "number") issues.push(`${stageId} has no recorded source revision for ${dependency}`);
-    if (typeof recordedRevision === "number" && recordedRevision !== source.revision) {
-      issues.push(`${stageId} was produced from an older ${dependency} revision`);
-    }
   }
   return issues;
 }

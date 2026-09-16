@@ -103,4 +103,42 @@ assert.equal(restarted.introLocked, false, "restarting from intro selection must
 assert.equal(restarted.selectedIntroId, undefined);
 assert.equal(restarted.stages.STORY_SCRIPT?.status, "stale", "downstream artifacts must be visibly stale after upstream restart");
 
+// Regression (spec 1.4.9): a rewind must not dead-lock the run. `restart-from`
+// deliberately keeps downstream artifacts around for inspection, which leaves
+// their recorded lineage older than the regenerated upstream. `run-all` must
+// regenerate those stale descendants from the current revisions instead of
+// stalling on the mismatch forever.
+const rewound = restartFrom(workflow, "SCREENPLAY");
+assert.equal(rewound.currentStage, "SCREENPLAY");
+assert.equal(rewound.stages.FINAL_STORYBOARD?.status, "stale", "rewind must visibly stale downstream stages");
+assert.ok(rewound.stages.FINAL_STORYBOARD?.artifact, "stale downstream must keep its prior artifact for inspection");
+
+const resumed = await runAll(context(rewound), registry);
+assert.equal(resumed.completed, true, "run-all must regenerate stale descendants after a rewind instead of stalling");
+assert.equal(resumed.stages.SCREENPLAY?.status, "ready");
+assert.equal(resumed.stages.FINAL_STORYBOARD?.status, "ready", "stale FINAL_STORYBOARD must be regenerated, not left stale");
+assert.equal(resumed.stages.COPYABLE_PROMPT?.status, "ready");
+assert.equal(resumed.stages.QUOTE?.status, "ready");
+assert.equal(resumed.stages.EXECUTION?.status, "ready");
+assert.equal(resumed.stages.STITCH?.status, "ready");
+assert.equal(
+  resumed.stages.FINAL_STORYBOARD?.sourceRevisions?.SCREENPLAY,
+  resumed.stages.SCREENPLAY?.revision,
+  "regenerated descendants must record the current upstream revision"
+);
+assert.equal(
+  resumed.stages.STITCH?.sourceRevisions?.FINAL_STORYBOARD,
+  resumed.stages.FINAL_STORYBOARD?.revision,
+  "every regenerated descendant must carry a fresh lineage snapshot"
+);
+
+// A stage whose OWN artifact is current must not be blocked by lineage alone:
+// "重新生成本步骤" (restart-from on the stalled stage) has to be able to recover
+// even when the stale stage still carries its pre-rewind artifact.
+const rewindToStale = restartFrom(resumed, "FINAL_STORYBOARD");
+assert.equal(rewindToStale.stages.FINAL_STORYBOARD?.status, "pending");
+const recoveredStoryboard = await runAll(context(rewindToStale), registry);
+assert.equal(recoveredStoryboard.completed, true, "restart-from on a stale stage must be able to complete again");
+assert.equal(recoveredStoryboard.stages.FINAL_STORYBOARD?.status, "ready");
+
 console.log("VideosBatch canonical linear runner smoke passed");
