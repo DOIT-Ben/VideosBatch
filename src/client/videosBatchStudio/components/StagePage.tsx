@@ -40,12 +40,19 @@ export function StagePage({
     </>
   ) : null);
 
+  // The kicker names the step ("最终成片"); when the stage title says exactly the same
+  // thing the pair reads as a stutter, so the kicker yields (e.g. the final delivery).
+  const stepName = productStepName(stepId);
+  const kicker = typeof title === "string" && title === stepName ? null : (
+    <p className="vbs-stage-kicker">{stepName}</p>
+  );
+
   return (
     <section className={`vbs-stage-page${className ? ` ${className}` : ""}`}>
       <header className="vbs-stage-slate">
         <span className="vbs-stage-numeral" aria-hidden="true">{productStepIndexLabel(stepId)}</span>
         <div className="vbs-stage-heading">
-          <p className="vbs-stage-kicker">{productStepName(stepId)}</p>
+          {kicker}
           <h2>{title}</h2>
           {lead ? <p className="vbs-stage-lead">{lead}</p> : null}
         </div>

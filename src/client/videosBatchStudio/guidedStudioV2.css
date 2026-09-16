@@ -1298,7 +1298,8 @@ button.vbs-v2-project-meta:hover {
 
 .videosbatch-studio-v2 .vbs-final-actions {
   justify-content: flex-start;
-  margin-top: 18px;
+  /* The row now sits inside the delivery grid; its gap already spaces it. */
+  margin-top: 0;
 }
 
 /* Footer stays quiet and attached to the content rhythm. */
@@ -1667,15 +1668,15 @@ button.vbs-v2-project-meta:hover {
   background: var(--vbs-v2-surface);
 }
 
-/* --- The mode notice: a slim band, not a banner --------------------------- */
+/* --- The mode notice: a quiet row under the rail, not an amber band -------- */
 .vbs-mode-banner {
   margin: 0;
   padding-top: 10px;
   padding-bottom: 10px;
   border: 0;
-  border-bottom: 1px solid #e3d4ae;
+  border-bottom: 1px solid var(--vbs-v2-border);
   border-radius: 0;
-  background: var(--vbs-v2-accent-soft);
+  background: var(--vbs-v2-surface);
 }
 
 .vbs-mode-banner-body strong {
@@ -1684,7 +1685,7 @@ button.vbs-v2-project-meta:hover {
 }
 
 .vbs-mode-banner-body span {
-  color: #6a6047;
+  color: var(--vbs-v2-text-soft);
   font-size: var(--vbs-v2-size-micro);
   line-height: 1.6;
   /* Two lines are unavoidable here; balancing them beats an orphan. */

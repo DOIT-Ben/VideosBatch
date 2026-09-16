@@ -4000,12 +4000,6 @@ body {
   text-transform: uppercase;
 }
 
-.gallery-hero h2 {
-  margin: 0;
-  font-size: 30px;
-  letter-spacing: 0;
-}
-
 .gallery-hero span {
   display: block;
   max-width: 720px;
@@ -4924,10 +4918,6 @@ body {
   border-bottom-color: var(--vbs-v2-border);
 }
 
-.app-shell:has(.gallery-page) .gallery-hero h2 {
-  color: var(--vbs-v2-text);
-}
-
 .app-shell:has(.gallery-page) .gallery-card {
   border-color: var(--vbs-v2-border);
   background: var(--vbs-v2-surface);
@@ -4982,14 +4972,6 @@ body {
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.14em;
-}
-
-.app-shell:has(.gallery-page) .gallery-hero h2 {
-  margin: 0;
-  font-size: 27px;
-  font-weight: 600;
-  line-height: 1.22;
-  letter-spacing: -0.02em;
 }
 
 .app-shell:has(.gallery-page) .gallery-hero > div > span {

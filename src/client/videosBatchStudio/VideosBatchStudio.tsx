@@ -374,7 +374,6 @@ function VideosBatchStudioView({
         onToggleUsage={onToggleUsage}
         onToggleLanguage={onToggleLanguage}
       />
-      <ModeBanner runtime={runtime} />
       <WorkflowProgressRail
         steps={VIDEOS_BATCH_PRODUCT_STEPS}
         selectedStepId={selectedStepId}
@@ -382,6 +381,9 @@ function VideosBatchStudioView({
         getStatus={statusForStep}
         onSelectStep={setSelectedStepId}
       />
+      {/* Below the rail, not above: the rail's active stop is amber too, and two amber
+          bands stacked together blurred into one zone. */}
+      <ModeBanner runtime={runtime} />
       <main className="vbs-v2-workspace">
         {error && <div className="vbs-inline-error">{error}</div>}
         <div className="vbs-v2-stage-frame">

@@ -501,7 +501,7 @@ function GalleryPage({
       <div className="gallery-hero">
         <div>
           <p>{t.app.galleryEyebrow}</p>
-          <h2>{t.app.galleryTitle}</h2>
+          {/* The topbar already carries the page H1; repeating it here read as a stutter. */}
           <span>{t.app.gallerySubtitle}</span>
         </div>
         <button type="button" onClick={onOpenCanvas}>
@@ -569,6 +569,9 @@ function GalleryPage({
           <Images size={28} />
           <strong>{t.app.galleryEmptyTitle}</strong>
           <span>{t.app.galleryEmptyBody}</span>
+          <button type="button" className="primary" onClick={onOpenCanvas}>
+            {t.app.galleryEmptyCta}
+          </button>
         </div>
       )}
     </section>

@@ -32,11 +32,13 @@ export function FinalVideoStage({ artifact, session, onOpenCanvas }: { artifact:
             <div className="vbs-final-player-placeholder"><span>{artifactUrl.startsWith("fake://") ? "示例成片，暂无视频文件" : "最终视频预览"}</span><small>{native.progress || (!artifactUrl.startsWith("fake://") ? artifactUrl : "") || "尚未生成"}</small></div>
           )}
         </div>
-      </div>
 
-      <div className="vbs-final-actions">
-        {downloadUrl && <a className="vbs-primary" href={downloadUrl} download>下载 MP4</a>}
-        <button type="button" className="vbs-secondary" onClick={onOpenCanvas}>进入制作画布</button>
+        {/* Actions live inside the delivery card: outside it, a lone secondary button
+            (no MP4 to download yet) floated detached between the card and the footer. */}
+        <div className="vbs-final-actions">
+          {downloadUrl && <a className="vbs-primary" href={downloadUrl} download>下载 MP4</a>}
+          <button type="button" className="vbs-secondary" onClick={onOpenCanvas}>进入制作画布</button>
+        </div>
       </div>
     </StagePage>
   );
