@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Pencil, Save, X } from "lucide-react";
+import * as Accordion from "@radix-ui/react-accordion";
+import { ChevronDown, Pencil, Save, X } from "lucide-react";
 import { updateScreenplaySceneFields } from "../contentModel";
 import { StageEmpty, StageFact, StagePage } from "../components/StagePage";
 
@@ -29,6 +30,10 @@ export function ScreenplayStage({
   const duration = Number(artifact?.targetDurationSeconds || 0);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<any>(artifact);
+  // Progressive disclosure: collapsed by default except the first scene, so a
+  // 12-scene script reads as a table of contents instead of a wall of text.
+  // Editing forces every scene open; leaving edit mode restores the user's set.
+  const [openScenes, setOpenScenes] = useState<string[] | null>(null);
 
   useEffect(() => {
     setDraft(artifact);
@@ -64,41 +69,60 @@ export function ScreenplayStage({
       ) : null}
     >
       {!scenes.length ? <StageEmpty>正式视频剧本尚未生成。</StageEmpty> : (
-        <div className="vbs-screenplay-list">
+        <Accordion.Root
+          className="vbs-storyboard-accordion vbs-screenplay-accordion"
+          type="multiple"
+          value={editing ? draftScenes.map((scene: any) => `scene-${scene.sequence}`) : (openScenes ?? (scenes.length ? [`scene-${scenes[0].sequence}`] : []))}
+          onValueChange={(next: string[]) => { if (!editing) setOpenScenes(next); }}
+        >
           {(editing ? draftScenes : scenes).map((scene: any) => (
-            <article className={`vbs-screenplay-scene ${editing ? "editing" : ""}`} key={scene.sequence}>
-              <div className="vbs-scene-number">{String(scene.sequence).padStart(2, "0")}</div>
-              <div>
+            <Accordion.Item className="vbs-shot-card vbs-storyboard-item vbs-screenplay-scene" key={scene.sequence} value={`scene-${scene.sequence}`}>
+              <Accordion.Header className="vbs-storyboard-header">
+                <Accordion.Trigger className="vbs-storyboard-trigger">
+                  <span className="vbs-storyboard-summary">
+                    <span>
+                      <span className="vbs-scene-number">{String(scene.sequence).padStart(2, "0")}</span>
+                      <strong>{scene.title || `场景 ${scene.sequence}`}</strong>
+                    </span>
+                    <span className="vbs-storyboard-summary-copy">{scene.knowledgeFocus || "暂无知识重点"}</span>
+                  </span>
+                  <span className="vbs-storyboard-trigger-meta">
+                    <ChevronDown className="vbs-accordion-chevron" size={17} />
+                  </span>
+                </Accordion.Trigger>
+              </Accordion.Header>
+              <Accordion.Content className="vbs-storyboard-content">
                 {editing ? (
-                  <div className="vbs-structured-editor-grid">
-                    {EDITABLE_FIELDS.map(([field, label]) => {
-                      const multiline = field === "visualAction" || field === "dialogue";
-                      const value = String(scene?.[field] || "");
-                      return (
-                        <label className={multiline ? "wide" : ""} key={field}>
-                          <span>{label}</span>
-                          {multiline ? (
-                            <textarea
-                              value={value}
-                              rows={field === "visualAction" ? 4 : 3}
-                              onChange={(event) => setDraft((current: any) => updateScreenplaySceneFields(current, scene.sequence, { [field]: event.target.value }))}
-                            />
-                          ) : (
-                            <input
-                              value={value}
-                              onChange={(event) => setDraft((current: any) => updateScreenplaySceneFields(current, scene.sequence, { [field]: event.target.value }))}
-                            />
-                          )}
-                        </label>
-                      );
-                    })}
-                    {Array.isArray(scene.evidence) && scene.evidence.length > 0 && (
-                      <div className="vbs-locked-structure wide"><strong>来源证据已锁定</strong><span>{scene.evidence.length} 条来源证据不会被覆盖。</span></div>
-                    )}
+                  <div className="vbs-storyboard-editor">
+                    <div className="vbs-structured-editor-grid">
+                      {EDITABLE_FIELDS.map(([field, label]) => {
+                        const multiline = field === "visualAction" || field === "dialogue";
+                        const value = String(scene?.[field] || "");
+                        return (
+                          <label className={multiline ? "wide" : ""} key={field}>
+                            <span>{label}</span>
+                            {multiline ? (
+                              <textarea
+                                value={value}
+                                rows={field === "visualAction" ? 4 : 3}
+                                onChange={(event) => setDraft((current: any) => updateScreenplaySceneFields(current, scene.sequence, { [field]: event.target.value }))}
+                              />
+                            ) : (
+                              <input
+                                value={value}
+                                onChange={(event) => setDraft((current: any) => updateScreenplaySceneFields(current, scene.sequence, { [field]: event.target.value }))}
+                              />
+                            )}
+                          </label>
+                        );
+                      })}
+                      {Array.isArray(scene.evidence) && scene.evidence.length > 0 && (
+                        <div className="vbs-locked-structure wide"><strong>来源证据已锁定</strong><span>{scene.evidence.length} 条来源证据不会被覆盖。</span></div>
+                      )}
+                    </div>
                   </div>
                 ) : (
-                  <>
-                    <h3>{scene.title || `场景 ${scene.sequence}`}</h3>
+                  <div className="vbs-screenplay-scene-body">
                     {scene.knowledgeFocus && <p><strong>知识重点：</strong>{scene.knowledgeFocus}</p>}
                     {scene.visualAction && <p><strong>画面 / 动作：</strong>{scene.visualAction}</p>}
                     {scene.dialogue && <blockquote>{scene.dialogue}</blockquote>}
@@ -108,12 +132,12 @@ export function ScreenplayStage({
                       {scene.effectSound && <span>音效：{scene.effectSound}</span>}
                       {scene.emotionalPurpose && <span>情绪目的：{scene.emotionalPurpose}</span>}
                     </div>
-                  </>
+                  </div>
                 )}
-              </div>
-            </article>
+              </Accordion.Content>
+            </Accordion.Item>
           ))}
-        </div>
+        </Accordion.Root>
       )}
     </StagePage>
   );

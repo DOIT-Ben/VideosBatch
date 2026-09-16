@@ -115,7 +115,7 @@
 
 .vbs-asset-gallery-detailed .vbs-asset-card {
   overflow: visible;
-  padding: 18px;
+  padding: var(--vbs-v2-pad-card);
 }
 
 .vbs-asset-gallery-detailed .vbs-asset-card-copy {

@@ -103,7 +103,6 @@ body:has(.videosbatch-studio-v2) {
 .videosbatch-studio-v2 .vbs-v2-workspace {
   min-height: auto;
   overflow: visible;
-  padding: 32px var(--vbs-v2-gutter) 64px;
 }
 
 .videosbatch-studio-v2 .vbs-v2-lesson-onboarding {
@@ -135,10 +134,6 @@ body:has(.videosbatch-studio-v2) {
 
   .videosbatch-studio-v2 .vbs-v2-progress-step {
     min-height: 48px;
-  }
-
-  .videosbatch-studio-v2 .vbs-v2-workspace {
-    padding-top: 28px;
   }
 
   .videosbatch-studio-v2 .vbs-v2-dropzone {

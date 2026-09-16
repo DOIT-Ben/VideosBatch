@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { Clamp } from "../components/Clamp";
 import { StageEmpty, StageFact, StagePage } from "../components/StagePage";
 
 const CREATIVE_GROUPS = ["数学史与知识由来", "历史需求与古今应用", "创意故事与现代情境"] as const;
@@ -75,7 +76,7 @@ export function IntroCandidatesStage({
                         {sub && <span className="vbs-card-sub">{sub}</span>}
                       </div>
                       <h4>{String(candidate.name || candidate.id || "未命名方案")}</h4>
-                      <p>{String(candidate.body || "")}</p>
+                      <Clamp lines={4}><p>{String(candidate.body || "")}</p></Clamp>
                       {candidate.endingQuestion && <blockquote>{String(candidate.endingQuestion)}</blockquote>}
                       {candidate.truthfulnessCategory && <small>{String(candidate.truthfulnessCategory)}</small>}
                       {recommended && <div className="vbs-reason">{recommended}</div>}

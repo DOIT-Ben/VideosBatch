@@ -484,7 +484,6 @@ button.vbs-v2-project-meta:hover {
 .vbs-v2-workspace {
   min-height: 0;
   overflow: auto;
-  padding: 36px 42px 56px;
   background: var(--vbs-v2-canvas);
 }
 
@@ -549,7 +548,7 @@ button.vbs-v2-project-meta:hover {
 
 .videosbatch-studio-v2 .vbs-screenplay-scene,
 .videosbatch-studio-v2 .vbs-shot-card {
-  padding: 24px;
+  padding: var(--vbs-v2-pad-card);
 }
 
 .videosbatch-studio-v2 .vbs-intro-card,
@@ -1192,7 +1191,7 @@ button.vbs-v2-project-meta:hover {
   max-height: 620px;
   overflow: auto;
   margin: 0;
-  padding: 28px 32px;
+  padding: var(--vbs-v2-pad-hero);
   color: #33363a;
   white-space: pre-wrap;
   word-break: break-word;
@@ -1215,7 +1214,7 @@ button.vbs-v2-project-meta:hover {
     "actions media";
   align-items: stretch;
   gap: 26px;
-  padding: 28px;
+  padding: var(--vbs-v2-pad-hero);
   border: 1px solid var(--vbs-v2-border);
   border-radius: var(--vbs-v2-radius-card);
   background: var(--vbs-v2-surface);
@@ -1332,11 +1331,6 @@ button.vbs-v2-project-meta:hover {
     display: none;
   }
 
-  .vbs-v2-workspace {
-    padding-left: 28px;
-    padding-right: 28px;
-  }
-
   .videosbatch-studio-v2 .vbs-asset-gallery-detailed,
   .videosbatch-studio-v2 .vbs-video-shot-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1346,7 +1340,6 @@ button.vbs-v2-project-meta:hover {
 @media (max-width: 960px) {
   .vbs-v2-header {
     min-height: 68px;
-    padding: 10px 18px;
     gap: 14px;
   }
 
@@ -1358,31 +1351,13 @@ button.vbs-v2-project-meta:hover {
     font-size: 17px;
   }
 
-  .vbs-v2-progress-wrap {
-    padding-left: 18px;
-    padding-right: 18px;
-  }
-
   .vbs-v2-progress-step {
     padding-inline: 6px;
-  }
-
-  .vbs-v2-stage-toolbar {
-    padding-left: 18px;
-    padding-right: 18px;
-  }
-
-  .vbs-v2-workspace {
-    padding: 28px 18px 40px;
   }
 
   .videosbatch-studio-v2 .vbs-asset-gallery-detailed,
   .videosbatch-studio-v2 .vbs-video-shot-grid {
     grid-template-columns: 1fr;
-  }
-
-  .vbs-final-delivery {
-    padding: 22px;
   }
 
   /* Narrow screens: the chip drops below the rail as a slim line. */
@@ -1482,7 +1457,6 @@ button.vbs-v2-project-meta:hover {
   }
 
   .vbs-final-delivery {
-    padding: 18px;
     grid-template-columns: 1fr;
     grid-template-areas:
       "copy"
@@ -1833,7 +1807,7 @@ button.vbs-v2-project-meta:hover {
 
 /* --- Workspace and the stage slate ---------------------------------------- */
 .videosbatch-studio-v2 .vbs-v2-workspace {
-  padding: 36px var(--vbs-v2-gutter) 76px;
+  padding: var(--vbs-v2-pad-work-top) var(--vbs-v2-gutter) var(--vbs-v2-pad-work-bottom);
 }
 
 .videosbatch-studio-v2 .vbs-stage-page {
@@ -2065,4 +2039,71 @@ button.vbs-v2-project-meta:hover {
     align-items: flex-start;
     justify-content: flex-start;
   }
+}
+
+/* Progressive disclosure: long content clamps to a few lines with a fade at
+   the cut; the toggle only renders when content actually overflows, so short
+   entries stay clean. max-height (not line-clamp) so stacked paragraphs,
+   blockquotes and meta rows clamp as one group. */
+.vbs-clamp {
+  display: grid;
+  gap: 5px;
+}
+
+.vbs-clamp-body {
+  overflow: hidden;
+  max-height: calc(var(--vbs-clamp-lines, 4) * 1.9em + 0.4em);
+  -webkit-mask-image: linear-gradient(180deg, #000 72%, transparent);
+  mask-image: linear-gradient(180deg, #000 72%, transparent);
+}
+
+.vbs-clamp-body.open {
+  max-height: none;
+  overflow: visible;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+.videosbatch-studio-v2 .vbs-clamp-toggle {
+  justify-self: start;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: var(--vbs-v2-size-label);
+  font-weight: 600;
+  color: var(--vbs-v2-text-soft);
+  cursor: pointer;
+}
+
+.videosbatch-studio-v2 .vbs-clamp-toggle:hover {
+  color: var(--vbs-v2-text);
+}
+
+/* Screenplay reuses the storyboard accordion so both review documents disclose
+   the same way: a header row per scene, bodies open on demand. The old 42px
+   number gutter folds into the header as a badge. */
+.videosbatch-studio-v2 .vbs-screenplay-accordion .vbs-screenplay-scene {
+  display: block;
+  padding: 0;
+  overflow: hidden;
+}
+
+.videosbatch-studio-v2 .vbs-screenplay-accordion .vbs-storyboard-trigger {
+  min-height: 54px;
+}
+
+.videosbatch-studio-v2 .vbs-screenplay-accordion .vbs-scene-number {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  font-size: 11px;
+}
+
+.videosbatch-studio-v2 .vbs-screenplay-accordion .vbs-storyboard-summary > span:first-child strong {
+  font-size: 15px;
+}
+
+.videosbatch-studio-v2 .vbs-screenplay-accordion .vbs-storyboard-content {
+  padding: 2px 0 var(--vbs-v2-pad-card);
 }

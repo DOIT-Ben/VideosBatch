@@ -90,13 +90,24 @@
      The gutter is derived from it, so widening the measure widens every
      surface that uses the gutter at the same time. */
   --vbs-v2-measure: 1080px;
-  --vbs-v2-gutter: max(28px, calc((100% - var(--vbs-v2-measure)) / 2));
+  --vbs-v2-gutter: max(clamp(18px, 2.4vw, 28px), calc((100% - var(--vbs-v2-measure)) / 2));
 
   /* The node canvas is an editing surface, not a document: a graph wants the
      width, so canvas mode keeps one compact inset for its header, canvas card
      and inspector instead of the reading measure. One inset per surface — what
      was wrong before was a header at 32px sitting above a card at 28px. */
   --vbs-v2-canvas-inset: 28px;
+
+  /* Fluid spacing: one clamp per role, so breathing room scales with the
+     viewport instead of stepping at breakpoints. Card padding and grid gaps
+     follow width; the workspace shell follows height, because height is what
+     it protects. The gutter's floor is fluid too — 28px at desktop, easing to
+     18px on phones — so narrow screens stop borrowing tablet margins. */
+  --vbs-v2-pad-card: clamp(16px, 1.75vw, 24px);
+  --vbs-v2-pad-hero: clamp(18px, 2.05vw, 28px);
+  --vbs-v2-gap-card: clamp(12px, 1.17vw, 16px);
+  --vbs-v2-pad-work-top: clamp(26px, 4.5vh, 40px);
+  --vbs-v2-pad-work-bottom: clamp(52px, 8vh, 84px);
 
   /* --- Form --------------------------------------------------------------- */
   --vbs-v2-radius-control: 10px;

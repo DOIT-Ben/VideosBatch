@@ -1,3 +1,4 @@
+import { Clamp } from "../components/Clamp";
 import { StageEmpty, StageFact, StagePage } from "../components/StagePage";
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -83,7 +84,7 @@ export function AssetPlanStage({ artifact }: { artifact: any }) {
                   <article className="vbs-asset-plan-card" key={String(item.assetKey)}>
                     {item.aspectRatio ? <div className="vbs-card-topline"><span>{String(item.aspectRatio)}</span></div> : null}
                     <h4>{String(item.name || "未命名资产")}</h4>
-                    <p>{String(item.description || "")}</p>
+                    <Clamp lines={3}><p>{String(item.description || "")}</p></Clamp>
                     {item.sourceEvidence && <div className="vbs-source-evidence"><strong>出处</strong><span>{String(item.sourceEvidence)}</span></div>}
                     {item.continuityNotes && <div className="vbs-source-evidence"><strong>连贯性</strong><span>{String(item.continuityNotes)}</span></div>}
                     <details><summary>查看生成提示词</summary><p className="vbs-prompt-copy">{String(item.prompt || "")}</p></details>
