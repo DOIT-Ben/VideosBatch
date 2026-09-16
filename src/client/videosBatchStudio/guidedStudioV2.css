@@ -55,7 +55,7 @@
   border-radius: 999px;
   background: var(--vbs-v2-surface);
   color: var(--vbs-v2-text-soft);
-  font-size: 12px;
+  font-size: var(--vbs-v2-size-label);
   font-weight: 600;
   cursor: pointer;
   transition: border-color var(--vbs-v2-transition), background var(--vbs-v2-transition), color var(--vbs-v2-transition);
@@ -94,7 +94,7 @@
 
 .vbs-v2-brand-title strong {
   color: var(--vbs-v2-text);
-  font-size: 19px;
+  font-size: var(--vbs-v2-size-brand);
   font-weight: 700;
   line-height: 1.08;
   letter-spacing: -0.025em;
@@ -102,7 +102,7 @@
 
 .vbs-v2-brand-title span {
   color: var(--vbs-v2-text-soft);
-  font-size: 11px;
+  font-size: var(--vbs-v2-size-micro);
   font-weight: 500;
   letter-spacing: 0.01em;
 }
@@ -138,27 +138,27 @@
   justify-content: center;
   gap: 7px;
   padding: 0;
-  color: #918d84;
+  color: var(--vbs-v2-text-soft);
   white-space: nowrap;
 }
 
 .vbs-v2-project-meta strong {
   max-width: 260px;
   overflow: hidden;
-  color: #4c4d4b;
-  font-size: 12px;
+  color: var(--vbs-v2-text);
+  font-size: var(--vbs-v2-size-label);
   font-weight: 600;
   text-overflow: ellipsis;
 }
 
 .vbs-v2-project-meta > span {
-  color: #c5c0b7;
+  color: var(--vbs-v2-text-soft);
 }
 
 .vbs-v2-project-meta small {
-  color: #8a867e;
-  font-size: 11px;
-  font-weight: 650;
+  color: var(--vbs-v2-text-soft);
+  font-size: var(--vbs-v2-size-micro);
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
@@ -246,9 +246,9 @@ button.vbs-v2-project-meta:hover {
   border: 0;
   border-radius: 8px;
   background: transparent;
-  color: #77736c;
+  color: var(--vbs-v2-text-soft);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--vbs-v2-size-label);
   font-weight: 600;
   cursor: pointer;
   transition: background var(--vbs-v2-transition), color var(--vbs-v2-transition), box-shadow var(--vbs-v2-transition);
@@ -306,7 +306,7 @@ button.vbs-v2-project-meta:hover {
 
 .vbs-mode-banner strong {
   font-size: var(--vbs-v2-size-label);
-  font-weight: 650;
+  font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -422,7 +422,7 @@ button.vbs-v2-project-meta:hover {
 .vbs-v2-auto-run {
   min-height: 32px;
   padding: 0 12px;
-  font-size: 11px;
+  font-size: var(--vbs-v2-size-micro);
 }
 
 .vbs-v2-more-button,
@@ -467,7 +467,7 @@ button.vbs-v2-project-meta:hover {
   padding: 0 10px;
   border-radius: 8px;
   color: #3e4144;
-  font-size: 11px;
+  font-size: var(--vbs-v2-size-micro);
   outline: none;
   cursor: pointer;
 }
@@ -517,7 +517,7 @@ button.vbs-v2-project-meta:hover {
 }
 
 .videosbatch-studio-v2 .vbs-stage-page h3 {
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .videosbatch-studio-v2 .vbs-document-header p {
@@ -631,7 +631,7 @@ button.vbs-v2-project-meta:hover {
 .videosbatch-studio-v2 .vbs-confirmed {
   min-height: 38px;
   border-radius: var(--vbs-v2-radius-control);
-  font-size: 12px;
+  font-size: var(--vbs-v2-size-label);
   font-weight: 600;
 }
 
@@ -673,7 +673,7 @@ button.vbs-v2-project-meta:hover {
   margin: 4px 0 6px;
   color: var(--vbs-v2-text);
   font-size: 26px;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.25;
   letter-spacing: -0.02em;
 }
@@ -706,8 +706,8 @@ button.vbs-v2-project-meta:hover {
   background: transparent;
   color: #74716a;
   font: inherit;
-  font-size: 11px;
-  font-weight: 650;
+  font-size: var(--vbs-v2-size-micro);
+  font-weight: 600;
   cursor: pointer;
   transition: background var(--vbs-v2-transition), color var(--vbs-v2-transition), box-shadow var(--vbs-v2-transition);
 }
@@ -766,12 +766,12 @@ button.vbs-v2-project-meta:hover {
 .vbs-v2-dropzone strong {
   color: #292c30;
   font-size: 15px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .vbs-v2-dropzone > span {
   color: #858179;
-  font-size: 11px;
+  font-size: var(--vbs-v2-size-micro);
 }
 
 .vbs-v2-upload-note,
@@ -783,7 +783,7 @@ button.vbs-v2-project-meta:hover {
   margin-top: 12px;
   padding: 10px 12px;
   border-radius: 11px;
-  font-size: 11px;
+  font-size: var(--vbs-v2-size-micro);
   line-height: 1.55;
 }
 
@@ -878,7 +878,7 @@ button.vbs-v2-project-meta:hover {
 .vbs-v2-source-preview-heading strong,
 .vbs-v2-parse-editor-heading strong {
   color: #404347;
-  font-size: 12px;
+  font-size: var(--vbs-v2-size-label);
   font-weight: 700;
 }
 
@@ -1048,7 +1048,7 @@ button.vbs-v2-project-meta:hover {
 .vbs-v2-file-copy strong {
   overflow: hidden;
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1087,12 +1087,12 @@ button.vbs-v2-project-meta:hover {
 
 .vbs-v2-parse-metrics strong {
   font-size: 15px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .vbs-v2-parse-metrics small {
-  color: #908c84;
-  font-size: 9px;
+  color: var(--vbs-v2-text-soft);
+  font-size: var(--vbs-v2-size-micro);
 }
 
 .vbs-v2-parse-editor,
@@ -1100,8 +1100,8 @@ button.vbs-v2-project-meta:hover {
   display: grid;
   gap: 8px;
   color: #404347;
-  font-size: 11px;
-  font-weight: 650;
+  font-size: var(--vbs-v2-size-micro);
+  font-weight: 600;
 }
 
 .vbs-v2-parse-editor > span,
@@ -1112,8 +1112,8 @@ button.vbs-v2-project-meta:hover {
 }
 
 .vbs-v2-parse-editor small {
-  color: #99958e;
-  font-size: 9px;
+  color: var(--vbs-v2-text-soft);
+  font-size: var(--vbs-v2-size-micro);
   font-weight: 400;
 }
 
@@ -1176,7 +1176,7 @@ button.vbs-v2-project-meta:hover {
   background: var(--vbs-v2-surface-muted);
   color: #66655f;
   font-size: 10px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .vbs-v2-lesson-document {
@@ -1190,7 +1190,8 @@ button.vbs-v2-project-meta:hover {
 .vbs-v2-lesson-document pre {
   max-height: 620px;
   overflow: auto;
-  margin: 0;
+  margin: 0 auto;
+  max-width: 44em; /* ≈44 CJK chars per line — the comfortable reading range */
   padding: var(--vbs-v2-pad-hero);
   color: #33363a;
   white-space: pre-wrap;
@@ -1241,7 +1242,7 @@ button.vbs-v2-project-meta:hover {
 }
 
 .videosbatch-studio-v2 .vbs-final-hero h2 {
-  font-size: 22px;
+  font-size: var(--vbs-v2-size-headline);
   letter-spacing: -0.02em;
 }
 
@@ -1384,7 +1385,7 @@ button.vbs-v2-project-meta:hover {
   }
 
   .vbs-v2-lesson-panel-heading h1 {
-    font-size: 22px;
+    font-size: var(--vbs-v2-size-headline);
   }
 
   .vbs-v2-lesson-panel-heading .vbs-v2-tab-list {
@@ -1716,9 +1717,9 @@ button.vbs-v2-project-meta:hover {
 }
 
 .vbs-v2-progress-index {
-  color: var(--vbs-v2-text-faint);
+  color: var(--vbs-v2-text-soft);
   font-family: var(--vbs-v2-mono);
-  font-size: 9px;
+  font-size: var(--vbs-v2-size-micro);
   font-weight: 500;
   letter-spacing: 0.06em;
 }
@@ -2108,7 +2109,7 @@ button.vbs-v2-project-meta:hover {
   flex: none;
   width: 30px;
   height: 30px;
-  font-size: 11px;
+  font-size: var(--vbs-v2-size-micro);
 }
 
 .videosbatch-studio-v2 .vbs-screenplay-accordion .vbs-storyboard-summary > span:first-child strong {

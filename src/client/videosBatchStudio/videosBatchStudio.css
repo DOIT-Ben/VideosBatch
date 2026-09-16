@@ -38,7 +38,7 @@
 .vbs-document-facts { display: flex; gap: 8px; flex-shrink: 0; }
 .vbs-note-card { padding: 14px 16px; margin: 14px 0; }
 .vbs-note-card p { margin: 5px 0 0; color: var(--vbs-muted); line-height: 1.7; }
-.vbs-longform { padding: 28px 30px; border: 1px solid var(--vbs-border); border-radius: 14px; background: #fff; line-height: 2.05; font-size: 15px; white-space: pre-wrap; }
+.vbs-longform { padding: 28px 30px; border: 1px solid var(--vbs-border); border-radius: 14px; background: #fff; line-height: 2.05; font-size: 15px; white-space: pre-wrap; max-width: 44em; margin-inline: auto; }
 
 .vbs-asset-plan-groups { display: grid; gap: 30px; }
 .vbs-asset-plan-group h3, .vbs-section-title h3 { margin: 0; font-size: 15px; }
