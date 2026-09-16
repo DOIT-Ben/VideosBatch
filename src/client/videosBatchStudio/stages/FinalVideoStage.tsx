@@ -21,7 +21,7 @@ export function FinalVideoStage({ artifact, session, onOpenCanvas }: { artifact:
           <div className={`vbs-final-check ${settled ? "ready" : ""}`}>{settled ? "✓" : "○"}</div>
           <div className="vbs-final-hero">
             <h2>{ready ? "课程视频已完成" : simulatedReady ? "示例成片已就绪" : status === "running" ? "正在拼接最终视频" : "等待最终拼接"}</h2>
-            <p>{ready ? "可直接下载交付，或进入制作画布继续调整。" : simulatedReady ? "全流程已走完。这里是示例内容，不会生成真实视频文件。" : native.progress || "完成前面的镜头生成后，系统会把视频按顺序拼接。"}</p>
+            <p>{ready ? "可直接下载交付，或进入制作画布继续调整。" : simulatedReady ? "全流程已走完，当前为演示内容。" : native.progress || "完成前面的镜头生成后，系统会把视频按顺序拼接。"}</p>
           </div>
         </div>
 
@@ -29,7 +29,14 @@ export function FinalVideoStage({ artifact, session, onOpenCanvas }: { artifact:
           {playbackUrl ? (
             <video className="vbs-final-player" src={playbackUrl} controls playsInline preload="metadata" />
           ) : (
-            <div className="vbs-final-player-placeholder"><span>{artifactUrl.startsWith("fake://") ? "示例成片，暂无视频文件" : "最终视频预览"}</span><small>{native.progress || (!artifactUrl.startsWith("fake://") ? artifactUrl : "") || "尚未生成"}</small></div>
+            <div className="vbs-final-player-placeholder">
+              <span>{artifactUrl.startsWith("fake://") ? "示例成片" : "最终视频预览"}</span>
+              {/* Secondary line only when it carries real information — under the fake
+                  provider "尚未生成" would just restate the placeholder above it. */}
+              {!artifactUrl.startsWith("fake://") && (native.progress || artifactUrl) ? (
+                <small>{native.progress || artifactUrl}</small>
+              ) : null}
+            </div>
           )}
         </div>
 

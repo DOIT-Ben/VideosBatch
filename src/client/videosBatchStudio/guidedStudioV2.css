@@ -301,8 +301,9 @@ button.vbs-v2-project-meta:hover {
 .vbs-mode-banner-body {
   display: flex;
   flex: 1 1 auto;
-  flex-direction: column;
-  gap: 3px;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 8px;
   min-width: 0;
 }
 
@@ -1688,8 +1689,13 @@ button.vbs-v2-project-meta:hover {
   color: var(--vbs-v2-text-soft);
   font-size: var(--vbs-v2-size-micro);
   line-height: 1.6;
-  /* Two lines are unavoidable here; balancing them beats an orphan. */
-  text-wrap: balance;
+}
+
+/* Single-line band: the separator lives in CSS so the copy stays clean. */
+.vbs-mode-banner-body span::before {
+  content: "·";
+  margin-right: 8px;
+  color: var(--vbs-v2-border-strong);
 }
 
 .vbs-mode-banner-body code {

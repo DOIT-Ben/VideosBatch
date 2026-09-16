@@ -49,7 +49,7 @@ export function ModeBanner({ runtime }: { runtime?: VideosBatchRuntimeSummary })
         {runtime.error ? (
           <span>暂时无法读取运行配置，请联系管理员。</span>
         ) : (
-          <span>当前展示的是示例内容，用来预览整个制作流程，可以放心操作。</span>
+          <span>示例内容，可放心操作。</span>
         )}
       </div>
       <button
