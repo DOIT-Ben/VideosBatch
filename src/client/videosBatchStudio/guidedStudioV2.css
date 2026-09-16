@@ -282,36 +282,34 @@ button.vbs-v2-project-meta:hover {
   color: var(--vbs-v2-text);
 }
 
-/* Mode banner — states the resolved fake/native switches. A stubbed run produces "waiting for
-   image" cards that look identical to a broken one, so the studio says which one it is. */
+/* Mode banner — a status chip inside the rail row, not a full-width band. A stubbed run
+   produces "waiting for image" cards that look identical to a broken one, so the studio
+   says which one it is; the chip states it in one non-wrapping line (hover for detail). */
 .vbs-mode-banner {
+  flex: 0 1 320px;
+  min-width: 0;
   display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 11px 13px;
+  align-items: center;
+  gap: 8px;
+  align-self: center;
+  margin-left: auto;
+  margin-right: 24px;
+  padding: 0 2px 0 18px;
+  border-left: 1px solid var(--vbs-v2-border);
   color: var(--vbs-v2-text);
 }
 
 .vbs-mode-banner-icon {
   flex: 0 0 auto;
-  margin-top: 1px;
   color: var(--vbs-v2-accent-deep);
 }
 
-.vbs-mode-banner-body {
-  display: flex;
-  flex: 1 1 auto;
-  flex-direction: row;
-  align-items: baseline;
-  gap: 8px;
-  min-width: 0;
-}
-
-.vbs-mode-banner-body code {
-  margin: 0 3px;
-  padding: 1px 5px;
-  border-radius: 5px;
-  font-size: 11px;
+.vbs-mode-banner strong {
+  font-size: var(--vbs-v2-size-label);
+  font-weight: 650;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .vbs-mode-banner-close {
@@ -1227,9 +1225,16 @@ button.vbs-v2-project-meta:hover {
   text-align: left;
 }
 
+/* Delivery card: copy + actions on the left, player on the right. A full-width
+   16:9 player under stacked copy pushed the page past two viewports. */
 .vbs-final-delivery {
   overflow: hidden;
   display: grid;
+  grid-template-columns: minmax(250px, 320px) minmax(0, 1fr);
+  grid-template-areas:
+    "copy media"
+    "actions media";
+  align-items: stretch;
   gap: 22px;
   padding: 24px;
   border: 1px solid var(--vbs-v2-border);
@@ -1238,8 +1243,10 @@ button.vbs-v2-project-meta:hover {
 }
 
 .vbs-final-delivery-copy {
+  grid-area: copy;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 14px;
 }
 
@@ -1282,6 +1289,7 @@ button.vbs-v2-project-meta:hover {
 }
 
 .vbs-final-delivery-media {
+  grid-area: media;
   overflow: hidden;
   border-radius: 18px;
   background: #161719;
@@ -1292,12 +1300,20 @@ button.vbs-v2-project-meta:hover {
 .videosbatch-studio-v2 .vbs-final-player-placeholder {
   width: 100%;
   aspect-ratio: 16 / 9;
+  /* Cap the black box: on wide screens 16:9 alone could eat the whole viewport. */
+  max-height: 440px;
   margin: 0;
   border-radius: 0;
   background: #161719;
 }
 
+.videosbatch-studio-v2 .vbs-final-player {
+  object-fit: contain;
+}
+
 .videosbatch-studio-v2 .vbs-final-actions {
+  grid-area: actions;
+  align-self: end;
   justify-content: flex-start;
   /* The row now sits inside the delivery grid; its gap already spaces it. */
   margin-top: 0;
@@ -1387,6 +1403,19 @@ button.vbs-v2-project-meta:hover {
     padding: 22px;
   }
 
+  /* Narrow screens: the chip drops below the rail as a slim line. */
+  .vbs-v2-rail-row {
+    flex-direction: column;
+  }
+
+  .vbs-mode-banner {
+    margin-left: 0;
+    margin-right: 0;
+    align-self: stretch;
+    padding: 10px 18px 0;
+    border-left: 0;
+  }
+
   .vbs-v2-lesson-panel-heading {
     grid-template-columns: minmax(0, 1fr);
     align-items: start;
@@ -1472,6 +1501,11 @@ button.vbs-v2-project-meta:hover {
 
   .vbs-final-delivery {
     padding: 18px;
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "copy"
+      "media"
+      "actions";
   }
 }
 
@@ -1638,8 +1672,9 @@ button.vbs-v2-project-meta:hover {
 
 /* --- Measure -------------------------------------------------------------- */
 
-/* Siblings of the workspace, so these carry the gutter themselves. */
-.vbs-mode-banner,
+/* Siblings of the workspace, so these carry the gutter themselves.
+   The mode chip is exempt: it sits at the row's end as a compact control,
+   not a full-bleed band — gutter padding here would eat its text. */
 .vbs-v2-progress-wrap {
   padding-left: var(--vbs-v2-gutter);
   padding-right: var(--vbs-v2-gutter);
@@ -1669,46 +1704,23 @@ button.vbs-v2-project-meta:hover {
   background: var(--vbs-v2-surface);
 }
 
-/* --- The mode notice: a quiet row under the rail, not an amber band -------- */
-.vbs-mode-banner {
-  margin: 0;
-  padding-top: 10px;
-  padding-bottom: 10px;
-  border: 0;
+/* --- Rail row: the progress line and the mode chip share ONE band ---------- */
+.vbs-v2-rail-row {
+  display: flex;
+  align-items: stretch;
   border-bottom: 1px solid var(--vbs-v2-border);
-  border-radius: 0;
   background: var(--vbs-v2-surface);
 }
 
-.vbs-mode-banner-body strong {
-  font-size: var(--vbs-v2-size-label);
-  font-weight: 650;
-}
-
-.vbs-mode-banner-body span {
-  color: var(--vbs-v2-text-soft);
-  font-size: var(--vbs-v2-size-micro);
-  line-height: 1.6;
-}
-
-/* Single-line band: the separator lives in CSS so the copy stays clean. */
-.vbs-mode-banner-body span::before {
-  content: "·";
-  margin-right: 8px;
-  color: var(--vbs-v2-border-strong);
-}
-
-.vbs-mode-banner-body code {
-  background: rgba(111, 79, 13, 0.12);
-  font-family: var(--vbs-v2-mono);
+.vbs-v2-rail-row .vbs-v2-progress-wrap {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 /* --- The rail: one continuous line, nine stops ---------------------------- */
 .vbs-v2-progress-wrap {
   padding-top: 13px;
   padding-bottom: 11px;
-  border-bottom: 1px solid var(--vbs-v2-border);
-  background: var(--vbs-v2-surface);
 }
 
 .vbs-v2-progress-step {

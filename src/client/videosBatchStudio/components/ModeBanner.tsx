@@ -41,17 +41,16 @@ export function ModeBanner({ runtime }: { runtime?: VideosBatchRuntimeSummary })
     }
   };
 
+  const detail = runtime.error
+    ? "暂时无法读取运行配置，请联系管理员。"
+    : "示例内容，可放心操作。";
+
+  // Renders as a chip inside the rail row (not a full-width band): icon + one
+  // non-wrapping line; the reassurance sentence lives in the hover title.
   return (
-    <div className="vbs-mode-banner" role="status">
-      <TriangleAlert size={16} className="vbs-mode-banner-icon" aria-hidden="true" />
-      <div className="vbs-mode-banner-body">
-        <strong>演示模式：{stubbed.length ? `${stubbed.join("、")}不会真正生成` : "配置有误"}</strong>
-        {runtime.error ? (
-          <span>暂时无法读取运行配置，请联系管理员。</span>
-        ) : (
-          <span>示例内容，可放心操作。</span>
-        )}
-      </div>
+    <aside className="vbs-mode-banner" role="status" title={detail}>
+      <TriangleAlert size={15} className="vbs-mode-banner-icon" aria-hidden="true" />
+      <strong>演示模式：{stubbed.length ? `${stubbed.join("、")}不会真正生成` : "配置有误"}</strong>
       <button
         type="button"
         className="vbs-mode-banner-close"
@@ -61,6 +60,6 @@ export function ModeBanner({ runtime }: { runtime?: VideosBatchRuntimeSummary })
       >
         <X size={14} />
       </button>
-    </div>
+    </aside>
   );
 }

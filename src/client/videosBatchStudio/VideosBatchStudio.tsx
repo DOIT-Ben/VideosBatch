@@ -374,16 +374,18 @@ function VideosBatchStudioView({
         onToggleUsage={onToggleUsage}
         onToggleLanguage={onToggleLanguage}
       />
-      <WorkflowProgressRail
-        steps={VIDEOS_BATCH_PRODUCT_STEPS}
-        selectedStepId={selectedStepId}
-        currentStepId={currentStepId}
-        getStatus={statusForStep}
-        onSelectStep={setSelectedStepId}
-      />
-      {/* Below the rail, not above: the rail's active stop is amber too, and two amber
-          bands stacked together blurred into one zone. */}
-      <ModeBanner runtime={runtime} />
+      <div className="vbs-v2-rail-row">
+        <WorkflowProgressRail
+          steps={VIDEOS_BATCH_PRODUCT_STEPS}
+          selectedStepId={selectedStepId}
+          currentStepId={currentStepId}
+          getStatus={statusForStep}
+          onSelectStep={setSelectedStepId}
+        />
+        {/* Same row as the rail: a status chip, not another full-width band. The page's
+            vertical budget belongs to the work; the chip ellipsizes instead of wrapping. */}
+        <ModeBanner runtime={runtime} />
+      </div>
       <main className="vbs-v2-workspace">
         {error && <div className="vbs-inline-error">{error}</div>}
         <div className="vbs-v2-stage-frame">
