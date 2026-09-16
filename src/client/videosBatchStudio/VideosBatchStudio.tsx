@@ -260,7 +260,11 @@ function VideosBatchStudioView({
     if (!workflow) return;
     const current = workflow.stages.STORY_SCRIPT?.artifact as Record<string, any> | undefined;
     if (!current) return;
-    await perform("save-story", () => api.saveVideosBatchArtifact(
+    // Must throw on rejection like the screenplay/storyboard editors: StoryStage
+    // exits edit mode after a successful save, so a swallowed failure closed the
+    // editor over an unsaved edit and the user's text disappeared with no error
+    // (2026-09-16 review — the same defect F9 fixed elsewhere).
+    await performOrThrow("save-story", () => api.saveVideosBatchArtifact(
       sessionId,
       "STORY_SCRIPT",
       updateStoryArtifactContent(current, content)
@@ -442,7 +446,9 @@ function VideosBatchStudioView({
  */
 export function VideosBatchStudio(props: VideosBatchStudioProps) {
   return (
-    <StudioErrorBoundary>
+    // `onBackToSessions` is forwarded so the fallback panel keeps a real way out:
+    // the header that normally owns that entry point lives inside the boundary.
+    <StudioErrorBoundary onBackToSessions={props.onBackToSessions}>
       <VideosBatchStudioView {...props} />
     </StudioErrorBoundary>
   );

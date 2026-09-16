@@ -14,6 +14,8 @@ const CATEGORY_ALIASES: Array<{ key: string; needles: string[] }> = [
   { key: "CREATURE", needles: ["CREATURE", "生物"] }
 ];
 
+const CANONICAL_KEYS = new Set(CATEGORY_ALIASES.map(({ key }) => key));
+
 /**
  * Resolve an asset item's canonical category.
  *
@@ -22,21 +24,43 @@ const CATEGORY_ALIASES: Array<{ key: string; needles: string[] }> = [
  * category into several groups whose titles fall back to raw English. Match the
  * canonical name anywhere in the string and fall back to the raw value so every
  * item still has a home (same failure mode as IntroCandidatesStage).
+ *
+ * Note the server already constrains this: `llmTextStages` validates `category`
+ * against the exact enum and requires `assetKey` to start with `category-`, so
+ * the tolerant paths below only serve hand-edited (advanced drawer) or legacy
+ * artifacts. When several canonical names do appear, the *earliest* mention wins
+ * — canonical output is `<canonical>：<sub-direction>`, so the category precedes
+ * its qualifier — with the longest needle breaking ties and declaration order
+ * after that. Declaration order alone silently mis-filed anything whose
+ * qualifier happened to contain another canonical name ("生物：场景中的小鸟"
+ * landed under 场景).
  */
-function categoryKey(value: unknown) {
-  const raw = String(value || "").trim();
-  if (!raw) return "OTHER";
+function categoryKey(category: unknown, assetKey?: unknown) {
+  const raw = String(category || "").trim();
   const upper = raw.toUpperCase();
+  if (CANONICAL_KEYS.has(upper)) return upper;
+  let best: { key: string; at: number; length: number } | undefined;
   for (const { key, needles } of CATEGORY_ALIASES) {
-    if (needles.some((needle) => upper.includes(needle.toUpperCase()))) return key;
+    for (const needle of needles) {
+      const at = upper.indexOf(needle.toUpperCase());
+      if (at < 0) continue;
+      if (!best || at < best.at || (at === best.at && needle.length > best.length)) {
+        best = { key, at, length: needle.length };
+      }
+    }
   }
-  return raw;
+  if (best) return best.key;
+  // Last resort: a validated `assetKey` prefix (`CHARACTER-HERO`) still names the
+  // category even when the free-text field is unusable.
+  const keyPrefix = String(assetKey || "").trim().toUpperCase().split("-")[0];
+  if (CANONICAL_KEYS.has(keyPrefix)) return keyPrefix;
+  return raw || "OTHER";
 }
 
 export function AssetPlanStage({ artifact }: { artifact: any }) {
   const items: any[] = Array.isArray(artifact?.items) ? artifact.items : [];
   const grouped = items.reduce((acc: Record<string, any[]>, item: any) => {
-    const key = categoryKey(item?.category);
+    const key = categoryKey(item?.category, item?.assetKey);
     (acc[key] ||= []).push(item);
     return acc;
   }, {});

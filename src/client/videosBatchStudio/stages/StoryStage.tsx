@@ -22,8 +22,14 @@ export function StoryStage({
 
   const save = async () => {
     if (!draft.trim()) return;
-    await onSaveContent?.(draft);
-    setEditing(false);
+    try {
+      await onSaveContent?.(draft);
+      setEditing(false);
+    } catch {
+      // The studio reports the failure inline; keep the draft open so a rejected
+      // save does not silently discard the user's edit (same rule as the
+      // screenplay and storyboard editors).
+    }
   };
 
   const hasContent = Boolean(content || editing);

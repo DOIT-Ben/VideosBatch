@@ -221,6 +221,84 @@ try {
     assert.equal(concurrentCalls, 1, "concurrent run-next requests must share one in-flight execution");
     assert.ok(concurrentResults.every((item) => item.body.currentStage === "COURSE_INTRO_SELECTION"));
 
+    // --- F8: a write's flight key must include its body ------------------------
+    // `withWorkflowFlight` collapses concurrent calls that share a kind. Keying
+    // only on route+stage silently dropped the second of two concurrent saves
+    // carrying *different* content while reporting success to both callers
+    // (2026-09-16). The key must therefore distinguish bodies while still
+    // collapsing a genuine double-click.
+    assert.equal(
+      apiModule.writeFlightKind("artifact:STITCH", { a: 1 }),
+      apiModule.writeFlightKind("artifact:STITCH", { a: 1 }),
+      "the same body must produce the same flight key so a double-click still collapses"
+    );
+    assert.notEqual(
+      apiModule.writeFlightKind("artifact:STITCH", { a: 1 }),
+      apiModule.writeFlightKind("artifact:STITCH", { a: 2 }),
+      "different bodies must produce different flight keys so neither write is dropped"
+    );
+
+    // Widen the in-flight window so both requests are guaranteed to overlap;
+    // without overlap the regression this guards would pass by timing luck.
+    const originalSave = store.save.bind(store);
+    let saveDelayMs = 0;
+    store.save = async () => {
+      if (saveDelayMs) await delay(saveDelayMs);
+      return originalSave();
+    };
+    try {
+      saveDelayMs = 200;
+      const introRevisionBeforeDuplicate = manualSave.body.stages.COURSE_INTRO_SELECTION.revision;
+      const duplicatePayload = JSON.stringify({
+        artifact: {
+          selectedIntroId: "A-01",
+          selectionMode: "user_selected",
+          selectionReason: "并发重复提交",
+          locked: true
+        }
+      });
+      const duplicateWrites = await Promise.all([
+        request<any>(`/api/sessions/${created.id}/videosbatch/stages/COURSE_INTRO_SELECTION/artifact`, { method: "PUT", body: duplicatePayload }),
+        request<any>(`/api/sessions/${created.id}/videosbatch/stages/COURSE_INTRO_SELECTION/artifact`, { method: "PUT", body: duplicatePayload })
+      ]);
+      assert.deepEqual(duplicateWrites.map((item) => item.response.status), [200, 200]);
+      const afterDuplicate = await request<any>(`/api/sessions/${created.id}/videosbatch`);
+      assert.equal(
+        afterDuplicate.body.stages.COURSE_INTRO_SELECTION.revision,
+        introRevisionBeforeDuplicate + 1,
+        "two concurrent saves with identical content are a double-click and must apply exactly once"
+      );
+
+      const introRevisionBeforeDistinct = afterDuplicate.body.stages.COURSE_INTRO_SELECTION.revision;
+      const distinctReasonA = "并发写入 A";
+      const distinctReasonB = "并发写入 B";
+      const distinctWrites = await Promise.all([
+        request<any>(`/api/sessions/${created.id}/videosbatch/stages/COURSE_INTRO_SELECTION/artifact`, {
+          method: "PUT",
+          body: JSON.stringify({ artifact: { selectedIntroId: "A-01", selectionMode: "user_selected", selectionReason: distinctReasonA, locked: true } })
+        }),
+        request<any>(`/api/sessions/${created.id}/videosbatch/stages/COURSE_INTRO_SELECTION/artifact`, {
+          method: "PUT",
+          body: JSON.stringify({ artifact: { selectedIntroId: "A-01", selectionMode: "user_selected", selectionReason: distinctReasonB, locked: true } })
+        })
+      ]);
+      assert.deepEqual(distinctWrites.map((item) => item.response.status), [200, 200]);
+      const afterDistinct = await request<any>(`/api/sessions/${created.id}/videosbatch`);
+      assert.equal(
+        afterDistinct.body.stages.COURSE_INTRO_SELECTION.revision,
+        introRevisionBeforeDistinct + 2,
+        "two concurrent saves carrying different content must BOTH apply — neither may be silently dropped"
+      );
+      assert.notEqual(
+        afterDistinct.body.stages.COURSE_INTRO_SELECTION.artifact.selectionReason,
+        "并发重复提交",
+        "a distinct concurrent save must not leave the stale value as the winner"
+      );
+    } finally {
+      saveDelayMs = 0;
+      store.save = originalSave;
+    }
+
     const persisted = store.getSession(created.id)?.videosBatchWorkflow;
     assert.equal(persisted?.stages.COURSE_INTRO_CANDIDATES?.status, "ready");
 

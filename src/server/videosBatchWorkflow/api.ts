@@ -70,7 +70,7 @@ function withWorkflowFlight<T>(sessionId: string, kind: string, operation: () =>
  * useful case: a double click) while letting distinct writes both apply, still
  * serialized in arrival order.
  */
-function writeFlightKind(prefix: string, body: unknown) {
+export function writeFlightKind(prefix: string, body: unknown) {
   return `${prefix}:${contentHash(body ?? null)}`;
 }
 

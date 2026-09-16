@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Asset } from "../src/shared/types";
 import { createVideosBatchWorkflow } from "../src/shared/videosBatchWorkflow";
-import { assetConfirmationReady, restartFrom } from "../src/server/videosBatchWorkflow/runner";
+import { assetConfirmationReady, replaceStageArtifact, restartFrom } from "../src/server/videosBatchWorkflow/runner";
 import { isAssetConfirmationComplete } from "../src/client/videosBatchStudio/contentModel";
 import { AssetGalleryStage } from "../src/client/videosBatchStudio/stages/AssetGalleryStage";
 import { assetsNeedConfirmation } from "../src/client/videosBatchStudio/stageModel";
@@ -200,6 +200,41 @@ assert.equal(
   assetConfirmationReady(gateRestarted),
   false,
   "restarting the asset-confirmation gate must re-arm it; a surviving confirmed artifact would let auto-run skip the gate"
+);
+
+// --- the server gate must agree with the UI about a *stale* stage ------------
+// (2026-09-16 review) `AssetGalleryStage` asks for confirmation whenever
+// `confirmationStageStatus !== "ready"` — asserted above with the very same
+// fixture — but `assetConfirmationReady` inspected only the artifact. A stage
+// flipped to `stale` by an upstream regeneration therefore still satisfied the
+// gate, and an auto-run sailed past the confirmation the operator had just been
+// asked for. The gate's own status must be part of the verdict, exactly as
+// `introSelectionReady` has always included `COURSE_INTRO_SELECTION.status`.
+const buildGateFixture = (confirmationStatus: "ready" | "stale", artifact: any) => {
+  const workflow = createVideosBatchWorkflow({ projectId: "P001", lessonText: "教案内容" }, "2026-09-16T00:00:00.000Z");
+  workflow.stages.ASSET_PLAN = { status: "ready", revision: 1, artifact: plan, updatedAt: "2026-09-16T00:00:00.000Z" };
+  workflow.stages.ASSET_CANDIDATES = { status: "ready", revision: 1, artifact: candidatesAfterRegeneration, updatedAt: "2026-09-16T00:00:00.000Z" };
+  workflow.stages.ASSET_CONFIRMATION = { status: confirmationStatus, revision: 1, artifact, updatedAt: "2026-09-16T00:00:00.000Z" };
+  workflow.currentStage = "SCREENPLAY";
+  return workflow;
+};
+
+const staleStageGate = buildGateFixture("stale", completeArtifact);
+assert.equal(
+  assetConfirmationReady(staleStageGate),
+  false,
+  "a stale ASSET_CONFIRMATION stage must not satisfy the gate even when its artifact still looks complete — otherwise the server disagrees with the confirmation bar the UI is showing"
+);
+
+// …and the disagreement must stay recoverable: saving a fresh confirmation on
+// that same stale stage has to arm the gate again, or tightening it would have
+// introduced a deadlock instead of a fix.
+const reconfirmed = replaceStageArtifact(staleStageGate, "ASSET_CONFIRMATION", completeArtifact, "2026-09-16T00:01:00.000Z");
+assert.equal(reconfirmed.stages.ASSET_CONFIRMATION?.status, "ready", "saving a confirmation must mark its stage ready");
+assert.equal(
+  assetConfirmationReady(reconfirmed),
+  true,
+  "re-confirming a stale gate must re-arm it — the stricter status check must not deadlock the flow"
 );
 
 console.log("asset confirmation gate smoke passed");

@@ -375,3 +375,81 @@ Phase Log 标 DONE 后，按要求做了一次不依赖本文档、直接对照�
 - `F12` 之外的人工闸门路径（`COURSE_INTRO_SELECTION` 回退）复核正确，未改动。
 - G1（工作台整块未接入 i18n）仍为产品级范围决策，§14 结论不变，本轮不动。
 - `smoke:videosbatch-real-text-server` 未入链（理由见上），保留为手动/集成用例。
+
+## 16. 第六轮：审查 §15 的修复（2026-09-16 · 用户「审查你的修复」→「修复」）
+
+方法：**defect-first 逐条取反证**，不重复 §15 的结论，只查「修好了没有」。对 §15 的每条断言反问三句：它**能不能变红**？跑它的是**哪条链**？我的**声明是否大于实现**？spec 升 **1.4.11**。
+
+### 结论先讲：§15 有 3 处「看着修好了、实际没修到」
+
+最深的根因是**用「加了守卫」替代了「确认守卫能失败」**：三条最关键的新守卫里，两条在结构上不可能变红，还有一条根本没有测试。`verify:offline` 全绿只证明「没跑挂」。
+
+### A【中·逃生口被自己吃掉】错误边界把整个工作台（含出口）一起替换掉
+
+- **现象**：`VideosBatchHeader`（「任务列表」入口）渲染在**边界内部**，边界一旦接管，头部一并消失；面板只剩「刷新页面」，而它对**确定性**渲染错误刷新即复现——唯一可做的操作是死循环。§15 的 ADR 却把它写成「降级为可操作的提示」。
+- **§15 的错误推断**：我当时推断「App 头部在边界外，用户没被锁死」。探针直接否证：**「任务列表」计数 = 0**。
+- **修复**：`StudioErrorBoundary` 接收 `onBackToSessions`，兜底面板用**真实的头部 class**（`vbs-v2-header` / `vbs-v2-back`）重渲染这条出口，并把「返回任务列表」设为主动作；`VideosBatchStudio` 负责转发。文案据实改为「刷新通常仍会复现，请先返回任务列表」。
+- **证据**：真实浏览器探针 `output/probe-boundary-escape.mjs`（按当前游标阶段临时打断映射 → 加载页面 → 断言面板/头部/按钮 → **点击并断言跳转到 `/gallery`** → `finally` 还原并用 sha 校验）。结果：面板 1 个、可见头部 1 个、`back="任务列表"`、`primary="返回任务列表"`、**0 个 pageerror**、点击后到达 `/gallery`。
+- **零 CSS 新增**：复用既有 `vbs-v2-header` / `vbs-v2-back` / `vbs-primary` / `vbs-inline-error`，不新增选择器、不碰 token 层。
+
+### B【中·闸门第三处缺口】`assetConfirmationReady` 完全不看闸门自身 status
+
+- **现象**：`introSelectionReady` 一直校验 `COURSE_INTRO_SELECTION.status === "ready"`，**兄弟闸门 `assetConfirmationReady` 不校验 `ASSET_CONFIRMATION` 自身状态**。上游重跑资产候选后确认阶段变 `stale`，客户端按 `confirmationStageStatus !== "ready"` 显示「确认全部资产」，**服务端却判定闸门通过，自动运行直接冲过**。
+- **性质**：这是 F10/F12 的**同一个不变量的第三个面**（「闸门就绪」必须与界面判定同源），§15 只对齐了两处。
+- **修复**：`assetConfirmationReady` 增 `ASSET_CONFIRMATION.status !== "ready" → false`，与 `introSelectionReady` 对齐。`replaceStageArtifact` 在调用它之前已把 status 置 `ready`，保存路径不受影响。
+- **不引入死锁**（§14 F1 的教训）：`smoke:videosbatch-asset-confirmation-gate` 新增两条断言——`stale` 闸门必须**不**就绪；在该 `stale` 闸门上重新保存一次确认必须恢复 `ready` 并重新武装闸门。契约写入规范 §7.13。
+
+### C【中·守卫不可伪证】SSR 测不了错误边界，那条断言永远不可能为真
+
+- **根因**：`renderToStaticMarkup` 是**服务端渲染，React 在 SSR 阶段不捕获边界异常**（实验：游标指向不存在的阶段 → `THREW`，而非返回面板）。所以 §15 里 `assert.ok(!markup.includes("这一步暂时无法显示"))` **在结构上不可伪证**——它是装饰品，而我把它写成了「渲染循环断言了不得落到边界」。
+- **修复**：删掉那条装饰断言；渲染循环改为**显式 try/catch 命名失败**，并断言每一步都渲染出**完整的**外壳（`vbs-v2-header` + `vbs-v2-progress` + 可达的「任务列表」）。兜底面板改为**直接单元断言**：实例化边界、把 `state` 置成错误、渲染 `render()`，断言面板文案与**按钮元素**（不是松散子串）。
+- **⚠️ 这里抓到一个同型缺陷**：第一版改成 `includes("返回任务列表")` 后，正向对照**没变红**——因为面板的说明文案里正好有「请先返回任务列表」这句，`includes` 命中的是段落。已改为按 `class` 定位 `<button>` 再比对标签文本，对照随即变红。
+- **真实浏览器**的行为由 A 的探针覆盖（SSR 覆盖不了，就只用浏览器覆盖）。
+
+### D【中·我自己漏修的 F9 同类缺陷】故事文稿保存失败会静默丢稿
+
+- **现象**：`StoryStage.save()` 是 `await onSaveContent?.(draft); setEditing(false);`，而 `saveStoryContent` 走的是**吞异常的 `perform`** → 保存被拒后 promise 正常 resolve → **编辑器关闭**，用户的编辑消失，界面表现为已保存。这与 §15 修的编剧/分镜两处**完全同型**，只是我这个文件没碰。
+- **修复**：`saveStoryContent` 改用 `performOrThrow`；`StoryStage` 包 try/catch 保留草稿，与 `ScreenplayStage` / `StoryboardStage` 一致。
+- **反查全部保存点**：`select-intro` 与 `confirm-assets` 保留吞异常的 `perform` 是**正确**的（失败只是不推进游标、不残留草稿，错误由统一错误条呈现）；把这两处「修」成抛错反而会重复报错。断言按这个**更窄**的不变量写：**没有任何 `save-*` 标签走 `perform`**，且三处编辑器保存与高级抽屉保存确实走 `performOrThrow`。
+
+### E【中·隔离失败仍会静默清空】F7 的「坏数据留证」不是无条件的
+
+- **现象**：`rename(...).catch(() => undefined)` 失败后照样 `this.data = emptyStore()`——若重命名失败（文件被占用、跨设备），坏文件没被隔离，下一次保存照样覆盖它。§15 的「坏数据留证，不销毁」**在失败路径上不成立**。
+- **修复**：隔离失败 → 退化为 `copyFile` 留证；连复制也失败 → **拒绝启动**并说明由用户手动移走，而不是带着一份会毁掉唯一副本的空状态运行。
+- **现在真的被测试覆盖了**（这是本条从「声称」变「证据」的关键）：把隔离目标路径预先占成**非空目录**，`rename` 与 `copyFile` 会**可移植地**双双失败。断言：`load()` 必须 reject 且含「refusing to start」，且原始字节**未被改动的**留在盘上。
+
+### F【低·F13 的分类碰撞】「声明顺序即优先级」会错归
+
+- **现象**：`categoryKey` 按声明顺序取第一个命中的别名，字符串里同时出现两个规范名时错归（「生物：场景中的小鸟」落到「场景」组）。
+- **证据分层（重要）**：服务端 `llmTextStages` 对 `category` 做**枚举精确校验**、并要求 `assetKey` 前缀等于 category，所以这条**只在手改（高级抽屉）或历史产物上才可能发生**，不是活缺陷。
+- **修复**：收敛为「精确匹配 → 取**出现位置最早**的规范名（规范输出是 `<规范名>：<子方向>`，分类名在前）→ 位置相同取更长词 → 声明顺序 → 受校验的 `assetKey` 前缀 → 原值」，保证**任何输入都有归处且不丢项**。
+- **诚实说明**：审查举的「场景中的生物」单看字符串本身是歧义句。我选了与**规范输出格式**一致的规则（早者优先），而不是「词尾中心语优先」——后者会破坏 `SCENE - 场景` 这类正常形态。规则已写进注释与规范 §7.14。
+
+### 阳性对照：本轮唯一能证明「守卫不是装饰」的东西
+
+新增 9 条断言，逐条**重新注入缺陷、要求 smoke 确实变红**，脚本 `output/positive-controls.mjs`（gitignore 内，可复跑；每步之后按内存副本**逐字节还原**，不用 `git restore`，以免毁掉未提交的修复）：
+
+| 注入的缺陷 | 应当变红的断言 | 结果 |
+| --- | --- | --- |
+| artifact PUT 飞行键退回「只按路由+阶段」 | 两次**内容不同**的并发保存都必须落库 | CAUGHT |
+| `writeFlightKind` 忽略请求体 | 同键必须只落一次、异体必须不同键 | CAUGHT |
+| 分类退回「声明顺序优先」 | 「生物：场景中的小鸟」必须归入「生物」 | CAUGHT |
+| 兜底面板去掉「返回任务列表」按钮 | 主动作必须是返回任务列表 | CAUGHT |
+| Studio 不再转发 `onBackToSessions` | 必须把出口传进边界 | CAUGHT |
+| `save-story` 退回吞异常的 `perform` | 没有任何 `save-*` 走吞异常路径 | CAUGHT |
+| 游标渲染不再传出口 | 每一步都必须留住「任务列表」 | CAUGHT |
+| `assetConfirmationReady` 不再校验自身 status | `stale` 闸门不得判定就绪 | CAUGHT |
+| 隔离失败后退回「照样空启动」 | 无法隔离时必须拒绝启动 | CAUGHT |
+
+9/9 被捕获。**第一轮（修完不改）就有 1 条 MISSED**——正是上面那条「文案里含同一句话导致 `includes` 空转」，说明这套对照是有效的，不是走过场。
+
+### 我在本轮自己犯的两类操作失误（记账）
+
+1. **同一文件并行编辑被覆盖**：对 `AssetPlanStage.tsx` 并行发了两个 `Edit`，其中改写 `categoryKey` 函数体的那次写入被另一次覆盖丢失，只剩调用点改了——**而当时的探针立刻显示了错误分组**（旧逻辑仍生效），才没有把「改了」当成「修好了」。教训：**同一文件不要并行编辑**；改完必须用行为证据（这里是渲染出的分组）确认，而不是相信编辑成功回执。
+2. **探针点了页面上的主按钮，误改了真实会话**：`probe-boundary-escape.mjs` 首版用 `page.click("button.vbs-primary")`，在「面板没出现」的失败路径上点到了**步骤自身的**「选择此方案」，把 `ses_73d99e7d` 的课程导入确认了、游标推到 `STORY_SCRIPT`。发现后用 `restart-from COURSE_INTRO_SELECTION` 还原（`introLocked=false`、`selectionId` 已清空、下游回 `pending`，与探针前一致），并把点击改为 `getByRole("button", { name: "返回任务列表" })` **按可访问名精确定位**。教训：**探针的交互必须绑定到被测元素的可访问名**，不能靠 `class` 泛选；破坏性探针必须在失败路径上也保持只读。
+
+### 刻意不改 / 明确未覆盖
+
+- **未覆盖**：`probe-boundary-escape.mjs` 与 `positive-controls.mjs` 都在 gitignore 的 `output/` 内，新检出者无法直接复跑；本轮已把**可入链**的断言全部并入三个正式 smoke（`product-ui-foundation`、`asset-confirmation-gate`、`store-concurrent-save`、`api-retry`），浏览器相关部分仍只在本地可复跑。
+- `G1`（工作台未接 i18n）仍为产品级范围决策，不动。
+- `smoke:videosbatch-real-text-server` 仍留在链外（占固定端口 5187）。

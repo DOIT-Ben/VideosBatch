@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Asset, CreateSessionPayload, GalleryItem, GalleryPublishPayload, Session, Shot, ShotRender, StitchJob, StoreSnapshot, TokenUsageEvent } from "../shared/types";
 import { AUTO_SESSION_TITLE, autoSessionTitle, normalizeSessionTitle } from "../shared/sessionTitle";
@@ -43,11 +43,35 @@ export class CinemaStore {
         // snapshot and every session, shot and asset would be gone for good,
         // with no warning (2026-09-16). Quarantine the bytes instead.
         const quarantined = `${STORE_FILE}.corrupt-${Date.now()}`;
-        await rename(STORE_FILE, quarantined).catch(() => undefined);
-        console.error(
-          `[store] ${STORE_FILE} could not be read (${(error as Error)?.message}); `
-          + `preserved at ${quarantined} and starting from an empty store`
-        );
+        try {
+          await rename(STORE_FILE, quarantined);
+          console.error(
+            `[store] ${STORE_FILE} could not be read (${(error as Error)?.message}); `
+            + `preserved at ${quarantined} and starting from an empty store`
+          );
+        } catch (quarantineError) {
+          // `rename` can fail (file locked by an editor, cross-device, read-only
+          // directory). Continuing anyway would let the next save() atomically
+          // overwrite the unreadable store — the exact silent loss this branch
+          // exists to prevent, and the previous `.catch(() => undefined)` made
+          // "the bytes are preserved" conditional while reporting it as done.
+          // Fall back to copying the bytes aside; if even that fails, refuse to
+          // boot rather than come up in a state that can destroy the only copy.
+          try {
+            await copyFile(STORE_FILE, quarantined);
+            console.error(
+              `[store] ${STORE_FILE} could not be read (${(error as Error)?.message}) and could not be `
+              + `renamed (${(quarantineError as Error)?.message}); copied to ${quarantined} `
+              + `and starting from an empty store`
+            );
+          } catch {
+            throw new Error(
+              `[store] ${STORE_FILE} is unreadable (${(error as Error)?.message}) and could not be `
+              + `preserved at ${quarantined}; refusing to start with an empty store that would `
+              + `overwrite it. Move the file aside manually and restart.`
+            );
+          }
+        }
         this.data = emptyStore();
       }
     }

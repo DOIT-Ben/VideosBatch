@@ -166,6 +166,15 @@ function assetConfirmationReady(workflow: VideosBatchWorkflowState, ctx?: StageE
   const candidates = workflow.stages.ASSET_CANDIDATES?.artifact as any;
   const confirmation = workflow.stages.ASSET_CONFIRMATION?.artifact as any;
   if (confirmation?.confirmed !== true) return false;
+  // The gate's OWN stage must still be ready. This gate derives its readiness
+  // from its artifact, so an upstream regeneration leaves `confirmed: true`
+  // intact while `markDescendantsStale` flips the stage to `stale` — and the UI,
+  // which reads `confirmationStageStatus !== "ready"`, then asks the operator to
+  // confirm again. Without this check the server disagreed with the UI: the
+  // confirmation bar said "请重新确认全部资产" while `run-all` sailed straight
+  // through the gate (2026-09-16 review). Mirrors the status check that
+  // `introSelectionReady` has always had — the two gates must agree.
+  if (workflow.stages.ASSET_CONFIRMATION?.status !== "ready") return false;
   // Confirming keys and counts is not enough for a *manual gate*: it must also
   // require the candidate set to still be current. Otherwise a stale
   // ASSET_CANDIDATES (upstream edited after confirmation) sails through and the

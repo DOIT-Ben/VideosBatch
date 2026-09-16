@@ -5,6 +5,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { createVideosBatchWorkflow, VIDEOS_BATCH_STAGE_ORDER } from "../src/shared/videosBatchWorkflow";
 import { VIDEOS_BATCH_PRODUCT_STEPS, productStepForStage } from "../src/client/videosBatchStudio/stageModel";
 import { VideosBatchStudio } from "../src/client/videosBatchStudio/VideosBatchStudio";
+import { StudioErrorBoundary } from "../src/client/videosBatchStudio/components/StudioErrorBoundary";
+import { AssetPlanStage } from "../src/client/videosBatchStudio/stages/AssetPlanStage";
 
 assert.equal(VIDEOS_BATCH_PRODUCT_STEPS.length, 9, "product UI must group the canonical workflow into 9 user-facing steps");
 assert.deepEqual(
@@ -63,6 +65,7 @@ const markup = renderToStaticMarkup(
     workflow={workflow}
     onWorkflowChange={() => undefined}
     onOpenCanvas={() => undefined}
+    onBackToSessions={() => undefined}
   />
 );
 
@@ -83,27 +86,105 @@ assert.ok(!markup.includes("高级 · 原始数据"), "raw JSON must stay hidden
 
 // The cursor really does stop on every canonical stage — including AUDIO_DELIVERY
 // (a single-step advance past EXECUTION, or a run-all that halts on an
-// AUDIO_DELIVERY failure). Each of those positions must render the studio, not
-// the error-boundary fallback.
+// AUDIO_DELIVERY failure). Each of those positions must render the *full* studio
+// shell, not a degraded one.
+//
+// `renderToStaticMarkup` uses the server renderer, and React does NOT catch
+// errors at boundaries during SSR — a broken cursor THROWS out of it instead of
+// rendering the fallback panel (verified experimentally 2026-09-16). So this
+// loop can only prove the happy path throws nothing; it cannot prove the
+// fallback works. It previously carried
+// `assert.ok(!cursorMarkup.includes("这一步暂时无法显示"))`, which is unfalsifiable
+// for exactly that reason and was removed rather than left as decoration.
 for (const stageId of VIDEOS_BATCH_STAGE_ORDER) {
-  const cursorMarkup = renderToStaticMarkup(
-    <VideosBatchStudio
-      sessionId="session-product-ui"
-      sessionTitle="观察物体（1）"
-      workflow={{ ...workflow, currentStage: stageId, completed: false }}
-      onWorkflowChange={() => undefined}
-      onOpenCanvas={() => undefined}
-    />
-  );
+  let cursorMarkup = "";
+  try {
+    cursorMarkup = renderToStaticMarkup(
+      <VideosBatchStudio
+        sessionId="session-product-ui"
+        sessionTitle="观察物体（1）"
+        workflow={{ ...workflow, currentStage: stageId, completed: false }}
+        onWorkflowChange={() => undefined}
+        onOpenCanvas={() => undefined}
+        onBackToSessions={() => undefined}
+      />
+    );
+  } catch (error) {
+    assert.fail(`guided studio must render when the cursor stops on ${stageId}: ${(error as Error).message}`);
+  }
   assert.ok(
     cursorMarkup.includes("videosbatch-studio-v2"),
     `guided studio must render its V2 shell when the cursor stops on ${stageId}`
   );
   assert.ok(
-    !cursorMarkup.includes("这一步暂时无法显示"),
-    `guided studio must not fall back to the error boundary when the cursor stops on ${stageId}`
+    cursorMarkup.includes("vbs-v2-header"),
+    `the product header must survive when the cursor stops on ${stageId}`
+  );
+  assert.ok(
+    cursorMarkup.includes("vbs-v2-progress"),
+    `the progress rail must survive when the cursor stops on ${stageId}`
+  );
+  assert.ok(
+    cursorMarkup.includes("任务列表"),
+    `the task-list escape hatch must stay reachable when the cursor stops on ${stageId}`
   );
 }
+
+// --- The fallback panel itself must be reachable and must genuinely escape ----
+// `VideosBatchHeader` (which owns 「任务列表」) renders *inside* the boundary, so a
+// caught render failure removes it too. A panel that only offered "reload" would
+// be a dead end for a deterministic render error: the reload reproduces it. The
+// fallback therefore has to re-render the header's own escape hatch.
+const boundary = new StudioErrorBoundary({ children: null, onBackToSessions: () => undefined });
+boundary.state = { error: new Error("注入的渲染失败") };
+const fallbackMarkup = renderToStaticMarkup(boundary.render() as React.ReactElement);
+// Match the *buttons*, not loose substrings: the panel's own prose mentions
+// 「返回任务列表」, so a plain `includes` would pass even with the button gone —
+// the exact "decorative assertion" mistake this suite was fixed for.
+const buttonWith = (markup: string, className: string) => {
+  const match = markup.match(new RegExp(`<button[^>]*class="${className}"[^>]*>[\\s\\S]*?</button>`));
+  return match ? match[0] : "";
+};
+assert.ok(fallbackMarkup.includes("这一步暂时无法显示"), "the fallback panel must name the failure");
+assert.ok(fallbackMarkup.includes("注入的渲染失败"), "the fallback panel must surface the underlying error message");
+assert.ok(fallbackMarkup.includes("vbs-v2-header"), "the fallback must keep the product header frame so the operator is not left on a bare page");
+assert.ok(fallbackMarkup.includes("不会丢失"), "the fallback must tell the operator whether the data is safe");
+assert.ok(
+  buttonWith(fallbackMarkup, "vbs-v2-back").includes("任务列表"),
+  "the fallback must re-render the header's own escape hatch instead of inventing one"
+);
+assert.ok(
+  buttonWith(fallbackMarkup, "vbs-primary").includes("返回任务列表"),
+  "the fallback's primary action must return to the task list, not just reload a deterministic failure"
+);
+
+const studioSource = readFileSync(new URL("../src/client/videosBatchStudio/VideosBatchStudio.tsx", import.meta.url), "utf8");
+assert.ok(studioSource.includes("<VideosBatchStudioView {...props} />"), "the studio must render its view as a child of the boundary");
+assert.ok(
+  studioSource.includes("<StudioErrorBoundary onBackToSessions={props.onBackToSessions}>"),
+  "the studio must forward onBackToSessions into the boundary, or the fallback can only offer a reload that reproduces the failure"
+);
+
+// --- Every artifact save that closes an editor must surface a rejection -------
+// `perform` swallows the error and leaves the UI looking saved. That is fine for
+// an action which only advances the cursor — `select-intro` and `confirm-assets`
+// re-render from the returned workflow and leave no draft behind — but wrong for
+// a save whose success path exits edit mode: the editor would close over an
+// unsaved edit and the user's text would vanish with no error. StoryStage did
+// exactly that (2026-09-16 review).
+const swallowedSaveLabels = [...studioSource.matchAll(/perform\(\s*"(save-[a-z-]+)"/g)].map((match) => match[1]);
+assert.deepEqual(swallowedSaveLabels, [], "an artifact save must never run through the swallowing performer");
+assert.ok(studioSource.includes('performOrThrow("save-story"'), "the story editor's save must throw on rejection");
+assert.ok(studioSource.includes('performOrThrow("save-debug"'), "the advanced drawer's save must throw so the panel cannot exit edit mode as if it saved");
+assert.ok(
+  /performOrThrow\(stageId === "SCREENPLAY"/.test(studioSource),
+  "both structured editors must throw on rejection"
+);
+// `select-intro` / `confirm-assets` legitimately keep the swallowing performer —
+// they must not be "fixed" into throwing, which would surface a duplicate error
+// for an action that already reports inline.
+assert.ok(studioSource.includes(`perform("select-intro"`), "select-intro must stay on the swallowing performer");
+assert.ok(studioSource.includes(`perform("confirm-assets"`), "confirm-assets must stay on the swallowing performer");
 
 const drawerSource = readFileSync(new URL("../src/client/videosBatchStudio/components/ArtifactDebugDrawer.tsx", import.meta.url), "utf8");
 assert.ok(drawerSource.includes('from "radix-ui"'), "advanced drawer must use Radix primitives");
@@ -119,5 +200,37 @@ assert.ok(appSource.includes("videosBatchMode === \"workflow\""), "App must own 
 assert.ok(appSource.includes("videosbatch-canvas-mode"), "canvas mode must use the shared VideosBatch shell instead of the legacy app shell");
 assert.ok(appSource.includes("<FlowView"), "App must preserve the native SeeReel Canvas");
 assert.ok(!appSource.includes("<WorkflowRail"), "App must not render the old horizontal WorkflowRail");
+
+// --- Asset-plan grouping must survive qualifiers that name another category ---
+// The server validates `category` against the exact CHARACTER/SCENE/PROP/CREATURE
+// enum (llmTextStages), so this only has to hold for legacy or hand-edited
+// artifacts — but a declaration-order scan silently mis-filed anything whose
+// qualifier contained another canonical name ("生物：场景中的小鸟" landed under
+// 场景). The earliest mention now wins, because canonical output is
+// `<canonical>：<sub-direction>`.
+const collidingPlanMarkup = renderToStaticMarkup(
+  <AssetPlanStage artifact={{
+    title: "资产计划",
+    items: [
+      { assetKey: "CREATURE-BIRD", category: "生物：场景中的小鸟", name: "课堂小鸟" },
+      { assetKey: "SCENE-CLASSROOM", category: "SCENE", name: "教室" },
+      { assetKey: "CHARACTER-HERO", category: "数学主人公（人物）", name: "小主人公" },
+      { assetKey: "PROP-RULER", category: "", name: "直尺" },
+      { assetKey: "MISC-DESK", category: "背景装饰", name: "课桌" }
+    ]
+  }} />
+);
+const planGroup = (label: string) => {
+  const start = collidingPlanMarkup.indexOf(`<h3>${label}</h3>`);
+  if (start < 0) return "";
+  const end = collidingPlanMarkup.indexOf("</section>", start);
+  return collidingPlanMarkup.slice(start, end < 0 ? undefined : end);
+};
+assert.ok(planGroup("生物").includes("课堂小鸟"), "an asset whose category starts with the canonical name must group under it even when its qualifier names another category");
+assert.ok(!planGroup("场景").includes("课堂小鸟"), "a qualifier naming another category must not drag the asset into that group");
+assert.ok(planGroup("场景").includes("教室"), "an exact canonical category must group under its own label");
+assert.ok(planGroup("人物").includes("小主人公"), "a trailing canonical name in parentheses must still resolve");
+assert.ok(planGroup("道具").includes("直尺"), "an empty category must fall back to the validated assetKey prefix instead of disappearing");
+assert.ok(planGroup("背景装饰").includes("课桌"), "an unrecognised category must fall back to its raw value so no asset is dropped");
 
 console.log("VideosBatch product UI foundation smoke: PASS");
