@@ -76,7 +76,7 @@
   --vbs-v2-sans: system-ui, -apple-system, "Segoe UI", "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC", sans-serif;
   --vbs-v2-mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
 
-  --vbs-v2-size-display: 27px;
+  --vbs-v2-size-display: clamp(22px, 1.95vw, 27px);
   --vbs-v2-size-body: 14px;
   --vbs-v2-size-label: 12px;
   --vbs-v2-size-micro: 11px;

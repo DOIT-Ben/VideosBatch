@@ -616,8 +616,8 @@ button.vbs-v2-project-meta:hover {
 }
 
 .videosbatch-studio-v2 .vbs-storyboard-trigger {
-  min-height: 58px;
-  padding: 15px 17px;
+  min-height: 52px;
+  padding: 11px 15px;
 }
 
 .videosbatch-studio-v2 .vbs-storyboard-trigger:hover {
@@ -1355,9 +1355,12 @@ button.vbs-v2-project-meta:hover {
     padding-inline: 6px;
   }
 
-  .videosbatch-studio-v2 .vbs-asset-gallery-detailed,
+  .videosbatch-studio-v2 .vbs-asset-gallery-detailed {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .videosbatch-studio-v2 .vbs-video-shot-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   /* Narrow screens: the chip drops below the rail as a slim line. */
@@ -1462,6 +1465,14 @@ button.vbs-v2-project-meta:hover {
       "copy"
       "media"
       "actions";
+  }
+
+  .videosbatch-studio-v2 .vbs-video-shot-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .videosbatch-studio-v2 .vbs-asset-gallery-detailed {
+    grid-template-columns: 1fr;
   }
 }
 

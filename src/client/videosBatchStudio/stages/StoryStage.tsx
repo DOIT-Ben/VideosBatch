@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Pencil, Save, X } from "lucide-react";
+import { Clamp } from "../components/Clamp";
 import { StageEmpty, StageFact, StagePage } from "../components/StagePage";
 
 export function StoryStage({
@@ -64,7 +65,7 @@ export function StoryStage({
             aria-label="编辑故事正文"
           />
         ) : (
-          <article className="vbs-longform">{content}</article>
+          <Clamp lines={14}><article className="vbs-longform">{content}</article></Clamp>
         )
       ) : <StageEmpty>故事文稿尚未生成。</StageEmpty>}
     </StagePage>

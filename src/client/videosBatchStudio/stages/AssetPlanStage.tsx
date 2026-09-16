@@ -85,9 +85,14 @@ export function AssetPlanStage({ artifact }: { artifact: any }) {
                     {item.aspectRatio ? <div className="vbs-card-topline"><span>{String(item.aspectRatio)}</span></div> : null}
                     <h4>{String(item.name || "未命名资产")}</h4>
                     <Clamp lines={3}><p>{String(item.description || "")}</p></Clamp>
-                    {item.sourceEvidence && <div className="vbs-source-evidence"><strong>出处</strong><span>{String(item.sourceEvidence)}</span></div>}
-                    {item.continuityNotes && <div className="vbs-source-evidence"><strong>连贯性</strong><span>{String(item.continuityNotes)}</span></div>}
-                    <details><summary>查看生成提示词</summary><p className="vbs-prompt-copy">{String(item.prompt || "")}</p></details>
+                    {(item.sourceEvidence || item.continuityNotes || item.prompt) && (
+                      <details className="vbs-plan-reference">
+                        <summary>查看出处、连贯性与提示词</summary>
+                        {item.sourceEvidence && <div className="vbs-source-evidence"><strong>出处</strong><span>{String(item.sourceEvidence)}</span></div>}
+                        {item.continuityNotes && <div className="vbs-source-evidence"><strong>连贯性</strong><span>{String(item.continuityNotes)}</span></div>}
+                        {item.prompt && <p className="vbs-prompt-copy">{String(item.prompt || "")}</p>}
+                      </details>
+                    )}
                   </article>
                 ))}
               </div>

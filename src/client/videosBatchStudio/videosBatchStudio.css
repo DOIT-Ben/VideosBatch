@@ -25,7 +25,7 @@
 .vbs-intro-groups { display: grid; gap: 36px; }
 .vbs-intro-group h3 { font-size: 14px; margin: 0 0 16px; }
 .vbs-intro-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: var(--vbs-v2-gap-card); }
-.vbs-intro-card { padding: var(--vbs-v2-pad-card); display: flex; flex-direction: column; gap: 12px; min-height: 260px; }
+.vbs-intro-card { padding: var(--vbs-v2-pad-card); display: flex; flex-direction: column; gap: 12px; }
 .vbs-intro-card.selected { border-color: #d9b54d; box-shadow: 0 0 0 2px var(--vbs-accent-soft); }
 .vbs-intro-card h4 { margin: 0; font-size: 15px; }
 .vbs-intro-card p { margin: 0; color: #4c4943; line-height: 1.7; font-size: 13px; }
@@ -110,6 +110,19 @@
 .vbs-debug-drawer pre, .vbs-debug-drawer textarea { width: 100%; box-sizing: border-box; min-height: 60vh; margin: 0; padding: 14px; border: 1px solid #403e39; border-radius: 10px; background: #171714; color: #e8e5dd; font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; }
 .vbs-debug-actions { display: flex; gap: 8px; margin-top: 10px; }
 
+/* Tablets keep two columns; only phones drop to one. Single-column at 900px
+   was stacking nine intro cards and a dozen asset tiles into a 4000px scroll. */
 @media (max-width: 899px) {
+  .vbs-intro-grid, .vbs-asset-gallery, .vbs-asset-plan-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 640px) {
   .vbs-intro-grid, .vbs-asset-gallery, .vbs-asset-plan-list { grid-template-columns: 1fr; }
 }
+
+/* Asset-plan reference drawer: evidence, continuity notes and the generation
+   prompt are reference material, not the review target — one collapsed drawer
+   keeps the card to name + description. */
+.vbs-asset-plan-card .vbs-plan-reference { margin-top: 10px; }
+.vbs-asset-plan-card .vbs-plan-reference summary { cursor: pointer; color: var(--vbs-muted); font-size: 11px; font-weight: 600; }
+.vbs-asset-plan-card .vbs-plan-reference[open] summary { margin-bottom: 4px; }
