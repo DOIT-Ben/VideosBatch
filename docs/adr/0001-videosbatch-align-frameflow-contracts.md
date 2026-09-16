@@ -66,7 +66,7 @@ Delivery record: 本文件同时承担 ADR、Phase Plan 与 Evidence（本仓库
 | P0 结构化错误 + 抓图纪律 | 新建 `h3ProviderErrors.ts`、`h3ReferenceMedia.ts`、`boundedResponse.ts`；改造 `newApiH3Video.ts` | 无 | 上述 4 文件 + `scripts/smoke-videosbatch-newapi-h3.ts` + canonical spec 对应小节 | `smoke:videosbatch-newapi-h3`、`smoke:videosbatch-native-media-stages`、`tsc --noEmit`、`verify:offline` |
 | P1 快照内容寻址 | 扩展 `VideosBatchReferenceBinding` 与写入/校验/序列化链路 | P0 | `src/shared/videosBatchNativeProjection.ts`、`newApiH3Video.ts`、`shotExecutionPackage.ts`、`nativeProjection.ts`、`store.ts`、相关 smoke、canonical spec | `smoke:videosbatch-shot-execution-package`、`smoke:videosbatch-native-projection`、`smoke:videosbatch-native-media-stages`、`verify:offline` |
 | P2 骨架版本化 + 哈希钉 | 注册表补版本与哈希，加载校验漂移 | P0 | `src/server/prompts/promptTemplates.ts`、`scripts/smoke-videosbatch-prompt-templates.ts`、canonical spec §7 | `smoke:videosbatch-prompt-templates`、`smoke:videosbatch-llm-text-stages`、`smoke:videosbatch-frameflow-canonical`、`verify:offline` |
-| P3 结构化提示词文档 | 提示词表示与投影契约 | — | — | **未授权**，需单独 ADR |
+| P3 结构化提示词文档 | 提示词表示与投影契约 | — | `docs/adr/0002-videosbatch-structured-prompt-document.md` | **已出 ADR（0002）并给出分阶段；决策待产品确认，尚未实现** |
 
 ## 6. Boundaries / Non-goals
 
@@ -96,6 +96,8 @@ Delivery record: 本文件同时承担 ADR、Phase Plan 与 Evidence（本仓库
 | P2 | DONE | `e8bf2de` | `tsc --noEmit` 通过；`smoke:videosbatch-prompt-templates` / `text-stage-specs` / `frameflow-canonical` / `llm-text-stages` 全绿 |
 | P0-R / P2-R / P4 | DONE | `a7f6d49` | 复审 D1/D2/D5 修复（见 §11 执行记录）；`tsc --noEmit` 通过；`smoke:videosbatch-newapi-h3` / `prompt-templates` / `doc-consistency` / `specs` 全绿；`npm run verify:offline` RC=0 |
 | 第二轮复审 | DONE | `da17298` | 扩大审查面后修 D7/D8、记录 D9（见 §12）；`tsc --noEmit` 通过；`smoke:videosbatch-native-media-resilience` / `newapi-h3` / `native-projection` / `store-save` / `secrets` 等全绿；`npm run verify:offline` RC=0 |
+| D3 内联参考图 | DONE | `3a5441b` | 参考图来源扩展为 HTTPS / `/media/` / 内联 `data:` 三选一（见 §13）；spec 升 1.4.7；`smoke:videosbatch-newapi-h3` + 6 个相邻 smoke 全绿 |
+| D9 执行快照完整性层 | DONE | `5ca2235` | 严格规范化 JSON + 载荷哈希自校验 + 适配器能力矩阵闸（见 §13）；spec 升 1.4.8；`tsc --noEmit` 通过；`npm run verify:offline` RC=0（4m08s） |
 | 全量门禁 | 见下 | — | `npm run verify:offline`（跑前已腾空 5173） |
 
 **证据口径说明（有意偏离）**：P0–P2 各自用 `tsc --noEmit` + 该阶段的定向 smoke 收口，全量 `verify:offline` 在三个阶段代码齐备后跑一次。理由：同一轮内三阶段改动文件基本不相交（仅 `newApiH3Video.ts` 被 P0/P1 先后触碰），一次全量门禁即覆盖三者的合计影响面，避免三次构建与约 90 个 smoke 的重复成本。若全量门禁出现失败，按失败项归属到对应阶段修复。
@@ -111,10 +113,10 @@ Delivery record: 本文件同时承担 ADR、Phase Plan 与 Evidence（本仓库
 ## 10. Open Questions
 
 - ~~FrameFlow 的 `referenceId` 查重合同（`REFERENCE_ID_DUPLICATE`）是否需要同步进 VideosBatch 的绑定校验？~~ **已结**：VideosBatch 已在 `shotExecutionPackage.ts` 校验包内 `references` 的 `referenceId` 与 `assetId` 去重（"references contains duplicate referenceId"），并在构建期校验绑定与 `FINAL_STORYBOARD.references` 的 `referenceId`/`assetKey`/`semanticLabel` 一致，覆盖率不低于 FrameFlow 的对应合同。**无需新增工作**，故不纳入 P1 范围。
-- P3（结构化提示词文档 `promptDocument`）仍未授权，需要单独 ADR。
-- ~~见 §11：复审发现三条未修的偏差（D1 待授权修复、D2 待授权修复、D3 待裁定）。~~ **部分结项**：D1、D2、D5 已修复（`a7f6d49`，见 §11 执行记录）；D3（内联 data URL 参考图）仍待产品裁定，见 §11 末。
-- **待裁定**：D3——参考图是否需支持内联 `data:image/...;base64,`（当前只接受 HTTPS 与 `/media/`）。裁定后要么补 `inlineImageFile` 分支，要么在 spec 里固化「只接受落盘资产」。**未裁定前不动。**
-- **待授权**：D9——生成执行快照的「规范化 JSON + 载荷哈希 + 适配器版本闸」自校验层（见 §12）。规模较大，需另开阶段并单独授权。
+- P3（结构化提示词文档 `promptDocument`）**已授权并已出 ADR**：[`0002-videosbatch-structured-prompt-document.md`](./0002-videosbatch-structured-prompt-document.md)。结论是这项**不是照搬**——VideosBatch 的提示词正文按 §7.7 只带语义标签、不带可标记的引用锚点，机械构造只会得到单 text 节点的退化解。ADR-0002 给出方案对比与 P3-1～P3-4 分阶段，并列出三个**待产品确认**的前提问题；答案到位前维持扁平字符串（方案 D，有意为之）。
+- ~~见 §11：复审发现三条未修的偏差（D1 待授权修复、D2 待授权修复、D3 待裁定）。~~ **已全部结项**：D1/D2/D5 修复于 `a7f6d49`，D3 修复于 `3a5441b`（见 §13）。
+- ~~**待裁定**：D3——参考图是否需支持内联 `data:image/...;base64,`。~~ **已结**（`3a5441b`）：用户授权后按「三来源等价」实施，内联载荷复用同一套 MIME/20MB/空内容校验与内容寻址，且原始载荷一律不落库。
+- ~~**待授权**：D9——生成执行快照的「规范化 JSON + 载荷哈希 + 适配器版本闸」自校验层。~~ **已结**（`5ca2235`）：见 §13。
 
 ## 11. 复审发现（2026-09-15 深度审查）
 
@@ -234,3 +236,26 @@ Phase Log 标 DONE 后，按要求做了一次不依赖本文档、直接对照�
 ### 结论
 
 第二轮确认 D7/D8 两条**真偏差**（均已按 §7 Change Policy 先改 spec 再改代码修掉），D9 一条能力缺口记录待授权，幂等一项复核通过、**刻意不加改动**——避免为「对齐」制造无意义的 diff。
+
+## 13. 第三轮执行（2026-09-16 · D3 + D9 落地 · 用户全量授权）
+
+用户对 ADR-0001 三条未结项（D3、D9、P3）与推送一并授权。D3、D9 已实现并合入；P3 转为独立 ADR（见 0002），**未实现**。
+
+### D3 参考图来源扩展（提交 `3a5441b`，spec 升 1.4.7）
+
+- **原状**：`newApiH3Video.ts` 的 `referenceCandidates()` 只放行 `^https://` 与 `/media/`，内联 `data:image/...;base64,...` 被**静默过滤**——FrameFlow 的资产库明确支持内联预览图（`store/use-app-store.ts` 的正则白名单），本仓不支持。
+- **修复**：`h3ReferenceMedia.ts` 新增 `inlineDataUrlFile()`，以锚定正则校验 MIME 白名单与 base64 形状，**按 base64 长度预判 20MB 上限**（在分配解码缓冲之前就拒绝），复用同一 `referenceBytes()` 得到 `byteSize`/`bytesSha256`/`mimeType`，与 URL 来源内容寻址口径完全一致。
+- **不落库**：`resolveReferenceFiles` 对内联来源改用 `inline:sha256:<bytesSha256>` 作为提交地址——既避免在内存中保留并哈希 20MB 级 data URL，也确保审计快照与请求日志只出现哈希（与 §7.7 签名 URL 纪律同源）。
+- **证据**：`smoke:videosbatch-newapi-h3` 增内联解码字节口径、四种非法载荷（非图片 MIME／空载荷／缺 base64 头／超限）均判未计费、内联候选经过滤存活；6 个相邻 smoke 全绿。
+
+### D9 付费执行快照完整性层（提交 `5ca2235`，spec 升 1.4.8）
+
+- **原状**：本仓 `shotExecutionPackage.ts` 已有 `contentHash` 自校验（重算并比对），但 (a) 其规范化走 `canonicalStoryboard.stableJson`／`JSON.stringify`，**会静默丢弃 `undefined`、把 `NaN` 降级为 `null`**——哈希无法证明覆盖了每个字段；(b) 完全没有适配器版本闸。
+- **修复**：新增 `executionSnapshotIntegrity.ts`，逐条对齐 FrameFlow：严格规范化 JSON（键递归排序、数组保序、遇 `undefined`／非有限数字／非 JSON 值**硬失败**）、`executionPayloadSha256()`、`parseVideosBatchExecutionSnapshot()`（重算哈希 + 要求再规范化后与持久化字节**逐字相等** + 适配器版本闸）、`VIDEOSBATCH_ADAPTER_CAPABILITY_MATRIX` 与 `(adapterKey, adapterVersion, runtimeModelId, creationMode, 参考图数量)` 能力判定。
+- **接线**：付费 POST 前把「即将提交的内容」规范化并算哈希，经 `onExecutionSnapshotPrepared` 落库到 `Shot.videosBatchExecutionSnapshot`；恢复任务时先校验，**适配器版本已下架或载荷被改动一律拒绝**，不对本构建无法解释的任务继续轮询。适配器闸在**取参考图之前**执行。
+- **并存而非替换**：`stableJson` 继续服务血缘内容哈希（改动它会重写全部已钉历史哈希），新模块只约束付费快照——ADR 与 spec §7.12 都写明了这条边界。
+- **证据**：`smoke:videosbatch-newapi-h3` 增 11 项断言（键序/数组保序、`undefined` 与 `NaN` 硬失败、快照往返、篡改哈希拒绝、非规范形式拒绝且即便哈希匹配、下架适配器拒绝恢复、能力矩阵边界、真实提交路径「快照在绑定之后、POST 之前产生」、快照覆盖精确提示词与有序引用）；6 个相邻 smoke 全绿；`npm run verify:offline` RC=0（4m08s）。
+
+### P3（未实现，转 ADR-0002）
+
+调研结论：FrameFlow 的 `VideoPromptDocument` 依赖正文里**可标记的引用锚点**（其教学原型用 `【P###-A###】`）。本仓 §7.7 明文禁止稳定 ID 进入 H3 prompt、正文只用语义标签，因此机械构造只会得到单 text 节点的**退化解**（零信息增益）。故 P3 **不是照搬**，已出 [`0002`](./0002-videosbatch-structured-prompt-document.md) 记录方案对比、分阶段与三个待产品确认的前提问题；答案到位前维持扁平字符串。
