@@ -32,7 +32,6 @@
 .vbs-intro-card blockquote { margin: 0; padding: 9px 10px; border-left: 3px solid var(--vbs-accent); background: var(--vbs-surface-subtle); font-size: 12px; }
 .vbs-card-topline, .vbs-section-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .vbs-code { color: var(--vbs-muted); font-size: 11px; font-weight: 700; }
-.vbs-recommend, .vbs-native-pill { border-radius: 999px; padding: 3px 7px; background: var(--vbs-surface-subtle); color: var(--vbs-muted); font-size: 10px; }
 .vbs-reason { color: var(--vbs-muted); font-size: 11px; line-height: 1.5; }
 
 /* StagePage now renders .vbs-stage-slate; .vbs-document-header is gone. */
@@ -85,11 +84,6 @@
 .vbs-dialogue-block { margin-top: 12px; color: #4d4943; font-size: 12px; }
 
 .vbs-execution-summary { display: grid; gap: 12px; }
-.vbs-progress-card { padding: 16px; display: flex; align-items: center; gap: 11px; }
-.vbs-progress-card > div { display: grid; gap: 3px; }
-.vbs-progress-card small { color: var(--vbs-muted); }
-.vbs-progress-dot { width: 11px; height: 11px; border-radius: 50%; background: var(--vbs-muted); }
-.vbs-progress-dot.ready { background: var(--vbs-success); }
 .vbs-task-list { display: grid; gap: 7px; }
 .vbs-task-row { display: grid; grid-template-columns: 38px 1fr auto; gap: 10px; align-items: center; padding: 11px 13px; border: 1px solid var(--vbs-border); border-radius: 10px; background: #fff; }
 .vbs-task-row > span, .vbs-task-row small { color: var(--vbs-muted); font-size: 11px; }

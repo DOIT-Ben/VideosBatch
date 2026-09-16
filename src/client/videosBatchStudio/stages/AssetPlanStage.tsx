@@ -81,7 +81,7 @@ export function AssetPlanStage({ artifact }: { artifact: any }) {
               <div className="vbs-asset-plan-list">
                 {group.map((item: any) => (
                   <article className="vbs-asset-plan-card" key={String(item.assetKey)}>
-                    <div className="vbs-card-topline"><span className="vbs-code">{String(item.assetId || item.assetKey || "")}</span><span>{String(item.aspectRatio || "")}</span></div>
+                    {item.aspectRatio ? <div className="vbs-card-topline"><span>{String(item.aspectRatio)}</span></div> : null}
                     <h4>{String(item.name || "未命名资产")}</h4>
                     <p>{String(item.description || "")}</p>
                     {item.sourceEvidence && <div className="vbs-source-evidence"><strong>出处</strong><span>{String(item.sourceEvidence)}</span></div>}

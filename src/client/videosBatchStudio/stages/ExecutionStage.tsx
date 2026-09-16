@@ -12,12 +12,10 @@ function shotStatusLabel(shot: Shot) {
 }
 
 export function ExecutionStage({
-  quoteArtifact,
   executionArtifact,
   shots = [],
   onOpenCanvas
 }: {
-  quoteArtifact: any;
   executionArtifact: any;
   shots?: Shot[];
   onOpenCanvas: () => void;
@@ -27,12 +25,6 @@ export function ExecutionStage({
   const orderedShots = [...shots].sort((a, b) => a.index - b.index);
   const readyCount = orderedShots.filter((shot) => shot.status === "ready" && preferredShotVideoUrl(shot)).length;
   const totalCount = orderedShots.length || nativeShotIds.length || renderIds.length;
-  const ready = totalCount > 0 && readyCount === totalCount;
-  // Execution stage artifact may be READY while the native shot media has not
-  // been generated (fake mode, or plan confirmed but generation not started).
-  // Say what is actually pending instead of claiming an active generation.
-  const anyGenerating = orderedShots.some((shot) => shot.status === "generating" || shot.seedancePhase === "queued");
-  const progressLabel = ready ? "视频镜头已生成" : anyGenerating ? "正在生成视频" : "等待视频生成";
 
   return (
     <StagePage
@@ -42,14 +34,8 @@ export function ExecutionStage({
       facts={totalCount ? <StageFact value={`${readyCount} / ${totalCount}`} label="镜头完成" /> : null}
       actions={<button type="button" className="vbs-secondary" onClick={onOpenCanvas}>在制作画布中打开</button>}
     >
-      {quoteArtifact && (
-        <div className="vbs-note-card">
-          <strong>计划片长约 {quoteArtifact.targetDurationSeconds || "—"} 秒</strong>
-        </div>
-      )}
       {!executionArtifact && !orderedShots.length ? <StageEmpty>视频执行尚未开始。</StageEmpty> : (
         <div className="vbs-execution-summary">
-          <div className="vbs-progress-card"><span className={`vbs-progress-dot ${ready ? "ready" : anyGenerating ? "running" : ""}`} /><div><strong>{progressLabel}</strong><small>{readyCount} / {totalCount} 个镜头完成</small></div></div>
           {orderedShots.length ? (
             <div className="vbs-video-shot-grid">
               {orderedShots.map((shot, position) => {

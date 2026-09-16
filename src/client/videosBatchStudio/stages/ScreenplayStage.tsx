@@ -51,12 +51,7 @@ export function ScreenplayStage({
       stepId="screenplay"
       title={artifact?.title || "正式视频剧本"}
       lead="逐场景写出画面、对白和声音，作为后续分镜依据。"
-      facts={scenes.length ? (
-        <>
-          <StageFact value={`${duration || "—"}s`} label="目标时长" />
-          <StageFact value={duration ? duration / 10 : "—"} label="预计主分镜" />
-        </>
-      ) : null}
+      facts={scenes.length ? <StageFact value={`${duration || "—"}s`} label="目标时长" /> : null}
       actions={scenes.length && onSaveArtifact ? (
         editing ? (
           <>

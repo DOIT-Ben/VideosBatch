@@ -1188,27 +1188,6 @@ button.vbs-v2-project-meta:hover {
   background: var(--vbs-v2-surface);
 }
 
-.vbs-v2-lesson-document > header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 13px 17px;
-  border-bottom: 1px solid var(--vbs-v2-border);
-  background: var(--vbs-v2-surface-muted);
-}
-
-.vbs-v2-lesson-document > header > div {
-  display: grid;
-  gap: 2px;
-}
-
-.vbs-v2-lesson-document small,
-.vbs-v2-lesson-document > header > span {
-  color: #929087;
-  font-size: 9px;
-}
-
 .vbs-v2-lesson-document pre {
   max-height: 620px;
   overflow: auto;
@@ -1580,11 +1559,6 @@ button.vbs-v2-project-meta:hover {
   max-width: 820px;
   margin-left: 0;
   margin-right: auto;
-}
-
-.videosbatch-studio-v2 .vbs-v2-lesson-document > div {
-  max-width: 74ch;
-  margin: 0 auto;
 }
 
 /* Media placeholders: a dark void fights the warm canvas. Empty video surfaces
@@ -1969,15 +1943,6 @@ button.vbs-v2-project-meta:hover {
   color: var(--vbs-v2-surface);
 }
 
-/* Per-card counters, code labels and "synced" pills are structure and status.
-   They were brass in the old palette, which put twenty amber chips on one
-   screen and left the one amber chip that mattered invisible. */
-.videosbatch-studio-v2 .vbs-recommend,
-.videosbatch-studio-v2 .vbs-native-pill {
-  background: var(--vbs-v2-surface-muted);
-  color: var(--vbs-v2-text-soft);
-}
-
 .videosbatch-studio-v2 .vbs-code {
   color: var(--vbs-v2-text-soft);
 }
@@ -2058,7 +2023,6 @@ button.vbs-v2-project-meta:hover {
 /* Figures the user compares must not shift width as they change. */
 .videosbatch-studio-v2 .vbs-document-facts strong,
 .videosbatch-studio-v2 .vbs-asset-selection-state,
-.videosbatch-studio-v2 .vbs-v2-lesson-document > header > span,
 .videosbatch-studio-v2 .vbs-task-row > span {
   font-variant-numeric: tabular-nums;
 }

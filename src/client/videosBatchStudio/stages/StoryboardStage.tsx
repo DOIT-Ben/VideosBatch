@@ -123,11 +123,10 @@ export function StoryboardStage({
                     <Accordion.Header className="vbs-storyboard-header">
                       <Accordion.Trigger className="vbs-storyboard-trigger">
                         <span className="vbs-storyboard-summary">
-                          <span><span className="vbs-code">镜头 {String(segment.sequence).padStart(2, "0")}</span><strong>{String(start).padStart(2, "0")}–{String(start + Number(segment.duration || 10)).padStart(2, "0")}s · {segment.duration || 10}s</strong></span>
+                          <span><span className="vbs-code">镜头 {String(segment.sequence).padStart(2, "0")}</span><strong>{String(start).padStart(2, "0")}–{String(start + Number(segment.duration || 10)).padStart(2, "0")}s</strong></span>
                           <span className="vbs-storyboard-summary-copy">{storyboardSegmentSummary(segment) || "暂无画面内容"}</span>
                         </span>
                         <span className="vbs-storyboard-trigger-meta">
-                          {segment.nativeShotId && <span className="vbs-native-pill">已同步制作画布</span>}
                           <ChevronDown className="vbs-accordion-chevron" size={17} />
                         </span>
                       </Accordion.Trigger>
@@ -238,7 +237,6 @@ export function StoryboardStage({
                           {copiedKey === key ? "已复制" : "复制本段"}
                         </button>
                       </header>
-                      {references.length > 0 && <div className="vbs-reference-chips">{references.map((id: string) => <span key={id}>{id}</span>)}</div>}
                       <pre>{String(segment.text || "")}</pre>
                     </article>
                   );

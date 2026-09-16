@@ -65,10 +65,7 @@ export function AssetGalleryStage({
               return (
                 <article className={`vbs-asset-card ${confirmed ? "confirmed" : ""}`} key={group.assetKey}>
                   <div className="vbs-asset-card-copy">
-                    <div className="vbs-card-topline">
-                      <span className="vbs-code">{group.publicAssetId || group.assetKey}</span>
-                      <span>{group.candidates.length} 张候选</span>
-                    </div>
+                    <div className="vbs-card-topline"><span>{group.candidates.length} 张候选</span></div>
                     <h4>{group.name}</h4>
                     <p>{group.description}</p>
                   </div>

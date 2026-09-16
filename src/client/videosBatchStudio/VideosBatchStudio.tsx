@@ -390,7 +390,6 @@ function VideosBatchStudioView({
         {error && <div className="vbs-inline-error">{error}</div>}
         <div className="vbs-v2-stage-frame">
           <StageWorkspace
-            sessionTitle={sessionTitle}
             session={session}
             nativeAssets={nativeAssets}
             nativeShots={nativeShots}

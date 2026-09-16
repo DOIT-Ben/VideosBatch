@@ -18,7 +18,6 @@ import { ExecutionStage } from "./ExecutionStage";
 import { FinalVideoStage } from "./FinalVideoStage";
 
 export function StageWorkspace({
-  sessionTitle,
   session,
   nativeAssets = [],
   nativeShots = [],
@@ -39,7 +38,6 @@ export function StageWorkspace({
   onConfirmAssets,
   onOpenCanvas
 }: {
-  sessionTitle: string;
   session?: Session;
   nativeAssets?: Asset[];
   nativeShots?: Shot[];
@@ -65,7 +63,6 @@ export function StageWorkspace({
     case "lesson":
       return (
         <LessonStage
-          sessionTitle={sessionTitle}
           lessonText={stage("LESSON_INPUT")?.lessonText}
           source={stage("LESSON_INPUT")?.source}
           parsedDraft={parsedLessonDraft}
@@ -110,7 +107,7 @@ export function StageWorkspace({
         />
       );
     case "execution":
-      return <ExecutionStage quoteArtifact={stage("QUOTE")} executionArtifact={stage("EXECUTION")} shots={nativeShots} onOpenCanvas={onOpenCanvas} />;
+      return <ExecutionStage executionArtifact={stage("EXECUTION")} shots={nativeShots} onOpenCanvas={onOpenCanvas} />;
     case "final":
       return <FinalVideoStage artifact={stage("STITCH")} session={session} onOpenCanvas={onOpenCanvas} />;
     default:

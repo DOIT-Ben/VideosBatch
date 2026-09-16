@@ -73,7 +73,6 @@ export function IntroCandidatesStage({
                       <div className="vbs-card-topline">
                         <span className="vbs-code">{String(candidate.id || "")}</span>
                         {sub && <span className="vbs-card-sub">{sub}</span>}
-                        {recommended && <span className="vbs-recommend">组内推荐</span>}
                       </div>
                       <h4>{String(candidate.name || candidate.id || "未命名方案")}</h4>
                       <p>{String(candidate.body || "")}</p>

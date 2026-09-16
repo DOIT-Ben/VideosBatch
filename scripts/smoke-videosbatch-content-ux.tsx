@@ -269,7 +269,6 @@ assert.ok(!canonicalStoryboardMarkup.includes("暂无画面 Prompt"), "canonical
 
 const shotMarkup = renderToStaticMarkup(
   <ExecutionStage
-    quoteArtifact={{ targetDurationSeconds: 20, assetOrder: ["P001-A001"] }}
     executionArtifact={{ status: "READY", nativeShotIds: ["shot-1"] }}
     shots={[{
       id: "shot-1", sessionId: "session-1", index: 0, title: "镜头一", script: "", camera: "", durationSec: 10,

@@ -36,7 +36,6 @@ function formatBytes(bytes: number) {
 }
 
 export function LessonStage({
-  sessionTitle,
   lessonText,
   source,
   parsedDraft,
@@ -47,7 +46,6 @@ export function LessonStage({
   onParseFile,
   onStart
 }: {
-  sessionTitle: string;
   lessonText?: string;
   source?: VideosBatchLessonSource;
   parsedDraft?: VideosBatchLessonDraft;
@@ -161,10 +159,6 @@ export function LessonStage({
         }
       >
         <article className="vbs-v2-lesson-document">
-          <header>
-            <div><small>项目</small><strong>{sessionTitle || "课程视频"}</strong></div>
-            <span>{lessonText?.length || 0} 字</span>
-          </header>
           <pre>{lessonText || "暂无教案内容"}</pre>
         </article>
       </StagePage>
