@@ -193,7 +193,13 @@ assert.ok(drawerSource.includes("高级 · 原始数据"), "advanced drawer must
 assert.ok(drawerSource.includes("JSON.parse"), "advanced drawer must preserve raw artifact editing and validation");
 
 const appSource = readFileSync(new URL("../src/client/App.tsx", import.meta.url), "utf8");
-assert.ok(appSource.includes('import { VideosBatchStudio } from "./videosBatchStudio/VideosBatchStudio"'), "App must import the Guided Studio product boundary");
+// The studio ships its own stages/styles, so App loads it through a route-level
+// lazy import (kept out of the shell bundle). Pin the lazy wiring, not a static
+// import — reverting to a static import would silently re-merge both bundles.
+assert.ok(
+  /const VideosBatchStudio = lazy\(\(\) =>\s*\n?\s*import\("\.\/videosBatchStudio\/VideosBatchStudio"\)/.test(appSource),
+  "App must lazily import the Guided Studio product boundary (route-level code split)"
+);
 assert.ok(appSource.includes('import { VideosBatchHeader } from "./videosBatchStudio/VideosBatchHeader"'), "canvas mode must reuse the VideosBatch product header");
 assert.ok(appSource.includes("<VideosBatchStudio"), "App must render Guided Studio in workflow mode");
 assert.ok(appSource.includes("videosBatchMode === \"workflow\""), "App must own an explicit workflow/canvas mode branch");

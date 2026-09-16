@@ -1,7 +1,6 @@
 import { Archive, BarChart3, CircleHelp, Copy, Download, FileUp, Github, Images, KeyRound, Loader2, Plus, RefreshCw, ShieldCheck, Trash2, UploadCloud, X } from "lucide-react";
 import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { api } from "./api";
-import { VideosBatchStudio } from "./videosBatchStudio/VideosBatchStudio";
 import { VideosBatchHeader } from "./videosBatchStudio/VideosBatchHeader";
 import { VIDEOS_BATCH_PRODUCT_STEPS, deriveProductStepStatus } from "./videosBatchStudio/stageModel";
 import "./videosBatchStudio/videosBatchStudio.css";
@@ -22,6 +21,12 @@ import { clearShotPollFailure, recordShotPollFailure, shouldSurfaceShotPollError
 
 const FlowView = lazy(() =>
   import("./flow/FlowView").then((module) => ({ default: memo(module.FlowView) }))
+);
+
+/* The 9-step studio ships its own stages/styles — keep it out of the shell
+   bundle so / and /gallery never pay for code the visitor never opens. */
+const VideosBatchStudio = lazy(() =>
+  import("./videosBatchStudio/VideosBatchStudio").then((module) => ({ default: module.VideosBatchStudio }))
 );
 
 const clientBuildStamp = "speed-20260604-state-first-canvas";
@@ -1923,6 +1928,7 @@ export function App() {
   return (
     <PendingGenerationsProvider>
     <main className={`app-shell ${selectedSession && videosBatchMode === "canvas" ? "videosbatch-canvas-mode" : ""}`} data-build={clientBuildStamp}>
+      <a className="skip-link" href="#workspace-main">{t.app.skipToContent}</a>
       {serverDown && (
         <div className="server-down-banner" role="alert">
           <strong>{t.app.serverDownTitle}</strong>
@@ -1956,6 +1962,8 @@ export function App() {
           type="file"
           accept=".seereel-session,application/json"
           className="visually-hidden-file"
+          aria-hidden="true"
+          tabIndex={-1}
           onChange={(event) => {
             const file = event.currentTarget.files?.[0];
             event.currentTarget.value = "";
@@ -2054,7 +2062,7 @@ export function App() {
         </div>
       </aside>
 
-      <section className="workspace">
+      <section className="workspace" id="workspace-main" tabIndex={-1}>
         <header className="topbar">
           <div>
         {activeView === "gallery" ? (
@@ -2488,6 +2496,7 @@ export function App() {
             t={t}
           />
         ) : selectedSession && videosBatchMode === "workflow" ? (
+          <Suspense fallback={<div className="flow-loading" role="status">{lang === "en" ? "Loading studio..." : "正在加载工作台..."}</div>}>
           <VideosBatchStudio
             sessionId={selectedSession.id}
             sessionTitle={selectedSession.title}
@@ -2514,6 +2523,7 @@ export function App() {
             onToggleUsage={() => setShowTokenUsage((value) => !value)}
             onToggleLanguage={toggleLang}
           />
+          </Suspense>
         ) : (
           <>
             {selectedSession && (
