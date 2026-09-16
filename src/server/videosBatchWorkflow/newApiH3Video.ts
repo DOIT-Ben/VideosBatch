@@ -13,10 +13,23 @@ import {
   type H3BillingResult
 } from "./h3ProviderErrors";
 import { readBoundedResponseText } from "./boundedResponse";
+import {
+  assertVideosBatchAdapterAvailable,
+  assertVideosBatchAdapterSupports,
+  parseVideosBatchExecutionSnapshot,
+  serializeVideosBatchExecutionSnapshot,
+  VIDEOSBATCH_EXECUTION_SNAPSHOT_SCHEMA_VERSION,
+  type VideosBatchExecutionSnapshotRecord
+} from "./executionSnapshotIntegrity";
 
 export { NewApiH3ProviderError, NewApiH3SubmissionStateUnknownError } from "./h3ProviderErrors";
 
 const H3_MODEL = "minimax_h3";
+/** Adapter identity for the capability gate; must have a row in the matrix. */
+export const H3_ADAPTER_KEY = "newapi-h3";
+export const H3_ADAPTER_VERSION = "1.0.0";
+const H3_CREATION_MODE = "multi_reference_to_video" as const;
+const H3_WORKFLOW_ID = "multi-reference";
 const MAX_REFERENCE_IMAGES = 9;
 const MIN_REFERENCE_IMAGES = 2;
 const STABLE_PUBLIC_ASSET_ID_PATTERN = /\bP\d{3,}-A\d{3,}\b/u;
@@ -46,11 +59,20 @@ export interface H3ChargedEvidence {
 interface NewApiH3GenerationOptions {
   taskId?: string | null;
   idempotencyKey?: string;
+  /**
+   * Snapshot persisted by the original submission. When resuming a task it is
+   * re-verified before the first poll, so a tampered payload or an adapter
+   * version this build no longer ships refuses the resume instead of polling
+   * into an unknown charge.
+   */
+  executionSnapshot?: VideosBatchExecutionSnapshotRecord;
   onTaskSubmitted?(taskId: string): Promise<void> | void;
   /** Called after the exact reference URLs are resolved, before the paid POST. */
   onReferenceBindingsPrepared?(bindings: VideosBatchReferenceBinding[]): Promise<void> | void;
   /** Called with the exact H3 prompt text, before the paid POST. */
   onPromptPrepared?(prompt: string): Promise<void> | void;
+  /** Canonical snapshot of exactly what is about to be paid for. */
+  onExecutionSnapshotPrepared?(snapshot: VideosBatchExecutionSnapshotRecord): Promise<void> | void;
   /** Called once the paid task produced video bytes, so the cost has a record. */
   onCharged?(evidence: H3ChargedEvidence): Promise<void> | void;
 }
@@ -366,8 +388,19 @@ export async function generateShotVideoViaNewApiH3(
     let taskId = String(options.taskId || "").trim();
     /** Provider-declared verdict from the submission response, when it published one. */
     let declaredBilling: H3BillingResult | undefined;
+    if (taskId && options.executionSnapshot) {
+      // A resumed poll must prove the task it chases is still one this build can
+      // reason about: a tampered payload or a retired adapter version refuses here,
+      // before the first poll request, instead of querying into an unknown charge.
+      parseVideosBatchExecutionSnapshot(options.executionSnapshot);
+    }
     if (!taskId) {
       const references = buildNewApiH3ReferencePlan(shot, assets);
+      // The capability row is the authorisation to pay: an unsupported model,
+      // creation mode or reference count refuses before any reference is fetched.
+      assertVideosBatchAdapterSupports(
+        H3_ADAPTER_KEY, H3_ADAPTER_VERSION, H3_MODEL, H3_CREATION_MODE, references.length
+      );
       await resolveReferenceFiles(references, controller.signal);
       const preparedBindings = references.map((reference) => ({
         ...reference.binding,
@@ -379,10 +412,11 @@ export async function generateShotVideoViaNewApiH3(
       const compiledPrompt = compileNewApiH3Prompt(shot.rawPrompt || shot.prompt || "", preparedBindings);
       await options.onPromptPrepared?.(compiledPrompt);
       const form = new FormData();
+      const seconds = String(Math.min(15, Math.max(4, Math.round(shot.durationSec || 10))));
       form.set("model", H3_MODEL);
       form.set("prompt", compiledPrompt);
-      form.set("seconds", String(Math.min(15, Math.max(4, Math.round(shot.durationSec || 10)))));
-      form.set("workflow_id", "multi-reference");
+      form.set("seconds", seconds);
+      form.set("workflow_id", H3_WORKFLOW_ID);
       form.set("size", size);
       form.set("prompt_enhance", "false");
       for (const reference of references) {
@@ -391,6 +425,35 @@ export async function generateShotVideoViaNewApiH3(
         }
         form.append("images", reference.prepared.file, reference.prepared.file.name);
       }
+      // Canonical snapshot of exactly what is being paid for, hashed and handed to
+      // the caller to persist before the POST. On resume it is re-verified, so the
+      // lineage record and the charged task cannot silently diverge.
+      const executionSnapshot = serializeVideosBatchExecutionSnapshot({
+        schemaVersion: VIDEOSBATCH_EXECUTION_SNAPSHOT_SCHEMA_VERSION,
+        type: "video",
+        adapterKey: H3_ADAPTER_KEY,
+        adapterVersion: H3_ADAPTER_VERSION,
+        runtimeModelId: H3_MODEL,
+        creationMode: H3_CREATION_MODE,
+        prompt: compiledPrompt,
+        durationSec: Number(seconds),
+        aspectRatio: ratio,
+        workflowId: H3_WORKFLOW_ID,
+        references: preparedBindings.map((binding) => ({
+          ordinal: binding.ordinal,
+          assetKey: binding.assetKey,
+          assetId: binding.assetId,
+          imageUrlHash: binding.imageUrlHash,
+          ...(binding.bytesSha256 ? { bytesSha256: binding.bytesSha256 } : {}),
+          ...(binding.byteSize !== undefined ? { byteSize: binding.byteSize } : {}),
+          ...(binding.mimeType ? { mimeType: binding.mimeType } : {})
+        }))
+      });
+      await options.onExecutionSnapshotPrepared?.({
+        ...executionSnapshot,
+        adapterKey: H3_ADAPTER_KEY,
+        adapterVersion: H3_ADAPTER_VERSION
+      });
 
       let createResponse: Response;
       try {

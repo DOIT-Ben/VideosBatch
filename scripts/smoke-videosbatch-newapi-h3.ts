@@ -9,9 +9,20 @@ import {
   buildNewApiH3ReferencePlan,
   compileNewApiH3Prompt,
   generateShotVideoViaNewApiH3,
+  H3_ADAPTER_KEY,
+  H3_ADAPTER_VERSION,
   NewApiH3SubmissionStateUnknownError,
   NewApiH3ProviderError
 } from "../src/server/videosBatchWorkflow/newApiH3Video";
+import {
+  assertVideosBatchAdapterSupports,
+  canonicalExecutionJson,
+  executionPayloadSha256,
+  parseVideosBatchExecutionSnapshot,
+  serializeVideosBatchExecutionSnapshot,
+  VideosBatchExecutionSnapshotError,
+  VIDEOSBATCH_ADAPTER_CAPABILITY_MATRIX
+} from "../src/server/videosBatchWorkflow/executionSnapshotIntegrity";
 import {
   MAX_BOUNDED_RESPONSE_TEXT_BYTES,
   readBoundedResponseBytes,
@@ -141,6 +152,89 @@ try {
     ] as any
   );
   assert.equal(inlinePlan[0].candidates[0], inlinePlanUrl, "inline data URLs must survive the reference candidate filter");
+
+  // The paid snapshot is strict: canonical JSON proves the hash covers every field,
+  // and the read side recomputes it instead of trusting the stored value.
+  assert.equal(
+    canonicalExecutionJson({ b: 1, a: { d: 2, c: [3, 1] } }),
+    '{"a":{"c":[3,1],"d":2},"b":1}',
+    "canonical JSON must sort object keys at every depth and preserve array order"
+  );
+  assert.throws(
+    () => canonicalExecutionJson({ a: undefined }),
+    /undefined/u,
+    "an undefined member must fail rather than be silently dropped from the hash"
+  );
+  assert.throws(
+    () => canonicalExecutionJson({ a: Number.NaN }),
+    /有限/u,
+    "a non-finite number must fail rather than degrade to null"
+  );
+  const snapshot = serializeVideosBatchExecutionSnapshot({
+    schemaVersion: 1,
+    type: "video",
+    adapterKey: H3_ADAPTER_KEY,
+    adapterVersion: H3_ADAPTER_VERSION,
+    runtimeModelId: "minimax_h3",
+    creationMode: "multi_reference_to_video",
+    prompt: "快照往返测试",
+    durationSec: 10,
+    aspectRatio: "16:9",
+    references: [{ ordinal: 0, imageUrlHash: "a".repeat(64) }]
+  });
+  assert.equal(executionPayloadSha256(snapshot.payloadJson), snapshot.payloadSha256);
+  assert.equal(
+    parseVideosBatchExecutionSnapshot({
+      ...snapshot, adapterKey: H3_ADAPTER_KEY, adapterVersion: H3_ADAPTER_VERSION
+    }).prompt,
+    "快照往返测试",
+    "a verified snapshot must round-trip its payload"
+  );
+  assert.throws(
+    () => parseVideosBatchExecutionSnapshot({
+      ...snapshot, payloadSha256: "b".repeat(64), adapterKey: H3_ADAPTER_KEY, adapterVersion: H3_ADAPTER_VERSION
+    }),
+    (error: unknown) => error instanceof VideosBatchExecutionSnapshotError
+      && error.code === "EXECUTION_SNAPSHOT_INTEGRITY_FAILED",
+    "a recomputed hash mismatch must refuse the snapshot"
+  );
+  const unsortedJson = '{"b":1,"a":2}';
+  assert.throws(
+    () => parseVideosBatchExecutionSnapshot({
+      payloadJson: unsortedJson,
+      payloadSha256: executionPayloadSha256(unsortedJson),
+      adapterKey: H3_ADAPTER_KEY,
+      adapterVersion: H3_ADAPTER_VERSION
+    }),
+    (error: unknown) => error instanceof VideosBatchExecutionSnapshotError
+      && error.code === "EXECUTION_SNAPSHOT_INTEGRITY_FAILED",
+    "a payload that is not in canonical form must be refused even when its hash matches"
+  );
+  assert.throws(
+    () => parseVideosBatchExecutionSnapshot({
+      ...snapshot, adapterKey: H3_ADAPTER_KEY, adapterVersion: "0.0.1"
+    }),
+    (error: unknown) => error instanceof VideosBatchExecutionSnapshotError
+      && error.code === "GENERATION_ADAPTER_VERSION_UNAVAILABLE",
+    "a retired adapter version must refuse the resume"
+  );
+  const h3Capability = VIDEOSBATCH_ADAPTER_CAPABILITY_MATRIX.find(
+    (row) => row.adapterKey === H3_ADAPTER_KEY && row.adapterVersion === H3_ADAPTER_VERSION
+  );
+  assert.ok(h3Capability, "the H3 adapter identity must have a capability row");
+  assert.equal(h3Capability.minReferences, 2, "the H3 capability row must pin the multi-reference lower bound");
+  assert.equal(h3Capability.maxReferences, 9, "the H3 capability row must pin the multi-reference upper bound");
+  for (const [runtimeModelId, referenceCount, label] of [
+    ["unknown_model", 3, "an unsupported runtime model"],
+    ["minimax_h3", 1, "a reference count below the multi-reference floor"]
+  ] as Array<[string, number, string]>) {
+    assert.throws(
+      () => assertVideosBatchAdapterSupports(H3_ADAPTER_KEY, H3_ADAPTER_VERSION, runtimeModelId, "multi_reference_to_video", referenceCount),
+      (error: unknown) => error instanceof VideosBatchExecutionSnapshotError
+        && error.code === "GENERATION_ADAPTER_VERSION_UNAVAILABLE",
+      `${label} must refuse before any paid request`
+    );
+  }
 
   await assert.rejects(
     () => readBoundedResponseBytes(new Response(new Uint8Array(16)), 8),
@@ -297,6 +391,7 @@ try {
     let bindingHashes: string[] = [];
     let preparedBindings: any[] = [];
     let preparedPrompt = "";
+    let preparedSnapshot: any;
     const bindingEvents: string[] = [];
     process.env.VIDEOSBATCH_H3_BASE_URL = "https://binding.test/v1";
     process.env.VIDEOSBATCH_H3_POLL_MS = "1";
@@ -331,10 +426,18 @@ try {
         },
         onPromptPrepared: (prompt) => {
           preparedPrompt = prompt;
+        },
+        onExecutionSnapshotPrepared: (snapshot) => {
+          bindingEvents.push("snapshot");
+          preparedSnapshot = snapshot;
         }
       });
       assert.match(bindingUrl, /^\/media\/videosbatch-h3-/);
-      assert.deepEqual(bindingEvents, ["prepared", "post"], "binding snapshot must be prepared before H3 POST");
+      assert.deepEqual(
+        bindingEvents,
+        ["prepared", "snapshot", "post"],
+        "the paid snapshot must be prepared after the bindings and before the H3 POST"
+      );
       assert.match(bindingPrompt, /Image 1 = 乐乐\nImage 2 = 展厅/u);
       assert.equal(preparedPrompt, bindingPrompt, "the persisted provider prompt must equal the prompt sent in FormData");
       assert.doesNotMatch(bindingPrompt, /P\d{3,}-A\d{3,}/u, "stable public ids must stay out of H3 prompt");
@@ -356,6 +459,28 @@ try {
           { byteSize: 3, mimeType: "image/png", bytesSha256: createHash("sha256").update(Buffer.from([1, 1, 1])).digest("hex") }
         ],
         "the persisted snapshot must content-address the exact submitted bytes"
+      );
+      // The paid snapshot must be verifiable and must cover the exact prompt and
+      // ordered references, not a summary of them.
+      assert.equal(preparedSnapshot.adapterKey, H3_ADAPTER_KEY);
+      assert.equal(preparedSnapshot.adapterVersion, H3_ADAPTER_VERSION);
+      const verifiedPayload = parseVideosBatchExecutionSnapshot(preparedSnapshot);
+      assert.equal(verifiedPayload.prompt, bindingPrompt, "the snapshot must cover the exact compiled prompt");
+      assert.equal(verifiedPayload.runtimeModelId, "minimax_h3");
+      assert.deepEqual(
+        (verifiedPayload.references as Array<Record<string, unknown>>).map((reference) => reference.ordinal),
+        [1, 2],
+        "the snapshot must carry the ordered references"
+      );
+      // A resumed poll must refuse a snapshot this build cannot verify.
+      await assert.rejects(
+        () => generateShotVideoViaNewApiH3(bindingShot, bindingAssets, {
+          taskId: "binding-task",
+          executionSnapshot: { ...preparedSnapshot, payloadSha256: "c".repeat(64) }
+        }),
+        (error: unknown) => error instanceof VideosBatchExecutionSnapshotError
+          && error.code === "EXECUTION_SNAPSHOT_INTEGRITY_FAILED",
+        "a tampered execution snapshot must refuse the resume before the first poll"
       );
       // Once the bytes are on disk the attempt is paid for: a bookkeeping failure must
       // not read as an ordinary error, or the retry would bill a second time.

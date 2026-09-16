@@ -49,6 +49,7 @@ import {
   synthesizeMiniMaxSpeech
 } from "./minimaxTts";
 import type { H3ChargedEvidence } from "./newApiH3Video";
+import type { VideosBatchExecutionSnapshotRecord } from "./executionSnapshotIntegrity";
 import { sanitizeProviderDiagnosticText } from "./providerDiagnostics";
 
 /**
@@ -151,6 +152,10 @@ export interface VideosBatchNativeMediaDeps {
       onProviderPromptPrepared?(prompt: string): Promise<void> | void;
       /** Record the billing conclusion once paid bytes exist. */
       onProviderCharged?(evidence: H3ChargedEvidence): Promise<void> | void;
+      /** Persist the canonical paid snapshot before the provider POST. */
+      onProviderExecutionSnapshotPrepared?(snapshot: VideosBatchExecutionSnapshotRecord): Promise<void> | void;
+      /** Snapshot from the original submission; re-verified before a resumed poll. */
+      executionSnapshot?: VideosBatchExecutionSnapshotRecord;
     }
   ): Promise<string>;
   cacheGeneratedVideo(url: string, renderId: string): Promise<NativeCachedVideoResult>;
@@ -185,7 +190,9 @@ export const defaultVideosBatchNativeMediaDeps: VideosBatchNativeMediaDeps = {
     onProviderTaskSubmitted: options?.onProviderTaskSubmitted,
     onProviderReferenceBindingsPrepared: options?.onProviderReferenceBindingsPrepared,
     onProviderPromptPrepared: options?.onProviderPromptPrepared,
-    onProviderCharged: options?.onProviderCharged
+    onProviderCharged: options?.onProviderCharged,
+    onProviderExecutionSnapshotPrepared: options?.onProviderExecutionSnapshotPrepared,
+    executionSnapshot: options?.executionSnapshot
   }),
   cacheGeneratedVideo,
   probeVideoDuration: async (url) => {
@@ -1349,6 +1356,17 @@ export function createVideosBatchNativeMediaStageRegistry(
               },
               onProviderCharged: (evidence) => {
                 charged = evidence;
+              },
+              executionSnapshot: current.videosBatchExecutionSnapshot,
+              onProviderExecutionSnapshotPrepared: async (snapshot) => {
+                // Persist the canonical paid snapshot before the POST; a resumed poll
+                // re-verifies it, so a tampered or retired adapter refuses instead of
+                // querying a task this build cannot account for.
+                const persisted = await store.updateShot(current.id, {
+                  videosBatchExecutionSnapshot: structuredClone(snapshot)
+                });
+                if (!persisted) throw new Error(`Failed to persist execution snapshot for native shot ${current.id}`);
+                current = persisted;
               },
               onProviderTaskSubmitted: async (taskId) => {
                 const persisted = await store.updateShot(current.id, {

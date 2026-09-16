@@ -3,12 +3,12 @@
 Status: active
 Last Reviewed: 2026-09-15
 Spec ID: `VIDEOSBATCH_WORKFLOW_CANONICAL`
-Canonical Version: `1.4.7`
+Canonical Version: `1.4.8`
 Owner: VideosBatch 产品与运行时
 
 > 本文件是 VideosBatch 课程视频工作流的唯一有效设计真源。所有阶段顺序、提示词材料、字段语义、输出格式、人工门禁、版本血缘、重试、资产和媒体规则均以本文件为准。
 >
-> 阶段 1 的文档治理和阶段 2 的归档已经完成；1.1.0 增加参考图绑定合同，1.2.0 增加音频就绪门禁与 PARTIAL 重试合同，1.3.0 增加凭据卫生守卫，1.4.0 增加可插拔语音合成 Provider（MiniMax T2A v2），1.4.1 将静态提示词骨架外置为 `src/server/prompts/*.md` 加载器注入，1.4.2 按结构化范式重写全部骨架文本（要求集合与合同不变），1.4.3 依据 Tier 1 真实模型验收补齐确定性归一化合同（机械违规 sanitize、两档资产引用解析、预算感知提示注入、编译器自然中文斜杠分界），1.4.4 按 [`docs/adr/0001-videosbatch-align-frameflow-contracts.md`](../docs/adr/0001-videosbatch-align-frameflow-contracts.md) 对齐 FrameFlow 的工程合同纪律（H3 结构化失败与计费结论、参考图抓取纪律、绑定快照内容寻址、骨架版本与哈希钉），分别按对应落地文档执行；1.4.5 修正 1.4.4 复审发现的三处偏差（轮询阶段不得推断「未计费」且 Provider 显式计费结论优先、骨架版本必须可按版本回读、错误响应体有界读取）；1.4.6 补齐第二轮复审发现的失败侧计费证据持久化与单调合并、Provider 诊断文本脱敏。
+> 阶段 1 的文档治理和阶段 2 的归档已经完成；1.1.0 增加参考图绑定合同，1.2.0 增加音频就绪门禁与 PARTIAL 重试合同，1.3.0 增加凭据卫生守卫，1.4.0 增加可插拔语音合成 Provider（MiniMax T2A v2），1.4.1 将静态提示词骨架外置为 `src/server/prompts/*.md` 加载器注入，1.4.2 按结构化范式重写全部骨架文本（要求集合与合同不变），1.4.3 依据 Tier 1 真实模型验收补齐确定性归一化合同（机械违规 sanitize、两档资产引用解析、预算感知提示注入、编译器自然中文斜杠分界），1.4.4 按 [`docs/adr/0001-videosbatch-align-frameflow-contracts.md`](../docs/adr/0001-videosbatch-align-frameflow-contracts.md) 对齐 FrameFlow 的工程合同纪律（H3 结构化失败与计费结论、参考图抓取纪律、绑定快照内容寻址、骨架版本与哈希钉），分别按对应落地文档执行；1.4.5 修正 1.4.4 复审发现的三处偏差（轮询阶段不得推断「未计费」且 Provider 显式计费结论优先、骨架版本必须可按版本回读、错误响应体有界读取）；1.4.6 补齐第二轮复审发现的失败侧计费证据持久化与单调合并、Provider 诊断文本脱敏；1.4.7 参考图来源扩展为「HTTPS / 本地 `/media/` / 内联 `data:image` 载荷」三选一，内联载荷与其余来源同受 MIME、20MB 与有界读取约束，且原始载荷一律不落库（只留哈希与内容寻址）；1.4.8 增付费执行快照条款（严格规范化 JSON + 载荷哈希自校验 + 适配器能力矩阵闸，见 7.12）。
 >
 > JSON 只承担传输和持久化结构；它不能删减、替代或改写上游手册规定的字段语义和创作约束。模型输出是建议稿，服务端校验、用户确认和版本血缘才决定可继续的事实。
 
@@ -2414,8 +2414,17 @@ P001-A004：黄色小花（道具）
 - 旧 Shot 没有绑定快照时可从已按声明顺序读取的资产生成兼容快照；超过 H3 2–9 张限制、ordinal 重复/断号、资产缺失或图片不可读时必须在提交前失败，不得静默丢图或重排。
 - `COPYABLE_PROMPT.referenceAssetIds` 必须按当前 `FINAL_STORYBOARD.references` 解析顺序完整返回。稳定 ID 已解析但语义文字未出现在任何画面效果子镜头时，将标记插入第一个画面效果子镜头开头；去除标记后正文必须保持不变，不得仅因位置未命中把整条镜头标为 `PARTIAL`。
 
-### 7.8 音频就绪与派生阶段状态
+### 7.12 付费执行快照的完整性与适配器闸
 
+- 每次付费提交之前，必须对**即将提交的内容**生成规范化 JSON 快照并计算 SHA-256，与任务一并持久化。快照至少覆盖：schema 版本、适配器标识（`adapterKey`/`adapterVersion`）、运行时模型、创作模式、编译后的提示词、时长、画面比例，以及按 `ordinal` 有序的参考图内容寻址（`imageUrlHash`/`bytesSha256`/`byteSize`/`mimeType`）。
+- 规范化必须是**严格**的：对象键递归排序、数组保持顺序，且遇到 `undefined`、非有限数字或任何非 JSON 值一律硬失败。**不得沿用 `JSON.stringify` 的静默投影**（丢弃 `undefined`、把 `NaN` 降级为 `null`）——那样的哈希并不覆盖它自称描述的内容。既有 `contentHash`（`stableJson` 投影）继续服务血缘内容哈希，本条款只约束付费快照，两者并存不得互相替换。
+- 读取侧必须**重算**哈希并与持久化值比对，不得只信任存储值；解析出的对象再次规范化后必须与持久化字节逐字相等，否则判完整性失败。URL 与字节内容两个指纹在位时都要比对。
+- **适配器能力矩阵是付费的授权凭证**：`(adapterKey, adapterVersion, runtimeModelId, creationMode, 参考图数量)` 必须命中一行能力记录，才允许发起付费请求；未命中一律在付费之前失败（`GENERATION_ADAPTER_VERSION_UNAVAILABLE`），不得先取参考图或先提交。适配器版本一经发布即进矩阵；下架一个版本等于拒绝该版本产生的所有在途任务。
+- **恢复（已有 `taskId`）必须先按持久化快照校验**：完整性失败或适配器版本已不在矩阵内，一律拒绝恢复并停在人工对账态，不得继续轮询一个本构建无法解释的付费任务。
+- 失败码 `EXECUTION_SNAPSHOT_INTEGRITY_FAILED` 与 `GENERATION_ADAPTER_VERSION_UNAVAILABLE` 一经发布即为稳定合同，只允许追加。
+- 快照的持久化字段只承载规范化 JSON 文本、其哈希与适配器标识；**不得**把签名 URL、内联 `data:` 载荷或密钥写进快照（与 7.7、7.9 同源）。
+
+### 7.8 音频就绪与派生阶段状态
 - `COPYABLE_PROMPT` artifact 为 `READY` 时所属 stage 才能为 `ready`；artifact 为 `PARTIAL` 或 `FAILED` 时所属 stage 必须为 `failed`，并保留 artifact、失败分段和来源血缘。
 - 旧会话若出现 `stage=ready + artifact.status=PARTIAL/FAILED`，API 读取、运行或重试前必须自动收敛为失败状态；不得让 `currentStage` 越过该阶段，后继阶段标记 `stale`。
 - `EXECUTION` 的视频片段完成、`AUDIO_DELIVERY` 的音频就绪与 `STITCH` 的最终交付是三个独立门禁。`EXECUTION` 只记录结构完整的 audio timeline；`AUDIO_DELIVERY` 负责逐事件合成音频并产出行使交付就绪的时间线；`STITCH` 只能消费 `AUDIO_DELIVERY` 当前的 READY 产物。
@@ -2569,6 +2578,7 @@ git diff --check
 - [ ] 参考图抓取自带单次 30 秒超时、并发上限 2 与 `no-store`；URL 仅接受 HTTPS 且拒绝内嵌凭据；内联 `data:image/(png|jpeg|webp);base64,…` 载荷与其余来源同受 MIME/20MB/空内容校验，原始载荷不落库；字节读取按实际解码字节有界，超限在读完前失败。
 - [ ] 绑定快照保存 `bytesSha256`/`byteSize`/`mimeType`；同一 URL 内容变化时以 `bytesSha256` 拦截，历史快照缺该字段时回退 `imageUrlHash` 比较。
 - [ ] 提示词骨架注册表携带版本与 SHA-256 钉，加载时校验漂移即 fail-fast；导出哈希等于磁盘实际字节哈希；历史版本可按版本回读，未登记版本 fail-fast。
+- [ ] 付费提交前生成严格规范化 JSON 快照并计算 SHA-256（含适配器标识、模型、创作模式、提示词、时长、比例与有序参考图内容寻址）；`undefined`/非有限数字/非 JSON 值硬失败而非静默投影；读取侧重算哈希并逐字校验规范化形式；`(adapterKey, adapterVersion, runtimeModelId, creationMode, 参考图数量)` 未命中能力矩阵时在付费前失败；恢复任务先按持久化快照校验，完整性失败或适配器下架一律拒绝。
 - [ ] 阶段 1 不修改业务代码、`.env` 或旧文件，不调用真实 Provider；现有脏工作树保持不变。
 
 ## Change Policy

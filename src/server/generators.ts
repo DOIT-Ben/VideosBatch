@@ -14,6 +14,7 @@ import { arkMissingKeyMessage, BYTEPLUS_ARK_BASE, resolveArkCredential, VOLCENGI
 import { seedreamWebSearchPayload } from "./seedreamOptions";
 import { loadPromptTemplate } from "./prompts/promptTemplates";
 import { generateShotVideoViaNewApiH3, type H3ChargedEvidence } from "./videosBatchWorkflow/newApiH3Video";
+import type { VideosBatchExecutionSnapshotRecord } from "./videosBatchWorkflow/executionSnapshotIntegrity";
 import type { VideosBatchAudioTimeline } from "../shared/videosBatchWorkflow";
 import type { VideosBatchReferenceBinding } from "../shared/videosBatchNativeProjection";
 
@@ -39,6 +40,10 @@ export interface BuildSeedancePayloadOpts {
   onProviderPromptPrepared?(prompt: string): Promise<void> | void;
   /** VideosBatch NewAPI H3 hook: record the billing conclusion once paid bytes exist. */
   onProviderCharged?(evidence: H3ChargedEvidence): Promise<void> | void;
+  /** VideosBatch NewAPI H3 hook: persist the canonical paid snapshot before the POST. */
+  onProviderExecutionSnapshotPrepared?(snapshot: VideosBatchExecutionSnapshotRecord): Promise<void> | void;
+  /** Snapshot persisted by the original submission; re-verified when resuming a task. */
+  executionSnapshot?: VideosBatchExecutionSnapshotRecord;
   /** Resume an already-submitted NewAPI H3 task without issuing another POST. */
   taskId?: string | null;
 }
@@ -1048,7 +1053,9 @@ export async function generateShotVideo(shot: Shot, assets: Asset[], opts: Build
       onTaskSubmitted: opts.onProviderTaskSubmitted,
       onReferenceBindingsPrepared: opts.onProviderReferenceBindingsPrepared,
       onPromptPrepared: opts.onProviderPromptPrepared,
-      onCharged: opts.onProviderCharged
+      onCharged: opts.onProviderCharged,
+      onExecutionSnapshotPrepared: opts.onProviderExecutionSnapshotPrepared,
+      executionSnapshot: opts.executionSnapshot
     });
   }
   if (process.env.SEEDANCE_API_URL && process.env.SEEDANCE_API_KEY) {

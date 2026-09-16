@@ -54,6 +54,18 @@ declare module "./types" {
     videosBatchPromptRendering?: VideosBatchPromptRendering;
     /** Ordered semantic-to-native reference snapshot used by VideosBatch media execution. */
     videosBatchReferenceBindings?: VideosBatchReferenceBinding[];
+    /**
+     * Canonical JSON snapshot of exactly what the paid submission contained, plus its
+     * hash and the adapter identity that produced it. Persisted before the provider
+     * POST and re-verified before any resumed poll, so a tampered payload or an
+     * adapter version this build no longer ships refuses instead of polling blind.
+     */
+    videosBatchExecutionSnapshot?: {
+      payloadJson: string;
+      payloadSha256: string;
+      adapterKey: string;
+      adapterVersion: string;
+    };
   }
 
   interface ShotRender {
