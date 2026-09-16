@@ -549,7 +549,7 @@ button.vbs-v2-project-meta:hover {
 
 .videosbatch-studio-v2 .vbs-screenplay-scene,
 .videosbatch-studio-v2 .vbs-shot-card {
-  padding: 20px;
+  padding: 24px;
 }
 
 .videosbatch-studio-v2 .vbs-intro-card,
@@ -630,7 +630,7 @@ button.vbs-v2-project-meta:hover {
 .videosbatch-studio-v2 .vbs-secondary,
 .videosbatch-studio-v2 .vbs-link-button,
 .videosbatch-studio-v2 .vbs-confirmed {
-  min-height: 36px;
+  min-height: 38px;
   border-radius: var(--vbs-v2-radius-control);
   font-size: 12px;
   font-weight: 600;
@@ -1192,7 +1192,7 @@ button.vbs-v2-project-meta:hover {
   max-height: 620px;
   overflow: auto;
   margin: 0;
-  padding: 22px 24px;
+  padding: 28px 32px;
   color: #33363a;
   white-space: pre-wrap;
   word-break: break-word;
@@ -1214,11 +1214,14 @@ button.vbs-v2-project-meta:hover {
     "copy media"
     "actions media";
   align-items: stretch;
-  gap: 22px;
-  padding: 24px;
+  gap: 26px;
+  padding: 28px;
   border: 1px solid var(--vbs-v2-border);
   border-radius: var(--vbs-v2-radius-card);
   background: var(--vbs-v2-surface);
+  /* The one hero object on the page may carry the one raised shadow: depth
+     marks the deliverable, everything else stays flat paper. */
+  box-shadow: var(--vbs-v2-shadow-raised);
 }
 
 .vbs-final-delivery-copy {
@@ -1303,7 +1306,7 @@ button.vbs-v2-project-meta:hover {
 .videosbatch-studio-v2 .workflow-footer,
 .videosbatch-studio-v2 .vbs-workflow-footer {
   box-sizing: border-box;
-  padding: 16px 0 4px;
+  padding: 18px 0 10px;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -1830,7 +1833,7 @@ button.vbs-v2-project-meta:hover {
 
 /* --- Workspace and the stage slate ---------------------------------------- */
 .videosbatch-studio-v2 .vbs-v2-workspace {
-  padding: 30px var(--vbs-v2-gutter) 64px;
+  padding: 36px var(--vbs-v2-gutter) 76px;
 }
 
 .videosbatch-studio-v2 .vbs-stage-page {
@@ -1846,12 +1849,12 @@ button.vbs-v2-project-meta:hover {
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: start;
   gap: 0 20px;
-  padding-top: 16px;
+  padding-top: 20px;
   border-top: 1px solid var(--vbs-v2-border-strong);
 }
 
 .videosbatch-studio-v2 .vbs-stage-slate {
-  margin-bottom: 26px;
+  margin-bottom: 32px;
 }
 
 .videosbatch-studio-v2 .vbs-stage-numeral {
@@ -2007,7 +2010,7 @@ button.vbs-v2-project-meta:hover {
 .videosbatch-studio-v2 .vbs-footer,
 .videosbatch-studio-v2 .workflow-footer,
 .videosbatch-studio-v2 .vbs-workflow-footer {
-  margin: 28px 0 0;
+  margin: 34px 0 0;
   border-top: 1px solid var(--vbs-v2-border);
 }
 

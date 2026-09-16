@@ -13,7 +13,7 @@
 .vbs-document-facts small { color: var(--vbs-muted); }
 
 .vbs-primary, .vbs-secondary, .vbs-link-button, .vbs-confirmed {
-  display: inline-flex; align-items: center; justify-content: center; gap: 7px; border-radius: 9px; padding: 9px 13px; font: inherit; font-size: 12px; cursor: pointer; text-decoration: none;
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px; border-radius: 9px; padding: 10px 16px; font: inherit; font-size: 12px; cursor: pointer; text-decoration: none;
 }
 .vbs-primary { border: 1px solid var(--vbs-text); background: var(--vbs-text); color: var(--vbs-surface); font-weight: 600; }
 .vbs-primary:hover { filter: brightness(.98); }
@@ -22,13 +22,13 @@
 .vbs-confirmed { border: 1px solid #cddbcf; background: #f1f7f2; color: var(--vbs-success); }
 .vbs-primary:disabled, .vbs-secondary:disabled, .vbs-link-button:disabled { opacity: .45; cursor: not-allowed; }
 
-.vbs-intro-groups { display: grid; gap: 28px; }
-.vbs-intro-group h3 { font-size: 14px; margin: 0 0 12px; }
-.vbs-intro-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; }
-.vbs-intro-card { padding: 16px; display: flex; flex-direction: column; gap: 10px; min-height: 260px; }
+.vbs-intro-groups { display: grid; gap: 36px; }
+.vbs-intro-group h3 { font-size: 14px; margin: 0 0 16px; }
+.vbs-intro-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 16px; }
+.vbs-intro-card { padding: 20px; display: flex; flex-direction: column; gap: 12px; min-height: 260px; }
 .vbs-intro-card.selected { border-color: #d9b54d; box-shadow: 0 0 0 2px var(--vbs-accent-soft); }
 .vbs-intro-card h4 { margin: 0; font-size: 15px; }
-.vbs-intro-card p { margin: 0; color: #4c4943; line-height: 1.65; font-size: 13px; }
+.vbs-intro-card p { margin: 0; color: #4c4943; line-height: 1.7; font-size: 13px; }
 .vbs-intro-card blockquote { margin: 0; padding: 9px 10px; border-left: 3px solid var(--vbs-accent); background: var(--vbs-surface-subtle); font-size: 12px; }
 .vbs-card-topline, .vbs-section-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .vbs-code { color: var(--vbs-muted); font-size: 11px; font-weight: 700; }
@@ -40,11 +40,11 @@
 .vbs-note-card p { margin: 5px 0 0; color: var(--vbs-muted); line-height: 1.7; }
 .vbs-longform { padding: 28px 30px; border: 1px solid var(--vbs-border); border-radius: 14px; background: #fff; line-height: 2.05; font-size: 15px; white-space: pre-wrap; }
 
-.vbs-asset-plan-groups { display: grid; gap: 22px; }
+.vbs-asset-plan-groups { display: grid; gap: 30px; }
 .vbs-asset-plan-group h3, .vbs-section-title h3 { margin: 0; font-size: 15px; }
 .vbs-section-title > span { color: var(--vbs-muted); font-size: 12px; }
-.vbs-asset-plan-list { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; margin-top: 10px; }
-.vbs-asset-plan-card { padding: 16px; }
+.vbs-asset-plan-list { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 16px; margin-top: 12px; }
+.vbs-asset-plan-card { padding: 20px; }
 .vbs-asset-plan-card h4 { margin: 10px 0 6px; }
 .vbs-asset-plan-card p { color: var(--vbs-muted); line-height: 1.65; }
 .vbs-source-evidence { display: grid; gap: 3px; margin-top: 9px; font-size: 11px; }
