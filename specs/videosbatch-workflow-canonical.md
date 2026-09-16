@@ -3,7 +3,7 @@
 Status: active
 Last Reviewed: 2026-09-15
 Spec ID: `VIDEOSBATCH_WORKFLOW_CANONICAL`
-Canonical Version: `1.4.6`
+Canonical Version: `1.4.7`
 Owner: VideosBatch 产品与运行时
 
 > 本文件是 VideosBatch 课程视频工作流的唯一有效设计真源。所有阶段顺序、提示词材料、字段语义、输出格式、人工门禁、版本血缘、重试、资产和媒体规则均以本文件为准。
@@ -2410,6 +2410,7 @@ P001-A004：黄色小花（道具）
 - 绑定快照至少保存 `referenceId`、`ordinal`、`assetKey`、native `assetId`、语义名称，以及提交 URL 的 `imageUrlHash` 与实际字节的内容寻址指纹（`bytesSha256`、`byteSize`、可选 `mimeType`）。`imageUrlHash` 只能证明「用的是哪个 URL」，`bytesSha256` 才能证明「用的是哪份字节」：同一 URL 内容变化时必须以 `bytesSha256` 拦截并要求重新确认资产，不得静默用新图生成。历史快照缺 `bytesSha256` 时回退 `imageUrlHash` 比较，仍可恢复轮询。快照在付费 POST 前持久化；已提交任务的恢复只轮询原 task，不重新解析或上传参考图。
 - 请求日志只能记录 `{ordinal, assetKey, assetId, imageUrlHash}` 等脱敏字段，不记录签名 URL、密钥或 Token。
 - 参考图抓取必须自带单次 30 秒超时（与作业信号合并）、并发上限 2、`cache: no-store`，并按实际解码字节做有界读取（先查 `content-length`，超限在读完前失败，每个错误分支都取消 body）；参考图 URL 只接受 HTTPS 且禁止内嵌凭据（`https://user:pass@…` 一律拒绝）。这条纪律独立于 45 分钟作业超时，单张挂死或超大参考图不得吃掉整个镜头预算或进程内存。抓图、配置与绑定校验失败一律在付费 POST 之前判为未计费（见 8.5）。
+- 参考图来源为三者之一：公开/签名 `https://` URL、本地 `/media/...` 路径、内联 `data:image/(png|jpeg|webp);base64,…` 载荷。内联载荷是**已解析的最终字节**，因此不做网络抓取，但必须复用同一套字节校验：MIME 白名单（PNG/JPEG/WebP）、单张 20MB 上限、空内容拒绝，并与其余来源一样填 `bytesSha256`/`byteSize`/`mimeType` 内容寻址。**原始内联载荷一律不落库**：绑定快照与请求日志只能留 `imageUrlHash` 与内容寻址指纹（与 7.7 签名 URL 纪律同源，见 7.10）。声明顺序仍以 `FINAL_STORYBOARD.references` 为准，三种来源可在同一镜头内混用。
 - 旧 Shot 没有绑定快照时可从已按声明顺序读取的资产生成兼容快照；超过 H3 2–9 张限制、ordinal 重复/断号、资产缺失或图片不可读时必须在提交前失败，不得静默丢图或重排。
 - `COPYABLE_PROMPT.referenceAssetIds` 必须按当前 `FINAL_STORYBOARD.references` 解析顺序完整返回。稳定 ID 已解析但语义文字未出现在任何画面效果子镜头时，将标记插入第一个画面效果子镜头开头；去除标记后正文必须保持不变，不得仅因位置未命中把整条镜头标为 `PARTIAL`。
 
@@ -2565,7 +2566,7 @@ git diff --check
 - [x] 静态提示词骨架外置于 `src/server/prompts/*.md` 并经 `loadPromptTemplate()` 注入；注册表与目录一一对应，内容与历史常量逐字节一致，加载器 fail-fast 与消费者接线被离线 smoke 覆盖；`promptCompiler`/`promptCompose`/`<contract_repair>` 保持代码内。
 - [ ] H3 适配器付费路径不抛裸错误；每个失败带 `code`/`retryable`/`billingResult`，失败分层与计费结论一致（付费前一律未计费、4xx 未计费、5xx 与网络中断未知、**任务号已存在之后的任何失败一律未知且不自动重试**、生成后本地写入失败已计费且不重试）；Provider 显式 `billing_result` 覆盖本地推断且不据此放开自动重试；成功路径回传已计费证据；错误响应体读取有界。
 - [ ] 失败的计费结论随 `Shot.videosBatchError.billingResult` 落库，并与既有结论按 `CHARGED > NOT_CHARGED > UNKNOWN` 单调合并（已计费证据不得被后续未知覆盖）；持久化的错误消息已剥除令牌、密钥、内联 data URL 与全部 URL。
-- [ ] 参考图抓取自带单次 30 秒超时、并发上限 2 与 `no-store`；URL 仅接受 HTTPS 且拒绝内嵌凭据；字节读取按实际解码字节有界，超限在读完前失败。
+- [ ] 参考图抓取自带单次 30 秒超时、并发上限 2 与 `no-store`；URL 仅接受 HTTPS 且拒绝内嵌凭据；内联 `data:image/(png|jpeg|webp);base64,…` 载荷与其余来源同受 MIME/20MB/空内容校验，原始载荷不落库；字节读取按实际解码字节有界，超限在读完前失败。
 - [ ] 绑定快照保存 `bytesSha256`/`byteSize`/`mimeType`；同一 URL 内容变化时以 `bytesSha256` 拦截，历史快照缺该字段时回退 `imageUrlHash` 比较。
 - [ ] 提示词骨架注册表携带版本与 SHA-256 钉，加载时校验漂移即 fail-fast；导出哈希等于磁盘实际字节哈希；历史版本可按版本回读，未登记版本 fail-fast。
 - [ ] 阶段 1 不修改业务代码、`.env` 或旧文件，不调用真实 Provider；现有脏工作树保持不变。

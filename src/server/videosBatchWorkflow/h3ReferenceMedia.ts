@@ -36,6 +36,21 @@ const EXTENSION_MIME: Record<string, string> = {
   ".webp": "image/webp"
 };
 
+/**
+ * Inline reference payloads. This is the exact final byte set, so there is no
+ * network read, but it must clear the same MIME / size / non-empty gates as the
+ * URL sources. Anchored on purpose: a partial or non-image `data:` URL is a
+ * caller error, not a quietly-accepted input.
+ */
+const INLINE_IMAGE_DATA_URL = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/u;
+
+/**
+ * Upper bound on the encoded payload. base64 spends 4 characters per 3 bytes, so
+ * anything longer than this provably decodes past the byte ceiling — reject it
+ * before `Buffer.from` allocates the copy.
+ */
+const H3_MAX_REFERENCE_BASE64_CHARS = Math.ceil(H3_MAX_REFERENCE_BYTES / 3) * 4;
+
 export interface H3ReferenceFile {
   file: File;
   /** Exact bytes submitted to the provider, content-addressed. */
@@ -140,7 +155,23 @@ async function remoteMediaFile(value: string, ordinal: number, signal?: AbortSig
   return referenceBytes(bytes, ordinal, mimeType);
 }
 
+/**
+ * Decode an inline `data:image/...;base64,...` reference. The payload is already
+ * the final bytes, so the only work is shape validation plus the shared byte
+ * gates; the raw data URL is never returned or persisted anywhere by this module.
+ */
+function inlineDataUrlFile(value: string, ordinal: number): H3ReferenceFile {
+  const match = INLINE_IMAGE_DATA_URL.exec(value);
+  if (!match) throw referenceError("NewAPI H3 内联参考图必须是 PNG/JPEG/WebP 的 base64 data URL");
+  const [, mimeType, payload] = match;
+  if (payload.length > H3_MAX_REFERENCE_BASE64_CHARS) {
+    throw referenceError("NewAPI H3 参考图不能超过 20MB");
+  }
+  return referenceBytes(new Uint8Array(Buffer.from(payload, "base64")), ordinal, mimeType);
+}
+
 export async function h3ReferenceFile(value: string, ordinal: number, signal?: AbortSignal): Promise<H3ReferenceFile> {
+  if (value.startsWith("data:")) return inlineDataUrlFile(value, ordinal);
   return value.startsWith("/media/")
     ? localMediaFile(value, ordinal)
     : remoteMediaFile(value, ordinal, signal);

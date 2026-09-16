@@ -102,6 +102,46 @@ try {
     3,
     "bounded reads must pass through bodies inside the limit"
   );
+
+  // Inline `data:image/...;base64,...` references are already the final bytes, so
+  // they skip the network read but must clear the same MIME / size / non-empty
+  // gates, and are content-addressed exactly like the URL sources.
+  const inlineBytes = Buffer.from("inline-reference-bytes");
+  const inlineDataUrl = `data:image/png;base64,${inlineBytes.toString("base64")}`;
+  const inlineFile = await h3ReferenceFile(inlineDataUrl, 3);
+  assert.equal(inlineFile.byteSize, inlineBytes.length, "inline reference must carry the exact decoded byte count");
+  assert.equal(inlineFile.mimeType, "image/png");
+  assert.equal(
+    inlineFile.bytesSha256,
+    createHash("sha256").update(inlineBytes).digest("hex"),
+    "inline reference must be content-addressed like every other source"
+  );
+  assert.equal(Buffer.from(await inlineFile.file.arrayBuffer()).equals(inlineBytes), true);
+  for (const badInline of [
+    `data:application/zip;base64,${inlineBytes.toString("base64")}`,
+    "data:image/png;base64,",
+    "data:image/png,notbase64",
+    `data:image/png;base64,${"A".repeat(Math.ceil(H3_MAX_REFERENCE_BYTES / 3) * 4 + 4)}`
+  ]) {
+    await assert.rejects(
+      () => h3ReferenceFile(badInline, 1),
+      (error: unknown) => error instanceof NewApiH3ProviderError
+        && error.code === "INVALID_REFERENCE_IMAGE"
+        && error.retryable === false
+        && error.billingResult === "NOT_CHARGED",
+      `inline reference must be rejected before any paid work: ${badInline.slice(0, 40)}`
+    );
+  }
+  const inlinePlanUrl = `data:image/webp;base64,${Buffer.from("plan-inline-bytes").toString("base64")}`;
+  const inlinePlan = buildNewApiH3ReferencePlan(
+    { id: "shot-inline", assetIds: ["i1", "i2"], rawPrompt: "内联参考图测试" } as any,
+    [
+      { id: "i1", name: "内联图", imageUrl: inlinePlanUrl },
+      { id: "i2", name: "网络图", imageUrl: "https://inline.test/b.png" }
+    ] as any
+  );
+  assert.equal(inlinePlan[0].candidates[0], inlinePlanUrl, "inline data URLs must survive the reference candidate filter");
+
   await assert.rejects(
     () => readBoundedResponseBytes(new Response(new Uint8Array(16)), 8),
     (error: unknown) => error instanceof ResponseBodyLimitError,

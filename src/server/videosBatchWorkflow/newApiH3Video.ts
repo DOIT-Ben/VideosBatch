@@ -84,10 +84,20 @@ function config() {
   return { apiKey, baseUrl };
 }
 
+/**
+ * A reference resolves from any of three sources, in declaration order: a public
+ * or signed `https://` URL, a local `/media/...` path, or an inline
+ * `data:image/...;base64,...` payload. The last one is already the final bytes,
+ * so it needs no fetch — but it must still be a real PNG/JPEG/WebP data URL, not
+ * a stray `data:` string.
+ */
+const INLINE_IMAGE_DATA_URL = /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/iu;
+
 function referenceCandidates(asset: Asset) {
   const candidates = [asset.sourceImageUrl, asset.referenceImageUrl, asset.imageUrl, asset.mediaUrl];
   return candidates
-    .filter((value): value is string => typeof value === "string" && (/^https:\/\//i.test(value) || value.startsWith("/media/")))
+    .filter((value): value is string => typeof value === "string"
+      && (/^https:\/\//i.test(value) || value.startsWith("/media/") || INLINE_IMAGE_DATA_URL.test(value)))
     .map((value) => value.trim())
     .filter((value, index, values) => values.indexOf(value) === index);
 }
@@ -307,7 +317,12 @@ async function resolveReferenceFiles(
     for (const candidate of reference.candidates) {
       try {
         prepared = await h3ReferenceFile(candidate, index + 1, signal);
-        submittedUrl = candidate;
+        // Inline payloads are the bytes themselves. Address them by content so the
+        // raw data URL is neither retained in memory nor hashed at 20MB scale, and
+        // so no raw payload can reach the audit snapshot or request log.
+        submittedUrl = candidate.startsWith("data:")
+          ? `inline:sha256:${prepared.bytesSha256}`
+          : candidate;
         break;
       } catch (error) {
         lastError = error;
