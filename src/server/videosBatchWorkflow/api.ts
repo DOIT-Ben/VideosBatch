@@ -150,12 +150,16 @@ function workflowContext(store: CinemaStore, sessionId: string): StageExecutionC
     workflow: session.videosBatchWorkflow,
     assets,
     shots: session.shots,
-    store
+    store,
+    checkpoint: async (workflow) => {
+      const saved = await store.checkpointWorkflow(sessionId, workflow);
+      if (!saved) throw new Error("Workflow session disappeared during checkpoint");
+    }
   };
 }
 
 async function persistWorkflow(store: CinemaStore, sessionId: string, workflow: NonNullable<ReturnType<typeof workflowContext>>["workflow"]) {
-  const updated = await store.updateSession(sessionId, { videosBatchWorkflow: workflow });
+  const updated = await store.updateSession(sessionId, { videosBatchWorkflow: structuredClone(workflow) });
   return updated?.videosBatchWorkflow;
 }
 

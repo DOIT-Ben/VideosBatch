@@ -3,6 +3,7 @@ import path from "node:path";
 import type { Asset, CreateSessionPayload, GalleryItem, GalleryPublishPayload, Session, Shot, ShotRender, StitchJob, StoreSnapshot, TokenUsageEvent } from "../shared/types";
 import { AUTO_SESSION_TITLE, autoSessionTitle, normalizeSessionTitle } from "../shared/sessionTitle";
 import { observeStoreSave } from "./metrics";
+import { recoverInterruptedWorkflow, type VideosBatchWorkflowState } from "../shared/videosBatchWorkflow";
 
 export const DATA_DIR = path.resolve(process.cwd(), "data");
 export const STORE_FILE = path.join(DATA_DIR, "cinema-store.json");
@@ -80,11 +81,21 @@ export class CinemaStore {
     // them impossible to tell apart. Derive those names from each session's creation time.
     // Derived in memory rather than written back: the input (`createdAt`) never changes, so the
     // result is stable across boots, and the user's own titles are never touched.
+    let recovered = false;
     for (const session of this.data.sessions) {
+      if (session.videosBatchWorkflow) {
+        const next = recoverInterruptedWorkflow(session.videosBatchWorkflow);
+        if (next !== session.videosBatchWorkflow) {
+          session.videosBatchWorkflow = next;
+          session.updatedAt = next.updatedAt;
+          recovered = true;
+        }
+      }
       if (session.title && AUTO_SESSION_TITLE.test(session.title.trim())) {
         session.title = autoSessionTitle(session.createdAt, new Date());
       }
     }
+    if (recovered) await this.save();
   }
 
   snapshot(): StoreSnapshot {
@@ -247,6 +258,38 @@ export class CinemaStore {
     session.updatedAt = ts;
     await this.save();
     return structuredClone(shot);
+  }
+
+  async checkpointWorkflow(sessionId: string, workflow: VideosBatchWorkflowState) {
+    const session = this.data.sessions.find((item) => item.id === sessionId);
+    if (!session) return undefined;
+    const previous = session.videosBatchWorkflow;
+    const previousUpdatedAt = session.updatedAt;
+    const snapshot = structuredClone(workflow);
+    try {
+      return await this.updateSession(sessionId, { videosBatchWorkflow: snapshot });
+    } catch (error) {
+      // Do not roll back a newer write. API workflow flights serialize this path.
+      if (session.videosBatchWorkflow === snapshot) {
+        const starting = snapshot.stages[snapshot.currentStage]?.status === "running";
+        if (starting) {
+          // No executor has run yet: restore the last acknowledged state in RAM.
+          session.videosBatchWorkflow = previous;
+          session.updatedAt = previousUpdatedAt;
+        } else if (previous?.stages[previous.currentStage]?.status === "running") {
+          // The external operation already finished. Keep its result inspectable,
+          // but block another submission until the operator resolves persistence.
+          const stageId = previous.currentStage;
+          snapshot.stages[stageId] = { ...snapshot.stages[stageId]!, status: "running" };
+          session.videosBatchWorkflow = recoverInterruptedWorkflow(snapshot);
+          const stage = session.videosBatchWorkflow.stages[stageId]!;
+          const message = "执行结果已保留在内存，但保存失败。请先核对外部任务并恢复存储，再显式重新生成；不要重复提交。";
+          stage.error = message;
+          stage.errorInfo!.message = message;
+        }
+      }
+      throw error;
+    }
   }
 
   async updateSession(sessionId: string, patch: Partial<Session>) {

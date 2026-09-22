@@ -356,6 +356,23 @@ export interface CreateVideosBatchWorkflowInput {
   source?: VideosBatchLessonSource;
 }
 
+/** Called only during store boot; never automatically resubmit uncertain external work. */
+export function recoverInterruptedWorkflow(source: VideosBatchWorkflowState): VideosBatchWorkflowState {
+  const running = VIDEOS_BATCH_STAGE_ORDER.filter((id) => source.stages[id]?.status === "running");
+  if (!running.length) return source;
+  const next = structuredClone(source);
+  const updatedAt = new Date().toISOString();
+  for (const id of running) {
+    const stage = next.stages[id]!;
+    const message = "服务重启前此步骤尚未确认完成。请先核对外部任务和费用，再显式重新生成；系统不会自动重发。";
+    next.stages[id] = { ...stage, status: "failed", error: message, errorInfo: { code: "WORKFLOW_INTERRUPTED", message, retryable: false, attempt: stage.attempts || 0, provider: stage.provider || null }, updatedAt };
+  }
+  next.currentStage = running[0];
+  next.completed = false;
+  next.updatedAt = updatedAt;
+  return next;
+}
+
 export function validateLessonInput(value: unknown): asserts value is CreateVideosBatchWorkflowInput {
   const input = value as Partial<CreateVideosBatchWorkflowInput> | null;
   if (!input || typeof input.projectId !== "string" || !input.projectId.trim()) throw new Error("projectId is required");

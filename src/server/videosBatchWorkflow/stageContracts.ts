@@ -18,6 +18,8 @@ export interface StageExecutionContext {
   shots: Shot[];
   /** Present on the real API execution path; omitted by pure runner tests. */
   store?: CinemaStore;
+  /** Durable stage boundary; failures must stop execution before external side effects. */
+  checkpoint?: (workflow: VideosBatchWorkflowState) => Promise<void>;
 }
 
 interface StageResult<T = unknown> {

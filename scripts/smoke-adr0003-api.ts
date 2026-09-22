@@ -50,6 +50,7 @@ try {
   const denied = await request("", undefined, "GET", { "x-test-user": "owner-b", "x-forwarded-host": "localhost" });
   assert.equal(denied.status, 404, "forwarded header must not grant access to another owner");
   const running = request("/run-next", {}); await entered;
+  assert.equal((await request("", undefined, "GET")).body.stages.COURSE_INTRO_CANDIDATES.status, "running");
   const first = request("/start", a);
   await new Promise((r) => setTimeout(r, 60));
   const second = request("/start", b);

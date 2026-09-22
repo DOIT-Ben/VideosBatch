@@ -182,18 +182,15 @@ function VideosBatchStudioView({
     ? VIDEOS_BATCH_PRODUCT_STEPS.filter((step) => deriveProductStepStatus(workflow, step) === "ready").length
     : 0;
 
-  // A run is driven by a single request that persists nothing until it returns,
-  // so `/api/state` polling cannot reveal intermediate progress and the rail
-  // used to sit frozen for the whole (minutes-long) auto-run — indistinguishable
-  // from a hang. Mark the step the run is working on as running instead
-  // (2026-09-16).
+  // Server checkpoints are authoritative; local busy fills only the request startup gap.
   const runInFlight = busy === "next" || busy === "all";
+  const serverRunning = Object.values(workflow?.stages || {}).some((stage) => stage?.status === "running");
   const statusForStep = (step: (typeof VIDEOS_BATCH_PRODUCT_STEPS)[number]) => {
     if (!workflow) return "pending" as const;
     if (runInFlight && step.stages.some((stageId) => workflow.stages[stageId]?.status === "running")) {
       return "running" as const;
     }
-    if (runInFlight && step.id === selectedStepId) return "running" as const;
+    if (runInFlight && step.id === currentStepId) return "running" as const;
     return deriveProductStepStatus(workflow, step);
   };
 
@@ -387,7 +384,7 @@ function VideosBatchStudioView({
         <ModeBanner runtime={runtime} />
       </div>
       <main className="vbs-v2-workspace">
-        {error && <div className="vbs-inline-error">{error}</div>}
+        {(error || workflow?.stages[workflow.currentStage]?.error) && <div className="vbs-inline-error" role="alert">{error || workflow?.stages[workflow.currentStage]?.error}</div>}
         <div className="vbs-v2-stage-frame">
           <StageWorkspace
             session={session}
@@ -396,7 +393,7 @@ function VideosBatchStudioView({
             selectedAssetIds={selectedAssetIds}
             workflow={workflow}
             stepId={selectedStepId}
-            busy={Boolean(busy)}
+            busy={Boolean(busy) || serverRunning}
             onParseLessonFile={(file) => parseLessonDocumentFile(sessionId, file)}
             parsedLessonDraft={parsedLessonDraft}
             onParsedLessonDraftChange={handleParsedLessonDraftChange}
@@ -413,7 +410,7 @@ function VideosBatchStudioView({
         </div>
         <WorkflowFooter
           selectedStepId={selectedStepId}
-          busy={Boolean(busy)}
+          busy={Boolean(busy) || serverRunning}
           completed={Boolean(workflow?.completed)}
           canRetry={Boolean(retryStageId)}
           canDebug={debugArtifact !== undefined}

@@ -228,11 +228,13 @@ interface PreferredFinalVideo {
   downloadUrl: string;
   status: string;
   progress: string;
+  historical?: boolean;
 }
 
 export function preferredFinalVideo(session: Partial<Session> | undefined): PreferredFinalVideo {
   if (!session) return { playbackUrl: "", downloadUrl: "", status: "idle", progress: "" };
   const jobs = Array.isArray(session.stitchJobs) ? session.stitchJobs : [];
+  const latestJob = jobs[jobs.length - 1];
   const preferredJob = [...jobs].reverse().find((job) =>
     Boolean(job.finalVideoPlaybackUrl || job.finalVideoUrl || job.finalVideoDownloadUrl)
   ) || jobs[jobs.length - 1];
@@ -242,8 +244,9 @@ export function preferredFinalVideo(session: Partial<Session> | undefined): Pref
     return {
       playbackUrl,
       downloadUrl: preferredJob.finalVideoDownloadUrl || playbackUrl,
-      status: preferredJob.status || "idle",
-      progress: preferredJob.progress || ""
+      status: latestJob?.finalVideoStale ? "stale" : latestJob?.status || "idle",
+      progress: latestJob?.progress || "",
+      ...((preferredJob !== latestJob || latestJob?.status !== "ready" || latestJob?.finalVideoStale) ? { historical: true } : {})
     };
   }
 
@@ -251,7 +254,8 @@ export function preferredFinalVideo(session: Partial<Session> | undefined): Pref
   return {
     playbackUrl,
     downloadUrl: session.finalVideoDownloadUrl || playbackUrl,
-    status: session.stitchStatus || (playbackUrl ? "ready" : "idle"),
-    progress: session.stitchProgress || ""
+    status: session.finalVideoStale ? "stale" : session.stitchStatus || (playbackUrl ? "ready" : "idle"),
+    progress: session.stitchProgress || "",
+    ...((session.finalVideoStale || (playbackUrl && session.stitchStatus && session.stitchStatus !== "ready")) ? { historical: true } : {})
   };
 }

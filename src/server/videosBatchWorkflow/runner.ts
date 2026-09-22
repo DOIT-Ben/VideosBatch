@@ -386,6 +386,12 @@ export function reconcileVideosBatchReadiness(source: VideosBatchWorkflowState):
 }
 
 export async function runNext(ctx: StageExecutionContext, registry: StageRegistry): Promise<VideosBatchWorkflowState> {
+  const next = await executeNext(ctx, registry);
+  await ctx.checkpoint?.(next);
+  return next;
+}
+
+async function executeNext(ctx: StageExecutionContext, registry: StageRegistry): Promise<VideosBatchWorkflowState> {
   const reconciled = reconcileVideosBatchReadiness(ctx.workflow);
   // A legacy readiness repair is a state correction, not an implicit retry.
   // Return it for persistence and let the operator explicitly retry.
@@ -395,6 +401,7 @@ export async function runNext(ctx: StageExecutionContext, registry: StageRegistr
   if (workflow.completed) return workflow;
   const stageId = workflow.currentStage;
   const current = workflow.stages[stageId] || { status: "pending" as const, revision: 0 };
+  if (current.status === "running" || current.errorInfo?.code === "WORKFLOW_INTERRUPTED") return workflow;
 
   if (stageId === "LESSON_INPUT") {
     const failure = stageArtifactFailure(stageId, current.artifact);
@@ -451,6 +458,8 @@ export async function runNext(ctx: StageExecutionContext, registry: StageRegistr
 
   const startedAt = nowIso();
   workflow.stages[stageId] = { ...current, status: "running", error: undefined, errorInfo: undefined, staleReason: undefined, updatedAt: startedAt };
+  workflow.updatedAt = startedAt;
+  await ctx.checkpoint?.(workflow);
   const runningCtx = contextWithWorkflow(ctx, workflow);
 
   let stageResult: any;

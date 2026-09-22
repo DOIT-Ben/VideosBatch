@@ -40,7 +40,7 @@
 | 阶段 | 状态 | 依赖 | 范围 | 证据/提交 |
 |---|---|---|---|---|
 | P1 | PASSED | 无 | BUG-001/003/004、档案/spec | API smoke、既有 retry、tsc、specs、secrets 通过；独立审查 R2 PASS |
-| P2 | NOT_STARTED | P1 | BUG-002/005 | 待验证 |
+| P2 | PASSED | P1 | BUG-002/005 | recovery/API smoke、既有相关测试、tsc 通过；R2 PASS |
 | P3 | NOT_STARTED | P2 | BUG-006/007/008 | 待验证 |
 
 每阶段：实现 -> 定向测试 -> 独立只读审查（最多三次结论/两次返修）-> 验收及记录 -> 精确范围提交。全部完成后运行 verify:offline 并推送。记录文件自身的提交身份由 Git 历史承载，后续阶段记录前一阶段 hash，避免自引用。
@@ -53,3 +53,7 @@
 - 2026-09-22 / Codex / a762bb5：P1 NOT_STARTED -> PROPOSED -> IN_PROGRESS；授权修复，工作区干净；风险边界与验收已记录。
 
 - 2026-09-22 / Codex + reviewer review_p1 / P1 工作树：IN_PROGRESS -> REVIEW_1 -> REWORK_1（补旧 ready 空教案阻断）-> REVIEW_2 PASS -> ACCEPTANCE -> PASSED；定向/既有测试均 RC=0；本地验收，不推断生产。
+
+- 2026-09-22 / Codex / a7bb30e：P1 已提交；P2 NOT_STARTED -> PROPOSED -> IN_PROGRESS。
+
+- 2026-09-22 / Codex + review_p2 / P2 工作树：IN_PROGRESS -> REVIEW_1 -> REWORK_1（真实 save 故障注入，开始回退/结束保留）-> REVIEW_2 PASS -> ACCEPTANCE -> PASSED；recovery、API、类型及既有相关测试 RC=0。阶段 checkpoint 保存失败是可见故障，不保证磁盘故障中的持久性或外部 exactly-once。
