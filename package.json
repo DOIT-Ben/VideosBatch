@@ -115,7 +115,8 @@
     "smoke:adr0003-recovery": "tsx scripts/smoke-adr0003-recovery.tsx",
     "smoke:adr0003-workspace": "tsx scripts/smoke-adr0003-workspace.tsx",
     "smoke:adr0003-build": "node scripts/smoke-adr0003-build.mjs",
-    "smoke:videosbatch-task-experience": "tsx scripts/smoke-videosbatch-task-experience.tsx"
+    "smoke:videosbatch-task-experience": "tsx scripts/smoke-videosbatch-task-experience.tsx",
+    "smoke:production-storage": "tsx scripts/smoke-production-storage.ts"
   },
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",

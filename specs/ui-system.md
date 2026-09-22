@@ -99,3 +99,16 @@ VideosBatch 的阶段语义、提示词和产物合同不在本 UI 规格中定�
 ## Change Policy
 
 Update this spec before broad UI redesigns and with any fix that changes responsive behavior, canvas layering, or core visual hierarchy.
+
+
+## 2026-09-22 Automated workspace acceptance contract
+
+Implementation status: `docs/adr/automation-workspace-plan.md`; these are accepted requirements, not a completion claim.
+
+- One task center and the existing editor share run identity. Batch actions show eligible items and per-item outcomes; one failure does not lock other projects.
+- Waiting, running, needs-attention, paused, stopping, failed and done use explicit Chinese labels. Request-in-flight is distinct from server-confirmed state.
+- Realtime updates preserve focus, draft, selection, expansion and scroll anchors. Follow appended content only while already at the bottom and not editing. No fabricated stream, ETA or percentage.
+- Draft/save/conflict/offline states distinguish local cache from durable server content. Save does not start generation; save-and-continue targets the saved revision. A failed continuation says saved-but-not-started.
+- Task switching preserves navigation context. Ctrl/Cmd+S belongs to the editor only; dialogs restore focus, announcements do not flood and reduced motion is respected.
+- Dense task management remains operable at 390/768/1440px. Performance fixtures and proposed thresholds are defined in ADR-0005 and must be measured rather than presumed.
+- No quote, pricing, credit or payment UI is introduced or reworked.

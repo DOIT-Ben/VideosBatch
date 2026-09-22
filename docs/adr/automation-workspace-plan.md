@@ -1,11 +1,11 @@
 # 自动化生产工作台：阶段计划与验收台账
 
-- 日期：2026-09-22；模式：Write ADR；代码基线：`6cc8174`。
-- 当前交付：三份决策提案、需求溯源和本计划。所有实施阶段均为 **NOT_STARTED**。
+- 日期：2026-09-22；模式：Execute ADR；实施起点：`09fdde9`。
+- 当前执行：P0 **PASSED**；P1—P6 未开始。
 - 需求原文：[REQ-20260922-PIPELINE](sources/20260922-automated-production-workspace.md)。
 - 决策：[调度 ADR-0004](0004-durable-production-scheduler.md)、[实时反馈 ADR-0005](0005-realtime-rendering-feedback.md)、[编辑与管理 ADR-0006](0006-multitask-editing-workbench.md)。
 
-用户已明确多任务自动流水线、实时反馈、编辑保存推进的目标，以及报价禁改。数据库选型、事件协议和性能门槛是待验证的技术提案；本次完成文档不表示实现完成。后续进入实施时依据用户指令记录决策接受状态，不要求对每个常规实现细节重复确认。
+用户已明确多任务自动流水线、实时反馈、编辑保存推进的目标，以及报价禁改。2026-09-22 用户明确要求“现在开始按照adr顺序推进”，据此接受三份 ADR 并进入执行；技术参数仍按阶段验证，不把接受方案等同于测试通过。
 
 ## 范围与合同
 
@@ -32,7 +32,7 @@ flowchart LR
 
 | 阶段 | 对应 ADR | 进入条件 | 交付与通过条件 | 状态 |
 |---|---|---|---|---|
-| P0 合同与存储验证 | 0004/0005/0006 | 开始实施的用户指令；核对基线 | 规格、状态机和模块边界；Windows/Node SQLite 验证；跨存储恢复原型证明；确认实施方案 | NOT_STARTED |
+| P0 合同与存储验证 | 0004/0005/0006 | 开始实施的用户指令；核对基线 | 规格、状态机和模块边界；Windows/Node SQLite 验证；跨存储恢复原型证明；确认实施方案 | PASSED |
 | P1 持久后台任务 | 0004 | P0 通过 | 异步运行 API、持久 Run/Attempt/Event、单写入投影、同一引擎兼容旧调用、owner 隔离 | NOT_STARTED |
 | P2 自动调度与恢复 | 0004 | P1 通过 | 依赖/限额/公平队列、确认关卡、暂停继续、重启恢复、未知受理核对；合成证据后才提高并发 | NOT_STARTED |
 | P3 实时反馈与渲染 | 0005 | P1 通过 | SSE/快照续接、局部渲染、真实预览、断线兜底、阅读不被打断 | NOT_STARTED |
@@ -118,3 +118,20 @@ flowchart LR
 ## 需要以证据确定的技术参数
 
 SQLite 驱动与运行时兼容性、事件保留窗口、各层并发/队列上限、列表窗口化阈值、Provider 流式/取消能力，都在对应阶段验证后记录。默认不阻塞本次 ADR 写作，也不能在实施时静默当作已验证事实。
+
+## 执行记录
+
+- 2026-09-22，实施者：用户请求按 ADR 顺序推进；`09fdde9` 干净 master。P0 NOT_STARTED → PROPOSED → IN_PROGRESS。沿用本会话提交/推送授权，生产、付费调用及报价范围不变。
+
+
+### P0 工作证据（审查中）
+
+- 选择 Node 内置 `node:sqlite`，本机 Node v22.22.0、SQLite 3.50.4；无新增 npm/native 编译依赖。依赖的 backup API 要求 Node >=22.16；Node22 的 SQLite 仍属实验性，封装在独立模块，不把实验 API 当稳定长期合同。[官方 Node API](https://nodejs.org/download/release/v22.13.1/docs/api/sqlite.html)；[backup 版本记录](https://nodejs.org/download/release/v25.1.0/docs/api/sqlite.html)。Node/SQLite 随 Node 发行维护，发行包含许可；没有下载第三方驱动。
+- `src/server/productionRuns/projectionJournal.ts` 是隔离控制仓库原语，尚未在业务服务启动时加载或创建数据。单写入者由宿主保证；P1 必须把 operationId 与真实成果原子保存并做集成测试，不能把本原型测试当作接线证明。
+- `npx tsx scripts/smoke-production-storage.ts` 退出 0：真实子进程退出四个边界、重复回放仅一个 revision、事务回滚、幂等冲突、SQLite 在线备份/恢复、结果损坏和路径穿越拒绝。测试只写随机系统临时目录；本轮证据 `videosbatch-storage-72qkcM`。
+- `npx tsc --noEmit`、`npm run smoke:specs` 均退出 0。P0 原型没有 Provider 副作用，也未打开用户 data。
+- P0 IN_PROGRESS → REVIEW_1，独立审查者 `review_storage_p0`；结论待回传。备份测试为暂停业务的合成场景，生产备份必须协调台账、成果文件与 JSON 的同一边界。
+
+- P0 REVIEW_1 → REWORK_1：独立审查发现备份测试未包含 JSON 成果。修改为停写窗口共同备份 DB/results/JSON，断言恢复的 revision/operationId/artifact 和重放不重复；方法命名明确只备份控制库。
+- P0 REWORK_1 → REVIEW_2 → ACCEPTANCE → PASSED：`review_storage_p0` 第2轮 PASS；`npm run smoke:production-storage` 退出0（证据 `videosbatch-storage-ZgzRvc`）；`npm run build`、tsc、specs均通过。接受范围是单写入者进程退出恢复，未宣称断电/生产证据。
+- 运行时合同：执行模块要求 Node >=22.16（本机22.22，CI与Docker配置均为22系列）；P1 接线增加启动版本检查。同步 SQLite 仅用于小型控制事务，性能在P6测量。

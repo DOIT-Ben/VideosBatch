@@ -1,6 +1,6 @@
 # ADR-0006：多任务管理与编辑—保存—推进工作台
 
-- 决策状态：PROPOSED；实施未开始；日期：2026-09-22。
+- 决策状态：ACCEPTED；实施状态见阶段计划；日期：2026-09-22。
 - 原始需求：[U2 禁改](sources/20260922-automated-production-workspace.md#u2)、[U3 手感](sources/20260922-automated-production-workspace.md#u3)、[U4 编辑推进](sources/20260922-automated-production-workspace.md#u4)：“极致的体验和操作手感”“支持编辑保存，推进等”。
 - 已确定：自动化生产工作台目标、报价禁改。交互细节以下均为 agent-proposed，尚未宣称用户逐项签字。
 - 依赖 ADR-0004/0005；交付状态唯一见[阶段计划](automation-workspace-plan.md)。
@@ -73,3 +73,7 @@
 ## Compatibility and Rollback
 
 旧草稿键保留并按 schemaVersion 可逆读取；迁移不能静默删本地草稿。关闭新看板后仍可通过已有工作台访问项目和运行记录；新任务不能因视图回退而丢失控制入口。报价相关范围、生产发布和真实 Provider 调用均不由本 ADR 自动授权。
+
+## 2026-09-22 执行授权
+
+用户明确要求“现在开始按照adr顺序推进”，本 ADR 转为 Accepted。技术细节按 P0—P6 验证；不包含报价变更、生产操作或付费调用。

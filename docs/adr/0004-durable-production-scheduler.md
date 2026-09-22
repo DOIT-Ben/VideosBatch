@@ -1,7 +1,7 @@
 # ADR-0004：持久化多任务调度与自动流水线
 
-- 决策状态：PROPOSED；实施未开始。
-- 日期：2026-09-22；模式：Write ADR。
+- 决策状态：ACCEPTED；实施状态见阶段计划。
+- 日期：2026-09-22；模式：Execute ADR。
 - 原始需求：[U1 对齐](sources/20260922-automated-production-workspace.md#u1)、[U2 禁改](sources/20260922-automated-production-workspace.md#u2)、[U3 自动化](sources/20260922-automated-production-workspace.md#u3)。关键原文：“整个任务支持多线推进，多任务，自动执行，多管理”。
 - 交付状态唯一来源：[阶段计划](automation-workspace-plan.md)。
 
@@ -73,3 +73,7 @@
 ## Compatibility, Rollback and Release
 
 新增异步运行 API 返回已持久化 runId；旧同步 API/CLI 作为等待同一 Run 的兼容适配器，禁止两套执行引擎并行提交。旧未完成会话保持可读，原中断记录不推断为可自动恢复的新任务。开关回退前停止派单并处理在途任务；禁止在运行台账尚有活跃任务时切回旧引擎。数据库/媒体备份与恢复演练使用合成数据；生产迁移、部署及付费验证均不在本轮授权内。
+
+## 2026-09-22 执行授权
+
+用户明确要求“现在开始按照adr顺序推进”，本 ADR 转为 Accepted。技术细节按 P0—P6 验证；不包含报价变更、生产操作或付费调用。

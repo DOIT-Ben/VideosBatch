@@ -54,4 +54,8 @@ VideosBatch `6cc8174`；本轮只读复核 API、runner、CinemaStore、编辑�
 
 ## Later Clarifications
 
-尚无。后续用户澄清按日期追加，不改写 U1—U4 原文。
+2026-09-22 U5（当前用户文字，逐字）：
+
+> 现在开始按照adr顺序推进
+
+用户再次调用 adr-driven-delivery。执行模式覆盖 ADR-0004—0006 的 P0—P6，沿用报价禁改；原 U1—U4 不变。

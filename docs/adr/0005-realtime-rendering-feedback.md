@@ -1,6 +1,6 @@
 # ADR-0005：实时状态、渐进内容渲染与低干扰反馈
 
-- 决策状态：PROPOSED；实施未开始；日期：2026-09-22。
+- 决策状态：ACCEPTED；实施状态见阶段计划；日期：2026-09-22。
 - 原始需求：[U3 自动化](sources/20260922-automated-production-workspace.md#u3)、[U4 实时](sources/20260922-automated-production-workspace.md#u4)：“实时渲染和反馈”；[U2 禁改](sources/20260922-automated-production-workspace.md#u2)适用。目标已确定，以下协议和指标为 agent-proposed。
 - 依赖：[ADR-0004](0004-durable-production-scheduler.md) 的持久运行与事件；交付状态见[阶段计划](automation-workspace-plan.md)。
 
@@ -63,3 +63,7 @@ FrameFlow 的运行事件续接是参考，原始模型 JSON 不应直接倒入�
 ## Alternatives, Compatibility and Rollback
 
 仅缩短轮询间隔易增加请求和重绘，保留作兜底而非主方案；Socket 可双向但当前控制动作已有 HTTP API，首选 SSE 降低复杂度。事件失效可降级到快照模式；用户草稿与执行台账不因切换同步模式而改变。更新不得成为另一个业务状态真源。性能与浏览器验收计划见阶段计划，生产网络代理缓冲/断线单独验收。
+
+## 2026-09-22 执行授权
+
+用户明确要求“现在开始按照adr顺序推进”，本 ADR 转为 Accepted。技术细节按 P0—P6 验证；不包含报价变更、生产操作或付费调用。
