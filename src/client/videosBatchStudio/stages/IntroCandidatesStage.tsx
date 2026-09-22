@@ -76,7 +76,7 @@ export function IntroCandidatesStage({
                         {sub && <span className="vbs-card-sub">{sub}</span>}
                       </div>
                       <h4>{String(candidate.name || candidate.id || "未命名方案")}</h4>
-                      <Clamp lines={4}><p>{String(candidate.body || "")}</p></Clamp>
+                      <Clamp lines={4} memoryKey={`intro:${candidate.id}`}><p>{String(candidate.body || "")}</p></Clamp>
                       {candidate.endingQuestion && <blockquote>{String(candidate.endingQuestion)}</blockquote>}
                       {candidate.truthfulnessCategory && <small>{String(candidate.truthfulnessCategory)}</small>}
                       {recommended && <div className="vbs-reason">{recommended}</div>}

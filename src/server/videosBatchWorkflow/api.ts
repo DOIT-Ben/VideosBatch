@@ -12,6 +12,8 @@ import { WorkflowRunHost, workflowVersion } from "../productionRuns/workflowHost
 import { ProductionEngine } from "../productionRuns/engine";
 import { registerRunEvents } from "../productionRuns/events";
 import { EditingService, editableStages } from "../productionRuns/editingService";
+import { registerBatchApi } from "../productionRuns/batchApi";
+import { currentExecutionShots } from "../productionRuns/executionRecovery";
 import { MAX_LESSON_FILE_BYTES, parseLessonDocument } from "./lessonDocumentParser";
 import type { StageExecutionContext, StageRegistry } from "./stageContracts";
 import { reconcileVideosBatchReadiness, replaceStageArtifact, restartFrom, retryLineageIssues } from "./runner";
@@ -228,6 +230,33 @@ export function registerVideosBatchWorkflowApi(
   // barrier; scanning it on every tick would make other projects wait on it.
   let recoveredEdits: Promise<void> | undefined;
   engine.beforeDispatch = () => recoveredEdits ||= editing.recover();
+  registerBatchApi(app, engine, options.authorizeSession || defaultAuthorizeSession);
+  app.post("/api/sessions/:sessionId/videosbatch/selected-shots", async (req, res) => {
+    const session = requireSession(store, req, res, options); if (!session) return;
+    const { shotIds, expectedRevision, requestId } = req.body || {};
+    if (!Array.isArray(shotIds) || !shotIds.length || shotIds.length > 100 || !shotIds.every(id => typeof id === "string")
+      || !Number.isInteger(expectedRevision) || typeof requestId !== "string" || !/^[A-Za-z0-9_-]{1,100}$/.test(requestId)) return sendWorkflowError(res, 400, { code: "SHOT_SELECTION_INVALID", message: "请选择当前分镜中的镜头" });
+    try {
+      await engine.ready;
+      const ids = [...new Set<string>(shotIds)].sort();
+      const key = `shots:${requestId}`;
+      const alias = repository.journal.db.prepare("SELECT runId FROM run_requests WHERE ownerId=? AND sessionId=? AND requestKey=?").get(session.ownerUserId || "legacy", session.id, key);
+      if (alias) {
+        const previous = repository.get(String(alias.runId))!;
+        if (JSON.stringify(previous.selectedShotIds) !== JSON.stringify(ids)) return sendWorkflowError(res, 409, { code: "SHOT_SELECTION_CONFLICT", message: "请求已用于另一组镜头" });
+        return res.json(previous);
+      }
+      const run = await withWorkflowFlight(session.id, writeFlightKind("selected-shots", req.body), async () => {
+        const latest = store.getSession(session.id)!;
+        const workflow = latest.videosBatchWorkflow;
+        if (!workflow || workflow.currentStage !== "EXECUTION" || workflow.stages.FINAL_STORYBOARD?.revision !== expectedRevision) throw Object.assign(new Error("分镜或当前步骤已变化，请先处理上游步骤。"), { status: 409 });
+        const currentIds = new Set(currentExecutionShots(latest, workflow).map(shot => shot.id));
+        if (ids.some(id => !currentIds.has(id))) throw Object.assign(new Error("所选镜头不属于当前分镜版本"), { status: 409 });
+        return engine.start(session.id, "next", key, ids);
+      });
+      res.status(202).json(run);
+    } catch (error) { sendCaughtError(res, (error as any).status || 409, error); }
+  });
   app.get("/api/sessions/:sessionId/videosbatch/drafts", (req, res) => {
     const session = requireSession(store, req, res, options); if (!session) return;
     res.setHeader("Cache-Control", "no-store");

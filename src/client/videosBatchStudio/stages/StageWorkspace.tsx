@@ -109,7 +109,7 @@ export function StageWorkspace({
         />
       );
     case "execution":
-      return <ExecutionStage executionArtifact={stage("EXECUTION")} shots={nativeShots} onOpenCanvas={onOpenCanvas} />;
+      return <ExecutionStage workflow={workflow} executionArtifact={stage("EXECUTION")} shots={nativeShots} onOpenCanvas={onOpenCanvas} />;
     case "final":
       return <FinalVideoStage artifact={stage("STITCH")} session={session} onOpenCanvas={onOpenCanvas} />;
     default:

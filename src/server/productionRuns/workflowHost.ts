@@ -64,7 +64,7 @@ export class WorkflowRunHost {
         registry[stageId] = { ...definition, execute: context => scheduleWork("text-audio", () => definition.execute(context)) };
       }
       const workflow = await runNext({ ...ctx, workflow: frozen, session: { ...ctx.session, videosBatchWorkflow: frozen },
-        scheduleWork, shouldStopWork, workConcurrency: 2,
+        scheduleWork, shouldStopWork, workConcurrency: 2, selectedShotIds: run.selectedShotIds,
         previewCheckpoint: stageId !== "QUOTE" && registry[stageId]?.validatePreview ? async block => {
           if (!block || typeof block.id !== "string" || block.id.length > 100 || typeof block.text !== "string" || block.text.length > 20000
             || !registry[stageId]!.validatePreview!(block, ctx)) return;

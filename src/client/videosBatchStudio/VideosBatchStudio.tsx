@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
+import { useViewState, useViewPosition } from "../productionCenter/viewMemory";
 import type { Asset, Session, Shot, VideosBatchRuntimeSummary } from "../../shared/types";
 import type {
   VideosBatchLessonSource,
@@ -122,7 +123,8 @@ function VideosBatchStudioView({
 }: VideosBatchStudioProps) {
   const currentStepId = workflow ? deriveCurrentProductStep(workflow) : "lesson";
   const productionRun = useProductionRun(sessionId);
-  const [selectedStepId, setSelectedStepId] = useState<VideosBatchProductStepId>(currentStepId);
+  const [selectedStepId, setSelectedStepId] = useViewState<VideosBatchProductStepId>(`${sessionId}:step`, currentStepId);
+  const viewRoot = useViewPosition(`project:${sessionId}`);
   const previousCurrentStep = useRef(currentStepId);
   const [selectedAssetIds, setSelectedAssetIds] = useState<Record<string, string>>({});
   const [parsedLessonDraft, setParsedLessonDraft] = useState<VideosBatchLessonDraft | undefined>(() => readLessonDraft(sessionId));
@@ -373,7 +375,7 @@ function VideosBatchStudioView({
   };
 
   return (
-    <section className="videosbatch-studio videosbatch-studio-v2" aria-label="VideosBatch 流程制作">
+    <section ref={viewRoot} className="videosbatch-studio videosbatch-studio-v2" aria-label="VideosBatch 流程制作">
       <VideosBatchHeader
         sessionTitle={sessionTitle}
         completedCount={completedCount}

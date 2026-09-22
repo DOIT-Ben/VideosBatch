@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useViewState } from "../../productionCenter/viewMemory";
+import { DraftSessionContext } from "../useStageDraft";
+import { useEffect, useRef, useState, useContext, type CSSProperties, type ReactNode } from "react";
 
 /**
  * Progressive disclosure for long content.
@@ -11,13 +13,15 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
 export function Clamp({
   lines = 4,
   className = "",
-  children
+  children,
+  memoryKey = "clamp"
 }: {
   lines?: number;
   className?: string;
   children: ReactNode;
+  memoryKey?: string;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useViewState(`${useContext(DraftSessionContext)}:${memoryKey}`, false);
   const [overflowing, setOverflowing] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 

@@ -718,6 +718,35 @@ try {
     "a later attempt without billing evidence must not downgrade a recorded CHARGED"
   );
 
+  // Selected work never expands scope to an unfinished dependency. Ready siblings
+  // are reused; completing the prerequisite explicitly unlocks only the selected shot.
+  {
+    const selectedFixture = await prepareExecutionSession();
+    await store.updateSession(selectedFixture.sessionId, { videosBatchWorkflow: selectedFixture.workflow });
+    const selectedShots = store.getSession(selectedFixture.sessionId)!.shots;
+    await store.updateShot(selectedShots[1].id, { referenceVideoFromShotId: selectedShots[0].id });
+    const submitted: string[] = [];
+    const selectedRegistry = mediaModule.createVideosBatchNativeMediaStageRegistry({
+      defaultAssetImageModel: () => "seedream-4-5",
+      generateAssetImage: async () => ({ url: "https://mock.invalid/unused.png", model: "seedream-4-5" as const }),
+      cacheGeneratedImage: async (url: string) => ({ imageUrl: url }),
+      generateShotVideo: async (shot: any) => { submitted.push(shot.id); return `https://mock.invalid/selected-${shot.id}.mp4`; },
+      cacheGeneratedVideo: async (url: string) => ({ videoUrl: url, remoteVideoUrl: url }),
+      probeVideoDuration: async () => 10,
+      stitchShotVideos: async () => ({ finalVideoUrl: "/media/unused.mp4", signature: "unused" })
+    });
+    const executeSelected = async (ids: string[]) => selectedRegistry.EXECUTION!.execute({ ...context(selectedFixture.sessionId, selectedFixture.workflow), selectedShotIds: ids, workConcurrency: 2 });
+    await executeSelected([selectedShots[1].id]);
+    assert.deepEqual(submitted, [], "missing unselected prerequisite must not be submitted automatically");
+    await executeSelected([selectedShots[0].id]);
+    assert.deepEqual(submitted, [selectedShots[0].id], "only selected first shot submits");
+    await executeSelected([selectedShots[0].id]);
+    assert.equal(submitted.length, 1, "selected success is reused");
+    await store.updateShot(selectedShots[0].id, { videoUrl: undefined });
+    await executeSelected([selectedShots[1].id]);
+    assert.deepEqual(submitted, selectedShots.map(shot => shot.id), "ready prerequisite reused, only selected successor submits");
+  }
+
   // Recover a mixed batch through the durable engine. Poll accepted work first;
   // an unrelated historical shot must not prevent recovery of the current batch.
   const { currentExecutionShots } = await import("../src/server/productionRuns/executionRecovery");

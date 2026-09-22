@@ -5,6 +5,8 @@ export function sameCursor(a?: RunCursor, b?: RunCursor) {
 }
 export class ProductionRunStore {
   runs = new Map<string, ProductionRun>();
+  latestBySession = new Map<string, ProductionRun>();
+  revision = 0;
   cursor?: RunCursor;
   connection: "connecting" | "connected" | "recovering" = "connecting";
   private listeners = new Set<() => void>();
@@ -26,9 +28,15 @@ export class ProductionRunStore {
       this.runs = incoming;
     } else for (const { run } of packet.events) { this.runs.set(run.id, run); changed.add(run.sessionId); }
     this.cursor = packet.cursor;
+    for (const sessionId of changed) this.latestBySession.delete(sessionId);
+    for (const run of this.runs.values()) if (changed.has(run.sessionId)) {
+      const previous = this.latestBySession.get(run.sessionId);
+      if (!previous || previous.createdAt <= run.createdAt) this.latestBySession.set(run.sessionId, run);
+    }
+    this.revision++;
     this.notify();
     return [...changed];
   }
-  latest(sessionId: string) { return [...this.runs.values()].filter(run => run.sessionId === sessionId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).at(0); }
+  latest(sessionId: string) { return this.latestBySession.get(sessionId); }
 }
 export const productionRuns = new ProductionRunStore();

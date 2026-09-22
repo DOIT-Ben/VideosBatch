@@ -25,6 +25,7 @@ export interface StageExecutionContext {
   /** Optional bounded work scheduler; absent in pure runner callers. */
   scheduleWork?: <T>(provider: string, operation: () => Promise<T>) => Promise<T>;
   workConcurrency?: number;
+  selectedShotIds?: string[];
   shouldStopWork?: () => boolean;
   /** Complete independently validated preview blocks only; never formal output. */
   previewCheckpoint?: (block: { id: string; text: string }) => Promise<void>;

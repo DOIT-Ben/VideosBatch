@@ -54,7 +54,7 @@ export class ProductionEngine {
       }
     }
   }
-  async start(sessionId: string, mode: RunMode, requestKey: string) {
+  async start(sessionId: string, mode: RunMode, requestKey: string, selectedShotIds?: string[]) {
     await this.ready;
     const ctx = await this.host.context(sessionId);
     const session = ctx?.session;
@@ -66,7 +66,7 @@ export class ProductionEngine {
       }
     }
     const run = this.repository.create({ sessionId, ownerId: session.ownerUserId || "legacy", mode, requestKey,
-      inputVersion: version, stageId: ctx!.workflow.currentStage });
+      inputVersion: version, stageId: ctx!.workflow.currentStage, selectedShotIds });
     this.wake(); return run;
   }
   wake() {

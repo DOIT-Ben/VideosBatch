@@ -12,6 +12,7 @@ export interface ProductionRun {
   updatedAt: string;
   priority: number;
   completedItems: number;
+  selectedShotIds?: string[];
   message?: string;
   controlIntent?: "pause" | "stop";
   feedback?: { kind: "working" | "validating" | "saving" | "saved" | "preview"; itemId: string; completedWork: number; outputRevision?: number; previewRef?: string };

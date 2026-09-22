@@ -1316,7 +1316,7 @@ export function createVideosBatchNativeMediaStageRegistry(
 
       await runDependencyTasks(batchShots.map((initial, batchIndex) => ({
         id: initial.id,
-        inFlight: Boolean(initial.generationTaskId || newestReadyRenderId(initial, batch.batchId)),
+        inFlight: Boolean(newestReadyRenderId(initial, batch.batchId) || (initial.generationTaskId && (!ctx.selectedShotIds || ctx.selectedShotIds.includes(initial.id)))),
         dependencies: shotDependencies(initial, batchShots, store.snapshot().assets),
         blocked: async (reason: string) => {
           items.push({ shotId: initial.id, sequence: batchIndex + 1, status: reason === "paused" ? "failed" : "blocked", attempt: 0,
@@ -1324,6 +1324,11 @@ export function createVideosBatchNativeMediaStageRegistry(
           nativeShotIds.push(initial.id);
         },
         execute: async () => {
+        if (ctx.selectedShotIds && !ctx.selectedShotIds.includes(initial.id) && !newestReadyRenderId(initial, batch.batchId)) {
+          items.push({ shotId: initial.id, sequence: batchIndex + 1, status: "blocked", attempt: 0,
+            error: mediaError(Object.assign(new Error("此镜头未选中，本次没有提交；依赖它的镜头需先完成该镜头。"), { code: "SHOT_NOT_SELECTED", retryable: true }), "SHOT_NOT_SELECTED", 0) });
+          nativeShotIds.push(initial.id); return false;
+        }
         const perform = async () => {
         const sequence = batchIndex + 1;
         let current = initial;
@@ -1332,7 +1337,7 @@ export function createVideosBatchNativeMediaStageRegistry(
         const attempt = Math.max(1, Number(previous?.attempt) || 0) + 1;
         maxAttempt = Math.max(maxAttempt, attempt);
         try {
-          const reusable = current.videoUrl ? newestReadyRenderId(current, batch.batchId) : undefined;
+          const reusable = newestReadyRenderId(current, batch.batchId);
           if (reusable) {
             let render = renderForShot(current, reusable, batch.batchId);
             if (!render) throw new Error(`Shot ${current.index} ready render ${reusable} could not be loaded`);
@@ -1392,6 +1397,7 @@ export function createVideosBatchNativeMediaStageRegistry(
           let charged: H3ChargedEvidence | undefined;
           const remoteUrl = assertRealMediaUrl(
             await (async () => {
+              if (ctx.selectedShotIds && !ctx.selectedShotIds.includes(current.id)) throw Object.assign(new Error("此镜头未选中，本次没有提交。"), { code: "SHOT_NOT_SELECTED", retryable: true });
               if (!current.generationTaskId && ctx.shouldStopWork?.()) throw Object.assign(new Error("任务已暂停，尚未提交"), { code: "WORK_NOT_SUBMITTED", retryable: true });
               return deps.generateShotVideo(current, activeAssets, {
               taskId: current.generationTaskId,

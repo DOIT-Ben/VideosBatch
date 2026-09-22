@@ -43,13 +43,15 @@ export class RunRepository {
       : this.journal.db.prepare("SELECT body FROM runs ORDER BY rowid").all();
     return rows.map(row => JSON.parse(String(row.body)));
   }
-  create(input: { ownerId: string; sessionId: string; requestKey: string; mode: RunMode; inputVersion: string; stageId: string }) {
+  create(input: { ownerId: string; sessionId: string; requestKey: string; mode: RunMode; inputVersion: string; stageId: string; selectedShotIds?: string[] }) {
     return this.journal.transaction(() => {
       const alias = this.journal.db.prepare("SELECT runId,mode FROM run_requests WHERE ownerId=? AND sessionId=? AND requestKey=?")
         .get(input.ownerId, input.sessionId, input.requestKey);
       if (alias) {
         if (alias.mode !== input.mode) throw Object.assign(new Error("请求标识已用于不同操作"), { status: 409 });
-        return this.get(String(alias.runId))!;
+        const run = this.get(String(alias.runId))!;
+        if (JSON.stringify(run.selectedShotIds || []) !== JSON.stringify(input.selectedShotIds || [])) throw Object.assign(new Error("请求标识已用于不同镜头范围"), { status: 409 });
+        return run;
       }
       const row = this.journal.db.prepare("SELECT body,requestHash FROM runs WHERE ownerId=? AND sessionId=? AND requestKey=?")
         .get(input.ownerId, input.sessionId, input.requestKey);
@@ -62,14 +64,14 @@ export class RunRepository {
       }
       const active = this.list(input.sessionId).find(run => !terminalRun(run.status));
       if (active) {
-        if (active.mode !== input.mode) throw Object.assign(new Error("项目已有不同执行计划，请先完成或停止该计划"), { status: 409 });
+        if (active.mode !== input.mode || JSON.stringify(active.selectedShotIds || []) !== JSON.stringify(input.selectedShotIds || [])) throw Object.assign(new Error("项目已有不同执行计划，请先完成或停止该计划"), { status: 409 });
         this.alias(input, active.id);
         return active;
       }
       this.checkCapacity(input.ownerId);
       const time = new Date().toISOString();
       const run: ProductionRun = { id: `run_${randomUUID()}`, ownerId: input.ownerId, sessionId: input.sessionId, mode: input.mode,
-        inputVersion: input.inputVersion, stageId: input.stageId, status: "queued", priority: 0, completedItems: 0, createdAt: time, updatedAt: time };
+        inputVersion: input.inputVersion, stageId: input.stageId, selectedShotIds: input.selectedShotIds, status: "queued", priority: 0, completedItems: 0, createdAt: time, updatedAt: time };
       this.journal.db.prepare("INSERT INTO runs VALUES(?,?,?,?,?,?)")
         .run(run.id, run.ownerId, run.sessionId, input.requestKey, input.inputVersion, JSON.stringify(run));
       this.alias(input, run.id);

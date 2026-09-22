@@ -31,6 +31,7 @@ import type {
 import type { VideosBatchStageId, VideosBatchWorkflowState } from "../shared/videosBatchWorkflow";
 import type { ProductionRun, RunPacket } from "../shared/productionRuns";
 import type { ServerDraft, EditRequest, EditResponse } from "../shared/editing";
+import type { BatchAction, BatchItem, BatchResult } from "../shared/batchControls";
 import { networkDownMessage } from "./i18n";
 
 /**
@@ -285,6 +286,9 @@ export const api = {
       body: JSON.stringify({ artifact, ...(expectedRevision === undefined ? {} : { expectedRevision }) })
     }),
   editingDrafts: (sessionId: string) => request<ServerDraft[]>(`/api/sessions/${sessionId}/videosbatch/drafts`),
+  previewBatch: (action: BatchAction, sessionIds: string[]) => request<BatchItem[]>("/api/production/batch/preview", { method: "POST", body: JSON.stringify({ action, sessionIds }) }),
+  executeBatch: (action: BatchAction, items: BatchItem[], requestId: string, priority = 0) => request<BatchResult[]>("/api/production/batch", { method: "POST", body: JSON.stringify({ action, items, requestId, priority }) }),
+  selectedShots: (sessionId: string, shotIds: string[], expectedRevision: number, requestId: string) => request<ProductionRun>(`/api/sessions/${sessionId}/videosbatch/selected-shots`, { method: "POST", body: JSON.stringify({ shotIds, expectedRevision, requestId }) }),
   syncEditingDraft: (sessionId: string, draft: Omit<ServerDraft, "ownerId" | "sessionId" | "active" | "leaseUntil" | "updatedAt">) =>
     request<ServerDraft>(`/api/sessions/${sessionId}/videosbatch/drafts/${draft.id}`, { method: "PUT", body: JSON.stringify(draft) }),
   releaseEditingDraft: (sessionId: string, id: string, instanceId: string, clientVersion: number, discard = false) =>

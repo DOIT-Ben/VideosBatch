@@ -1,7 +1,7 @@
 # 自动化生产工作台：阶段计划与验收台账
 
 - 日期：2026-09-22；模式：Execute ADR；实施起点：`09fdde9`。
-- 当前执行：P0 **PASSED**（`27fc2b4`）；P1 **PASSED**（`fc773ce`）；P2 **PASSED**（`d221cfc`）；P3 **PASSED**（`5a6277b`）；P4 **PASSED**；P5—P6 未开始。
+- 当前执行：P0 **PASSED**（`27fc2b4`）；P1 **PASSED**（`fc773ce`）；P2 **PASSED**（`d221cfc`）；P3 **PASSED**（`5a6277b`）；P4 **PASSED**（`9b64ded`）；P5 **PASSED**；P6 未开始。
 - 需求原文：[REQ-20260922-PIPELINE](sources/20260922-automated-production-workspace.md)。
 - 决策：[调度 ADR-0004](0004-durable-production-scheduler.md)、[实时反馈 ADR-0005](0005-realtime-rendering-feedback.md)、[编辑与管理 ADR-0006](0006-multitask-editing-workbench.md)。
 
@@ -37,7 +37,7 @@ flowchart LR
 | P2 自动调度与恢复 | 0004 | P1 通过 | 依赖/限额/公平队列、确认关卡、暂停继续、重启恢复、未知受理核对；合成证据后才提高并发 | PASSED |
 | P3 实时反馈与渲染 | 0005 | P1 通过 | SSE/快照续接、局部渲染、真实预览、断线兜底、阅读不被打断 | PASSED |
 | P4 编辑保存与推进 | 0006 | P2/P3 通过 | 草稿层、编辑占用、版本冲突、指定版本保存并推进、失败补偿、输入保护 | PASSED |
-| P5 多任务管理 | 0006 | P2/P3/P4 通过 | 增强现有任务页、待处理中心、批量操作、局部镜头控制、上下文保持 | NOT_STARTED |
+| P5 多任务管理 | 0006 | P2/P3/P4 通过 | 增强现有任务页、待处理中心、批量操作、局部镜头控制、上下文保持 | PASSED |
 | P6 综合体验验收 | 全部 | P1—P5 通过 | 故障故事验收、性能数据、浏览器/键盘/响应式证据、离线回归、回退演练 | NOT_STARTED |
 
 ## 各阶段验证设计
@@ -198,3 +198,11 @@ SQLite 驱动与运行时兼容性、事件保留窗口、各层并发/队列上
 - P4 REVIEW_2 → REWORK_2：复审指出已同步v1、本机v2尚未debounce时丢弃仍409。将同实例显式discard定义为关闭不晚于所丢弃版本，保留该版本墓碑，迟到PUT不能重新建立占用；普通lease释放仍要求精确版本。新增真实API v1→丢弃v2→迟到PUT v2拒绝测试。进入最后一轮复验，未跳过审查上限。
 
 - P4 REVIEW_3 → ACCEPTANCE → PASSED：review_storage_p0 第3轮PASS，2轮返工结束。最后补回归真实在途 ASSET_PLAN 旧冻结请求与 STORY_SCRIPT 保存竞争：发布等待旧请求、旧成果保留为stale、新正文未覆盖。API与三个真实退出窗口（最新 videosbatch-editing-WJzF2A）通过；build/tsc、旧workspace/task-experience、events/scheduling、specs/secrets、diff通过。启动恢复只执行一次，避免每次派单等待其他项目正在发布的写屏障。全离线与大负载矩阵留在P6，真实Provider/生产未执行。
+
+- P4提交 `9b64ded` 已推送origin/master且工作区干净。P5 NOT_STARTED → PROPOSED → IN_PROGRESS：增强现有TaskList；批量预检与逐项结果共用既有持久运行入口，最多100项，独立失败不回滚其他项目；镜头选择固定原生ID/当前版本，未选项不派单、可复用成果保留。管理/编辑视图状态按项目保存。
+
+- P5 REVIEW_1 → REWORK_1：review_runs_p1 REQUEST_CHANGES，四项为批量版本检查与入队未共用保存屏障、预览慢响应时选择仍可改变、列表滚动容器识别错误、缺顶层videoUrl时未选成功镜头可能重复提交。修复开始/继续/重试屏障（暂停/停止仍即时作用于指定运行）、等待期间冻结批量选择、实际document滚动位置恢复、按当前批次ready render复用并在提交前再次检查选中范围。补充保存竞争和缺URL的真实适配器测试；另修正等待任务筛选与输入光标记忆。
+- P5 REVIEW_2 PASS → ACCEPTANCE → REWORK_2：浏览器实测发现focus()同步触发监听把已存光标覆盖为0。恢复前捕获不可变光标快照；最后一轮复审仅针对此修复及验收证据。此前batch/native-resilience/tsc/build/specs/secrets/workspace/task-experience通过，batch证据videosbatch-batch-2YUXgl。一次调用不存在的旧workspace脚本名已改为项目实际smoke:adr0003-workspace并通过。
+- P5浏览器：整应用fake/fake返回列表恢复“课程视频”搜索，重进保留故事步骤和749字草稿。隔离workspace-harness使用真实TaskList/viewMemory与合成API：1000摘要每页50；1500ms慢预览期间选择全部disabled而搜索可用；编辑开头输入后往返selectionStart/End=4、focused=true、文本保留；稳定中部scrollTop702.666687往返一致。底部预览面板消失时位置按剩余页面高度自然截断，未宣称像素高度不变。完整高频性能和响应式矩阵留P6。
+
+- P5 REVIEW_3 → ACCEPTANCE → PASSED：review_runs_p1最终PASS，2轮返工完成；修复后build/tsc通过，定向测试和浏览器证据见上。无Provider/生产变更。

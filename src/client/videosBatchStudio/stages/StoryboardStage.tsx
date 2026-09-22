@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useViewState } from "../../productionCenter/viewMemory";
+import { useEffect, useRef, useState, useContext } from "react";
 import { Accordion, Tabs } from "radix-ui";
 import { Check, ChevronDown, Copy, Pencil, Save, X } from "lucide-react";
 import { StageEmpty, StageFact, StagePage } from "../components/StagePage";
-import { useStageDraft } from "../useStageDraft";
+import { DraftSessionContext, useStageDraft } from "../useStageDraft";
 import {
   storyboardSegmentFieldDefinitions,
   storyboardSegmentSubshots,
@@ -42,6 +43,7 @@ export function StoryboardStage({
   const segments = Array.isArray(artifact?.segments) ? artifact.segments : [];
   const promptSegments = Array.isArray(copyablePromptArtifact?.segments) ? copyablePromptArtifact.segments : [];
   const { editing, setEditing, draft, setDraft, conflict, notice, publish, saving, saved, captureSave, completeSave } = useStageDraft<any>("storyboard", artifact);
+  const [expanded, setExpanded] = useViewState<string[]>(`${useContext(DraftSessionContext)}:storyboard-open`, []);
   const [copiedKey, setCopiedKey] = useState("");
 
 
@@ -113,7 +115,7 @@ export function StoryboardStage({
             <Accordion.Root
               className="vbs-storyboard-accordion"
               type="multiple"
-              defaultValue={visibleSegments.length ? [`segment-${visibleSegments[0].sequence}`] : []}
+              value={editing ? visibleSegments.map((segment: any) => `segment-${segment.sequence}`) : expanded} onValueChange={setExpanded}
             >
               {visibleSegments.map((segment: any) => {
                 const start = (Number(segment.sequence || 1) - 1) * 10;

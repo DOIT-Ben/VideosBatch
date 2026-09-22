@@ -106,3 +106,18 @@
   .videosbatch-studio-v2 .vbs-document-aside { max-width: 100%; }
 }
 @media(prefers-reduced-motion: reduce) { .vb-work-status .spin { animation: none; } }
+
+.vb-batch-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 16px 0; padding: 16px; border: 1px solid var(--vbs-v2-border); border-radius: 10px; background: var(--vbs-v2-surface); }
+.vb-batch-bar button, .vb-batch-bar select, .vb-task-pagination button { min-height: 40px; padding: 8px 12px; }
+.vb-batch-bar label { display: inline-flex; align-items: center; gap: 8px; }
+.vb-batch-preview, .vb-batch-results, .vb-batch-bar > p { flex-basis: 100%; min-width: 0; }
+.vb-batch-preview h2 { font-size: 16px; margin: 4px 0 8px; }
+.vb-batch-preview ul, .vb-batch-results { max-height: 240px; overflow-y: auto; overflow-wrap: anywhere; padding-left: 20px; }
+.vb-task-check { display: grid; place-items: center; min-width: 32px; min-height: 44px; }
+.vb-task-check input, .vb-batch-bar input { width: 18px; height: 18px; accent-color: var(--vbs-v2-accent, #497353); }
+.vb-task-pagination { display: flex; align-items: center; justify-content: center; gap: 20px; padding: 20px; }
+.vb-task-status.waiting { color: var(--vbs-v2-muted); }
+.vbs-note-card details, .vbs-note-card textarea { max-width: 100%; }
+.vbs-note-card label { display: block; }
+.vbs-note-card textarea { display: block; width: 100%; min-height: 120px; margin: 8px 0; }
+@media(max-width: 700px) { .vb-batch-bar { padding: 12px; gap: 8px; } .vb-task-filters { flex-wrap: wrap; } .vb-batch-bar select { max-width: 100%; } }

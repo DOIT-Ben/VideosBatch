@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useContext } from "react";
+import { useViewState } from "../../productionCenter/viewMemory";
+import { DraftSessionContext } from "../useStageDraft";
 import { useStageDraft } from "../useStageDraft";
 import * as Accordion from "@radix-ui/react-accordion";
 import { ChevronDown, Pencil, Save, X } from "lucide-react";
@@ -33,7 +35,7 @@ export function ScreenplayStage({
   // Progressive disclosure: collapsed by default except the first scene, so a
   // 12-scene script reads as a table of contents instead of a wall of text.
   // Editing forces every scene open; leaving edit mode restores the user's set.
-  const [openScenes, setOpenScenes] = useState<string[] | null>(null);
+  const [openScenes, setOpenScenes] = useViewState<string[] | null>(`${useContext(DraftSessionContext)}:screenplay-open`, null);
 
 
   const draftScenes = Array.isArray(draft?.scenes) ? draft.scenes : [];

@@ -65,7 +65,7 @@ export function StoryStage({
             aria-label="编辑故事正文"
           />
         ) : (
-          <Clamp lines={14}><article className="vbs-longform">{content}</article></Clamp>
+          <Clamp lines={14} memoryKey="story-expanded"><article className="vbs-longform">{content}</article></Clamp>
         )
       ) : <StageEmpty>故事文稿尚未生成。</StageEmpty>}
     </StagePage>
