@@ -1,7 +1,7 @@
 # 自动化生产工作台：阶段计划与验收台账
 
 - 日期：2026-09-22；模式：Execute ADR；实施起点：`09fdde9`。
-- 当前执行：P0 **PASSED**（`27fc2b4`）；P1 **PASSED**（`fc773ce`）；P2 **PASSED**（`d221cfc`）；P3 **PASSED**（`5a6277b`）；P4 **PASSED**（`9b64ded`）；P5 **PASSED**（`7342710`）；P6 **PASSED**（提交身份见交付记录）。
+- 当前执行：P0 **PASSED**（`27fc2b4`）；P1 **PASSED**（`fc773ce`）；P2 **PASSED**（`d221cfc`）；P3 **PASSED**（`5a6277b`）；P4 **PASSED**（`9b64ded`）；P5 **PASSED**（`7342710`）；P6 **PASSED**（`0c168ae`）。
 - 需求原文：[REQ-20260922-PIPELINE](sources/20260922-automated-production-workspace.md)。
 - 决策：[调度 ADR-0004](0004-durable-production-scheduler.md)、[实时反馈 ADR-0005](0005-realtime-rendering-feedback.md)、[编辑与管理 ADR-0006](0006-multitask-editing-workbench.md)。
 
@@ -209,3 +209,4 @@ SQLite 驱动与运行时兼容性、事件保留窗口、各层并发/队列上
 - P5提交7342710已推送且工作区干净；P6 NOT_STARTED → PROPOSED → IN_PROGRESS。按固定负载实施浏览器测量与五项目故事、停写备份/同步降级/完整离线回归；本地模拟与真实Provider能力保持区分。
 - P6 REVIEW_1 → REWORK_1：review_storage_p0发现性能夹具丢弃productionView，漏测App的workflow/shots/assets合并与内容属性更新。把实际App合并原样提取为共享函数供两处调用；夹具接入完整回执、持续更新可见正文标题，再跑同一固定负载。首次数字保留为局部状态证据，不作为最终完整链路性能结论。离线首次在tailframe-strict遇验收服务占5188，迁移该隔离服务至5190后重跑；不绕过测试。
 - P6 REWORK_1 → REVIEW_2 PASS → ACCEPTANCE → PASSED：review_storage_p0第二轮PASS，1次返工。固定浏览器负载700事件、输入30/切换31样本全部达标；390/768/1440、键盘还焦、减少动画、草稿保护通过，完整数据见[综合验收记录](automation-workspace-acceptance.md)。verify:offline共98个命令按成功前缀+修复旧确认按钮文案断言后连续37项全部通过；最后五项目恢复证据videosbatch-acceptance-zQ6mHc，后继入队32样本p95=33.19ms。最后CSS触控优先级调整经build/tsc与实际44px DOM复验通过。无跳过关卡、无QUOTE实现变更、无真实Provider/生产操作。
+- 交付关闭：P6实现/验收提交 `0c168ae55f5fb4af5bebe3d1daf324c569b1ac86` 已推送origin/master，核验ahead/behind=0/0、工作区干净，仅一个canonical master工作树，无阶段分支残留。本条仅补记不可变提交身份；本轮临时浏览器标签与5190/5189验收服务已关闭，隔离证据目录保留。ADR-0004—0006授权范围完成，ADR-0002仍不纳入；本地验收不代表生产发布。
