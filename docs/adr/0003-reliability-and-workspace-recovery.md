@@ -34,6 +34,7 @@
 | FR-0003-004 | SRC-1/SRC-2 BUG-005 | 当前状态真实，历史下载明确 | P2 | smoke:adr0003-recovery |
 | FR-0003-005 | SRC-1/SRC-2 BUG-006/007 | 草稿不因切换或刷新丢失、不串项目；冲突可见 | P3 | smoke:adr0003-workspace |
 | FR-0003-006 | SRC-1/SRC-2 BUG-008 | 任务列表包含未发布项目，可继续/新建 | P3 | smoke:adr0003-workspace |
+| TR-0003-007 | SRC-1 / P3 浏览器验收 BUG-009 | 生产构建工作台及深链接正常加载 | P3 | smoke:adr0003-build + Chrome |
 
 ## 阶段计划与证据（唯一交付状态源）
 
@@ -41,7 +42,7 @@
 |---|---|---|---|---|
 | P1 | PASSED | 无 | BUG-001/003/004、档案/spec | API smoke、既有 retry、tsc、specs、secrets 通过；独立审查 R2 PASS |
 | P2 | PASSED | P1 | BUG-002/005 | recovery/API smoke、既有相关测试、tsc 通过；R2 PASS |
-| P3 | NOT_STARTED | P2 | BUG-006/007/008 | 待验证 |
+| P3 | PASSED | P2 | BUG-006/007/008/009 | 定向 smoke、生产构建 Chrome、verify:offline 通过；R2 PASS |
 
 每阶段：实现 -> 定向测试 -> 独立只读审查（最多三次结论/两次返修）-> 验收及记录 -> 精确范围提交。全部完成后运行 verify:offline 并推送。记录文件自身的提交身份由 Git 历史承载，后续阶段记录前一阶段 hash，避免自引用。
 
@@ -57,3 +58,16 @@
 - 2026-09-22 / Codex / a7bb30e：P1 已提交；P2 NOT_STARTED -> PROPOSED -> IN_PROGRESS。
 
 - 2026-09-22 / Codex + review_p2 / P2 工作树：IN_PROGRESS -> REVIEW_1 -> REWORK_1（真实 save 故障注入，开始回退/结束保留）-> REVIEW_2 PASS -> ACCEPTANCE -> PASSED；recovery、API、类型及既有相关测试 RC=0。阶段 checkpoint 保存失败是可见故障，不保证磁盘故障中的持久性或外部 exactly-once。
+
+- 2026-09-22 / Codex / 5fbd52b：P2 已提交；P3 NOT_STARTED -> PROPOSED -> IN_PROGRESS。
+
+- 2026-09-22 / P3 验收范围补充：真实浏览器发现 BUG-009，构建后入口模块内联导致懒加载相对路径以页面为基准、工作台白屏。修复保留外部模块 URL，属于恢复既有工作台可用性的必要有界修复；不新增产品规则。
+
+- 2026-09-22 / Codex + review_p3：P3 IN_PROGRESS -> REVIEW_1 -> REWORK_1（保存等待期间及重挂载后的新草稿保护）-> REVIEW_2 PASS -> ACCEPTANCE -> PASSED。R2 同时审查 BUG-009 修复，无阻断项。
+
+## 最终本地验收
+
+- `verify:offline`：在当前源码的临时副本中完整运行 RC=0（不复制 `.env` 或真实 data）；追加的 `smoke:adr0003-build` 单独运行 RC=0。全量检查包含构建、规范、凭据扫描、API、恢复及草稿回归。
+- Chrome headless + 真实生产构建 + 临时数据服务 + fake 执行器：从任务列表进入工作台、深链接刷新、故事草稿切步骤/刷新恢复、两个未启动项目粘贴草稿隔离/恢复、延迟保存期间继续编辑并重挂载、冲突后刷新保留、成功保存/明确丢弃清理均通过。浏览器不是 mock DOM；生成内容与媒体仍是 fake。
+- 证据日志本地位于 `.git/review-20260922/`，不包含凭据；长期回归入口为三个阶段 smoke 和 build smoke。无真实 Provider 调用，无生产发布；单进程文件存储和中断后的人工核对边界保留。
+- 本次更新缺陷索引与 ADR，不另建重复的知识库记录。阶段提交身份以各阶段文件的 Git 历史为准；P1 `a7bb30e`，P2 `5fbd52b`，P3 为本记录所在提交。

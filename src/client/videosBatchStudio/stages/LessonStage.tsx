@@ -3,6 +3,7 @@ import { AlertCircle, CheckCircle2, FileText, LoaderCircle, RotateCcw, UploadClo
 import { Tabs } from "radix-ui";
 import { useDropzone } from "react-dropzone";
 import { StagePage } from "../components/StagePage";
+import { DraftNotice, useStageDraft } from "../useStageDraft";
 import { productStepIndexLabel, productStepName } from "../stageModel";
 import type {
   VideosBatchLessonSource,
@@ -56,7 +57,7 @@ export function LessonStage({
   onParseFile?: (file: File) => Promise<VideosBatchParsedLessonDocument>;
   onStart: (lessonText: string, source?: VideosBatchLessonSource) => Promise<void> | void;
 }) {
-  const [pasteDraft, setPasteDraft] = useState(lessonText || "");
+  const { draft: pasteDraft, setDraft: setPasteDraft, editing: hasPasteDraft, setEditing: setPasteEditing, storageFailed } = useStageDraft("lesson-paste", lessonText || "");
   const [draftSaveState, setDraftSaveState] = useState<"saved" | "dirty">(parsedDraft ? "saved" : "dirty");
   const draftIdentityRef = useRef("");
   const [parseState, setParseState] = useState<ParseState>(() => parsedDraft
@@ -64,8 +65,8 @@ export function LessonStage({
     : { kind: "idle" });
 
   useEffect(() => {
-    setPasteDraft(lessonText || "");
-  }, [lessonText]);
+    if (started) setPasteEditing(false);
+  }, [started]);
 
   useEffect(() => {
     const nextIdentity = parsedDraft
@@ -177,7 +178,7 @@ export function LessonStage({
 
   return (
     <section className="vbs-stage-page vbs-lesson-stage vbs-v2-lesson-onboarding">
-      <Tabs.Root className="vbs-v2-lesson-tabs" defaultValue="upload">
+      <Tabs.Root className="vbs-v2-lesson-tabs" defaultValue={hasPasteDraft ? "paste" : "upload"}>
         <div className="vbs-v2-lesson-panel-heading">
           <span className="vbs-stage-numeral" aria-hidden="true">{productStepIndexLabel("lesson")}</span>
           <div className="vbs-stage-heading">
@@ -354,6 +355,7 @@ export function LessonStage({
         </Tabs.Content>
 
         <Tabs.Content className="vbs-v2-tab-panel" value="paste">
+          {hasPasteDraft && <DraftNotice conflict={false} storageFailed={storageFailed} />}
           <div className="vbs-v2-paste-panel">
             <label>
               <span>完整教案文本</span>

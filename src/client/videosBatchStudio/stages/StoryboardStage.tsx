@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Accordion, Tabs } from "radix-ui";
 import { Check, ChevronDown, Copy, Pencil, Save, X } from "lucide-react";
 import { StageEmpty, StageFact, StagePage } from "../components/StagePage";
+import { DraftNotice, useStageDraft } from "../useStageDraft";
 import {
   storyboardSegmentFieldDefinitions,
   storyboardSegmentSubshots,
@@ -40,23 +41,20 @@ export function StoryboardStage({
 }) {
   const segments = Array.isArray(artifact?.segments) ? artifact.segments : [];
   const promptSegments = Array.isArray(copyablePromptArtifact?.segments) ? copyablePromptArtifact.segments : [];
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState<any>(artifact);
+  const { editing, setEditing, draft, setDraft, conflict, storageFailed, captureSave, completeSave } = useStageDraft<any>("storyboard", artifact);
   const [copiedKey, setCopiedKey] = useState("");
 
-  useEffect(() => {
-    setDraft(artifact);
-    setEditing(false);
-  }, [artifact]);
 
   const visibleSegments = Array.isArray((editing ? draft : artifact)?.segments)
     ? (editing ? draft : artifact).segments
     : [];
 
   const save = async () => {
+    if (conflict) return;
+    const submitted = captureSave();
     try {
       await onSaveArtifact?.(draft);
-      setEditing(false);
+      completeSave(submitted);
     } catch {
       // The studio reports the failure inline; keep the draft open so a rejected
       // save does not silently discard the user's edit.
@@ -79,8 +77,8 @@ export function StoryboardStage({
 
   const editActions = editing ? (
     <>
-      <button type="button" className="vbs-primary" disabled={busy} onClick={() => void save()}><Save size={15} /> 保存分镜</button>
-      <button type="button" className="vbs-secondary" disabled={busy} onClick={() => { setDraft(artifact); setEditing(false); }}><X size={15} /> 取消</button>
+      <button type="button" className="vbs-primary" disabled={busy || conflict} onClick={() => void save()}><Save size={15} /> 保存分镜</button>
+      <button type="button" className="vbs-secondary" disabled={busy} onClick={() => setEditing(false)}><X size={15} /> 丢弃草稿</button>
     </>
   ) : onSaveArtifact && segments.length ? (
     <button type="button" className="vbs-secondary" disabled={busy} onClick={() => setEditing(true)}><Pencil size={15} /> 编辑分镜</button>
@@ -99,6 +97,7 @@ export function StoryboardStage({
       }
       actions={editActions}
     >
+      {editing && <DraftNotice conflict={conflict} storageFailed={storageFailed} />}
       <Tabs.Root className="vbs-storyboard-tabs" defaultValue="structure">
         <Tabs.List className="vbs-tabs-list" aria-label="视频分镜视图">
           <Tabs.Trigger className="vbs-tab-trigger" value="structure">分镜结构</Tabs.Trigger>
@@ -106,7 +105,7 @@ export function StoryboardStage({
         </Tabs.List>
 
         <Tabs.Content className="vbs-tab-content" value="structure">
-          {!segments.length ? <StageEmpty>最终分镜尚未生成。</StageEmpty> : (
+          {!visibleSegments.length ? <StageEmpty>最终分镜尚未生成。</StageEmpty> : (
             <Accordion.Root
               className="vbs-storyboard-accordion"
               type="multiple"

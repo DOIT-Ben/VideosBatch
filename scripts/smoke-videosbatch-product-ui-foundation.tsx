@@ -161,7 +161,7 @@ assert.ok(
 const studioSource = readFileSync(new URL("../src/client/videosBatchStudio/VideosBatchStudio.tsx", import.meta.url), "utf8");
 assert.ok(studioSource.includes("<VideosBatchStudioView {...props} />"), "the studio must render its view as a child of the boundary");
 assert.ok(
-  studioSource.includes("<StudioErrorBoundary onBackToSessions={props.onBackToSessions}>"),
+  /<StudioErrorBoundary[^>]*onBackToSessions=\{props.onBackToSessions\}/.test(studioSource),
   "the studio must forward onBackToSessions into the boundary, or the fallback can only offer a reload that reproduces the failure"
 );
 

@@ -272,10 +272,10 @@ export const api = {
     request<VideosBatchWorkflowState>(`/api/sessions/${sessionId}/videosbatch/run-next`, { method: "POST", body: "{}" }),
   runAllVideosBatch: (sessionId: string) =>
     request<VideosBatchWorkflowState>(`/api/sessions/${sessionId}/videosbatch/run-all`, { method: "POST", body: "{}" }),
-  saveVideosBatchArtifact: (sessionId: string, stageId: VideosBatchStageId, artifact: unknown) =>
+  saveVideosBatchArtifact: (sessionId: string, stageId: VideosBatchStageId, artifact: unknown, expectedRevision?: number) =>
     request<VideosBatchWorkflowState>(`/api/sessions/${sessionId}/videosbatch/stages/${stageId}/artifact`, {
       method: "PUT",
-      body: JSON.stringify({ artifact })
+      body: JSON.stringify({ artifact, ...(expectedRevision === undefined ? {} : { expectedRevision }) })
     }),
   restartVideosBatchFrom: (sessionId: string, stageId: VideosBatchStageId) =>
     request<VideosBatchWorkflowState>(`/api/sessions/${sessionId}/videosbatch/restart-from/${stageId}`, { method: "POST", body: "{}" }),

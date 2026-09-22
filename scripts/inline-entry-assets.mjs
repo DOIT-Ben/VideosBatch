@@ -8,7 +8,8 @@ const html = await readFile(htmlPath, "utf8");
 let nextHtml = html;
 
 nextHtml = await inlineStylesheet(nextHtml);
-nextHtml = await inlineModuleScript(nextHtml);
+// Keep the module at its emitted /assets URL. Moving it into the document
+// changes the base URL of relative imports and breaks lazy-loaded workspaces.
 
 await writeFile(htmlPath, nextHtml, "utf8");
 
@@ -21,15 +22,4 @@ async function inlineStylesheet(source) {
   const css = await readFile(cssPath, "utf8");
   const safeCss = css.replaceAll(/<\/style/gi, () => String.raw`<\/style`);
   return source.replace(match[0], () => `<style data-inline-entry>${safeCss}</style>`);
-}
-
-async function inlineModuleScript(source) {
-  const scriptPattern = /<script type="module" crossorigin src="(\/assets\/index-[^"]+\.js)"><\/script>/;
-  const match = source.match(scriptPattern);
-  if (!match) return source;
-
-  const jsPath = path.join(distDir, match[1]);
-  const js = await readFile(jsPath, "utf8");
-  const safeJs = js.replaceAll(/<\/script/gi, () => String.raw`<\/script`);
-  return source.replace(match[0], () => `<script type="module" data-inline-entry>${safeJs}</script>`);
 }

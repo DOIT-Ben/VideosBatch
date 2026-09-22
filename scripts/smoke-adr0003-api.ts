@@ -64,6 +64,10 @@ try {
     assert.equal(store.getSession(session.id)!.videosBatchWorkflow!.stages.LESSON_INPUT!.artifact.lessonText, b.lessonText);
   }
   assert.equal((await request("/stages/LESSON_INPUT/artifact", { artifact: a }, "PUT")).status, 200);
+  const revision = store.getSession(session.id)!.videosBatchWorkflow!.stages.LESSON_INPUT!.revision;
+  assert.equal((await request("/stages/LESSON_INPUT/artifact", { artifact: b, expectedRevision: revision - 1 }, "PUT")).status, 409);
+  assert.equal(store.getSession(session.id)!.videosBatchWorkflow!.stages.LESSON_INPUT!.artifact.lessonText, a.lessonText);
+  assert.equal((await request("/stages/LESSON_INPUT/artifact", { artifact: b, expectedRevision: revision }, "PUT")).status, 200);
   const same = await Promise.all([request("/start", a), request("/start", a)]);
   assert(same.every((r) => r.status === 200 && r.body.stages.LESSON_INPUT.artifact.lessonText === a.lessonText));
   const legacy = store.getSession(session.id)!.videosBatchWorkflow!;

@@ -2641,3 +2641,5 @@ git diff --check
 6. 任务列表呈现会话而非作品广场；会话切换隔离临时 UI 状态。
 
 验证：`npm run smoke:adr0003-api`、`npm run smoke:adr0003-recovery`、`npm run smoke:adr0003-workspace`，最终 `npm run verify:offline`。交付进度只维护在 ADR-0003，不在此重复记账。
+
+7. 生产构建保留入口模块的资源 URL，懒加载工作台必须能从 /tasks 与深链接正常打开；不得以内联移动改变相对 import 的解析基准。

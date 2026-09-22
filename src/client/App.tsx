@@ -2,6 +2,7 @@ import { Archive, BarChart3, CircleHelp, Copy, Download, FileUp, Github, Images,
 import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { api } from "./api";
 import { VideosBatchHeader } from "./videosBatchStudio/VideosBatchHeader";
+import { TaskList } from "./videosBatchStudio/TaskList";
 import { VIDEOS_BATCH_PRODUCT_STEPS, deriveProductStepStatus } from "./videosBatchStudio/stageModel";
 import "./videosBatchStudio/videosBatchStudio.css";
 import "./videosBatchStudio/contentUx.css";
@@ -13,7 +14,7 @@ import { useI18n } from "./i18n";
 import { resolveSessionDockState } from "./sessionDockState";
 import { nextSessionSelection } from "./sessionMultiSelect";
 import { resolveRefreshSelectedSessionId } from "./sessionSelection";
-import { buildCanvasPath, buildGalleryPath, parseAppRoute, type AppView } from "./routes";
+import { buildCanvasPath, buildGalleryPath, buildTasksPath, parseAppRoute, type AppView } from "./routes";
 import { createPendingImageUploadAsset, imageUploadAssetName, imageUploadDescription } from "./uploadPlaceholders";
 import type { UploadImageAssetResult } from "./flow/FlowView";
 import { hasActiveShotGeneration } from "../shared/shotGenerationState";
@@ -693,6 +694,9 @@ export function App() {
     initialPathSyncedRef.current = true;
   }, [activeView]);
   useEffect(() => {
+    if (activeView === "tasks") writePathToHistory(buildTasksPath(), false);
+  }, [activeView]);
+  useEffect(() => {
     const onRouteChange = () => {
       const route = readRouteFromWindow();
       setActiveView(route.view);
@@ -1100,6 +1104,10 @@ export function App() {
   const openGallery = () => {
     setActiveView("gallery");
     writeGalleryToPath();
+  };
+  const openTasks = () => {
+    setActiveView("tasks");
+    writePathToHistory(buildTasksPath(), false);
   };
 
   /**
@@ -2065,7 +2073,7 @@ export function App() {
       <section className="workspace" id="workspace-main" tabIndex={-1}>
         <header className="topbar">
           <div>
-        {activeView === "gallery" ? (
+        {activeView === "tasks" ? <h1>任务管理</h1> : activeView === "gallery" ? (
               <h1>{t.app.galleryTitle}</h1>
             ) : selectedSession ? (
               <>
@@ -2486,7 +2494,9 @@ export function App() {
           />
         )}
 
-        {activeView === "gallery" ? (
+        {activeView === "tasks" ? (
+          <TaskList sessions={sessions} busy={Boolean(busy)} onSelect={switchStudioSession} onCreate={createStudioSession} onGallery={openGallery} />
+        ) : activeView === "gallery" ? (
           <GalleryPage
             items={state.gallery || []}
             busy={busy}
@@ -2498,6 +2508,7 @@ export function App() {
         ) : selectedSession && videosBatchMode === "workflow" ? (
           <Suspense fallback={<div className="flow-loading" role="status">{lang === "en" ? "Loading studio..." : "正在加载工作台..."}</div>}>
           <VideosBatchStudio
+            key={selectedSession.id}
             sessionId={selectedSession.id}
             sessionTitle={selectedSession.title}
             session={selectedSession}
@@ -2516,7 +2527,7 @@ export function App() {
             onOpenCanvas={() => setVideosBatchMode("canvas")}
             sessions={sessions.map((item) => ({ id: item.id, title: item.title, progress: sessionProgressLabel(item) }))}
             language={lang}
-            onBackToSessions={openGallery}
+            onBackToSessions={openTasks}
             onSelectSession={switchStudioSession}
             onNewSession={createStudioSession}
             onDownloadSession={downloadSelectedSessionPackage}
@@ -2538,7 +2549,7 @@ export function App() {
                 sessionId={selectedSession.id}
                 language={lang}
                 onOpenWorkflow={() => setVideosBatchMode("workflow")}
-                onBackToSessions={openGallery}
+                onBackToSessions={openTasks}
                 onSelectSession={switchStudioSession}
                 onNewSession={createStudioSession}
                 onDownloadSession={downloadSelectedSessionPackage}

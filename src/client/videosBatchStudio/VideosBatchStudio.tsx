@@ -13,6 +13,7 @@ import { ModeBanner } from "./components/ModeBanner";
 import { StudioErrorBoundary } from "./components/StudioErrorBoundary";
 import { WorkflowProgressRail } from "./components/WorkflowProgressRail";
 import { StageWorkspace } from "./stages/StageWorkspace";
+import { DraftSessionContext } from "./useStageDraft";
 import type { VideosBatchLessonDraft } from "./stages/LessonStage";
 import { buildAssetCandidateGroups, buildAssetConfirmationArtifact, updateStoryArtifactContent } from "./contentModel";
 import { parseLessonDocumentFile } from "./lessonDocumentClient";
@@ -264,7 +265,8 @@ function VideosBatchStudioView({
     await performOrThrow("save-story", () => api.saveVideosBatchArtifact(
       sessionId,
       "STORY_SCRIPT",
-      updateStoryArtifactContent(current, content)
+      updateStoryArtifactContent(current, content),
+      workflow.stages.STORY_SCRIPT?.revision
     ));
   }
 
@@ -273,7 +275,7 @@ function VideosBatchStudioView({
     // Throws on rejection so the editors keep the draft open instead of exiting
     // edit mode over an unsaved change.
     await performOrThrow(stageId === "SCREENPLAY" ? "save-screenplay" : "save-storyboard", () =>
-      api.saveVideosBatchArtifact(sessionId, stageId, artifact)
+      api.saveVideosBatchArtifact(sessionId, stageId, artifact, workflow.stages[stageId]?.revision)
     );
   }
 
@@ -448,8 +450,10 @@ export function VideosBatchStudio(props: VideosBatchStudioProps) {
   return (
     // `onBackToSessions` is forwarded so the fallback panel keeps a real way out:
     // the header that normally owns that entry point lives inside the boundary.
-    <StudioErrorBoundary onBackToSessions={props.onBackToSessions}>
+    <StudioErrorBoundary key={props.sessionId} onBackToSessions={props.onBackToSessions}>
+      <DraftSessionContext.Provider value={props.sessionId}>
       <VideosBatchStudioView {...props} />
+      </DraftSessionContext.Provider>
     </StudioErrorBoundary>
   );
 }

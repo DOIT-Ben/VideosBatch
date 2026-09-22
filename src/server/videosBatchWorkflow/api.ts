@@ -327,7 +327,7 @@ export function registerVideosBatchWorkflowApi(
       return sendWorkflowError(res, 400, { code: "ARTIFACT_REQUIRED", message: "artifact is required" });
     }
     try {
-      const next = await withWorkflowFlight(sessionId, writeFlightKind(`artifact:${stageId}`, req.body?.artifact ?? null), async () => {
+      const next = await withWorkflowFlight(sessionId, writeFlightKind(`artifact:${stageId}`, req.body), async () => {
         const latestSession = store.getSession(sessionId);
         const latestWorkflow = latestSession?.videosBatchWorkflow
           ? await reconcilePersistedWorkflow(store, sessionId, latestSession.videosBatchWorkflow)
@@ -335,6 +335,9 @@ export function registerVideosBatchWorkflowApi(
         if (!latestSession || !latestWorkflow) throw Object.assign(new Error("VideosBatch workflow has not been started"), { code: "WORKFLOW_NOT_STARTED", retryable: false, status: 409 });
         const latestCtx = workflowContext(store, sessionId);
         if (!latestCtx) throw Object.assign(new Error("VideosBatch workflow has not been started"), { code: "WORKFLOW_NOT_STARTED", retryable: false, status: 409 });
+        if (req.body.expectedRevision !== undefined && req.body.expectedRevision !== latestWorkflow.stages[stageId]?.revision) {
+          throw Object.assign(new Error("服务器内容已有更新，草稿未覆盖新版。请刷新并核对修改。"), { code: "ARTIFACT_REVISION_CONFLICT", retryable: false, status: 409 });
+        }
         const updated = replaceStageArtifact(latestWorkflow, stageId, req.body.artifact, undefined, registry, latestCtx);
         const definition = registry[stageId];
         if (stageId === "FINAL_STORYBOARD" && definition?.project) {

@@ -1,4 +1,4 @@
-export type AppView = "studio" | "gallery";
+export type AppView = "studio" | "gallery" | "tasks";
 
 interface AppRoute {
   view: AppView;
@@ -22,6 +22,8 @@ export function buildGalleryPath() {
   return "/gallery";
 }
 
+export function buildTasksPath() { return "/tasks"; }
+
 export function buildCanvasPath(sessionId?: string) {
   const cleanId = sessionId?.trim();
   return cleanId ? `/canvas/${encodeURIComponent(cleanId)}` : "/canvas";
@@ -30,6 +32,7 @@ export function buildCanvasPath(sessionId?: string) {
 export function parseAppRoute(location: LocationLike): AppRoute {
   const pathname = (location.pathname || "/").replace(/\/+$/, "") || "/";
   if (pathname === "/gallery") return { view: "gallery", sessionId: "" };
+  if (pathname === "/tasks") return { view: "tasks", sessionId: "" };
 
   const canvasMatch = pathname.match(/^\/canvas(?:\/([^/]+))?$/);
   if (canvasMatch) {

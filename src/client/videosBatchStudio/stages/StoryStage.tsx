@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { DraftNotice, useStageDraft } from "../useStageDraft";
 import { Pencil, Save, X } from "lucide-react";
 import { Clamp } from "../components/Clamp";
 import { StageEmpty, StageFact, StagePage } from "../components/StagePage";
@@ -13,19 +13,14 @@ export function StoryStage({
   onSaveContent?: (content: string) => Promise<void> | void;
 }) {
   const content = String(artifact?.content || "");
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(content);
-
-  useEffect(() => {
-    setDraft(content);
-    setEditing(false);
-  }, [content, artifact?.title]);
+  const { editing, setEditing, draft, setDraft, conflict, storageFailed, captureSave, completeSave } = useStageDraft("story", content);
 
   const save = async () => {
-    if (!draft.trim()) return;
+    if (!draft.trim() || conflict) return;
+    const submitted = captureSave();
     try {
       await onSaveContent?.(draft);
-      setEditing(false);
+      completeSave(submitted);
     } catch {
       // The studio reports the failure inline; keep the draft open so a rejected
       // save does not silently discard the user's edit (same rule as the
@@ -44,14 +39,15 @@ export function StoryStage({
       actions={onSaveContent && hasContent ? (
         editing ? (
           <>
-            <button type="button" className="vbs-primary" disabled={busy || !draft.trim()} onClick={() => void save()}><Save size={15} /> 保存正文</button>
-            <button type="button" className="vbs-secondary" disabled={busy} onClick={() => { setDraft(content); setEditing(false); }}><X size={15} /> 取消</button>
+            <button type="button" className="vbs-primary" disabled={busy || conflict || !draft.trim()} onClick={() => void save()}><Save size={15} /> 保存正文</button>
+            <button type="button" className="vbs-secondary" disabled={busy} onClick={() => setEditing(false)}><X size={15} /> 丢弃草稿</button>
           </>
         ) : (
           <button type="button" className="vbs-secondary" disabled={busy} onClick={() => setEditing(true)}><Pencil size={15} /> 编辑故事正文</button>
         )
       ) : null}
     >
+      {editing && <DraftNotice conflict={conflict} storageFailed={storageFailed} />}
       {artifact?.truthfulnessNote ? (
         <div className="vbs-note-card"><strong>真实性说明</strong><p>{artifact.truthfulnessNote}</p></div>
       ) : null}
