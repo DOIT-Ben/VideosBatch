@@ -14,6 +14,36 @@ const config = resolveVideosBatchLlmConfig({ VIDEOSBATCH_LLM_MODEL: "m1", VIDEOS
   VIDEOSBATCH_LLM_RETRY_DELAYS_MS: "0" });
 const request = { operation: "TEST", systemPrompt: "test", userPrompt: "test", schemaName: "test",
   jsonSchema: { type: "object", properties: { ok: { type: "boolean" } }, required: ["ok"], additionalProperties: false } };
+const introDirections = [
+  "原始问题与知识产生",
+  "可靠史实与时代背景",
+  "方法工具演变",
+  "古代真实需求",
+  "古今对照",
+  "现代工程科技应用",
+  "生活冲突与错误现场",
+  "推理游戏挑战",
+  "科技或自然异常"
+];
+
+const introArtifact = {
+  candidates: ["A-01", "A-02", "A-03", "B-01", "B-02", "B-03", "C-01", "C-02", "C-03"].map((id, index) => ({
+    id,
+    name: `导入${id}`,
+    creativeType: introDirections[index],
+    body: `${id}：${introDirections[index]}。${"学生围绕一个真实问题观察、比较和推理，冲突逐步升级，本课知识成为关键线索，但此处不提前揭示结论。".repeat(5)}`.slice(0, 280),
+    endingQuestion: "到底应该怎样解决？",
+    truthfulnessCategory: "完全虚构的故事化情境",
+    truthfulnessNote: "用于课堂导入的虚构情境。"
+  })),
+  recommendations: [
+    { id: "A-01", reason: "课堂吸引力强，知识连接清晰，适合视频制作。" },
+    { id: "B-01", reason: "课堂真实需求明确，便于自然引出知识。" },
+    { id: "C-01", reason: "冲突直观，学生容易代入，适合视频化。" }
+  ]
+};
+
+
 const originalFetch = globalThis.fetch;
 const calls: Array<{ url: string; model: string; auth: string; body: any }> = [];
 let respond = (_index: number, _body: any) => new Response("{}", { status: 503 });
@@ -69,27 +99,67 @@ try {
   calls.length = 0; respond = () => ok({ candidates: [], recommendations: [] });
   const checkpoints: any[] = [];
   const failed = await runNext({ ...context(), checkpoint: async state => { checkpoints.push(structuredClone(state)); } }, createVideosBatchLlmTextStageRegistry(executor));
-  assert.equal(calls.length, 3, "one generation plus exactly two same-model repairs");
-  assert.ok(calls.every(c => c.model === "m1" && c.url.includes("one.invalid")));
-  assert.equal(failed.stages.COURSE_INTRO_CANDIDATES?.textDiagnostics?.length, 3);
+  assert.equal(calls.length, 9, "each of three providers receives one generation and at most two repairs");
+  assert.deepEqual(calls.map(c => c.model), ["m1", "m1", "m1", "m2", "m2", "m2", "m3", "m3", "m3"]);
+  assert.equal(failed.stages.COURSE_INTRO_CANDIDATES?.textDiagnostics?.length, 9);
   assert.match(failed.stages.COURSE_INTRO_CANDIDATES!.error!, /exactly 9 candidates/);
-  assert.equal(checkpoints.at(-1).stages.COURSE_INTRO_CANDIDATES.textDiagnostics.length, 3);
+  assert.equal(checkpoints.at(-1).stages.COURSE_INTRO_CANDIDATES.textDiagnostics.length, 9);
 
   calls.length = 0;
   const syntheticCredential = "fixture-sensitive-value";
   respond = index => index === 1 ? ok({ candidates: [], recommendations: [], api_key: syntheticCredential }) : new Response("payment required", { status: 402 });
   const rejected = await runNext(context(), createVideosBatchLlmTextStageRegistry(executor));
   const diagnostic = rejected.stages.COURSE_INTRO_CANDIDATES!.textDiagnostics![0];
-  assert.equal(calls.length, 2); assert.ok(calls.every(c => c.model === "m1"));
+  assert.equal(calls.length, 4); assert.deepEqual(calls.map(c => c.model), ["m1", "m1", "m2", "m3"]);
   assert.match(diagnostic.validationErrors.join(" "), /exactly 9 candidates/);
   assert.ok(!JSON.stringify(diagnostic).includes("fixture-sensitive-value"));
   assert.equal(rejected.stages.COURSE_INTRO_CANDIDATES!.errorInfo?.code, "HTTP_402");
 
   calls.length = 0; respond = () => new Response(JSON.stringify({ status: "completed", output_text: '{"ok":true,0}' }));
   const malformed = await runNext(context(), createVideosBatchLlmTextStageRegistry(createVideosBatchLlmExecutor({ ...config, fallbackModels: [], secondFallback: undefined })));
-  assert.equal(calls.length, 3);
-  assert.equal(malformed.stages.COURSE_INTRO_CANDIDATES!.textDiagnostics!.length, 3);
+  assert.equal(calls.length, 1);
+  assert.equal(malformed.stages.COURSE_INTRO_CANDIDATES!.textDiagnostics!.length, 1);
   assert.match(malformed.stages.COURSE_INTRO_CANDIDATES!.textDiagnostics![0].validationErrors[0], /INVALID_JSON/);
+
+  for (const successSlot of ["m2", "m3"]) {
+    calls.length = 0;
+    respond = (_index, body) => ok(body.model === successSlot ? introArtifact : { candidates: [], recommendations: [] });
+    const recovered = await runNext(context(), createVideosBatchLlmTextStageRegistry(maxExecutor));
+    assert.equal(recovered.stages.COURSE_INTRO_CANDIDATES!.status, "ready");
+    assert.deepEqual(calls.map(c => c.model), successSlot === "m2" ? ["m1", "m1", "m1", "m2"] : ["m1", "m1", "m1", "m2", "m2", "m2", "m3"]);
+    assert.equal(recovered.stages.COURSE_INTRO_CANDIDATES!.attemptLog!.length, calls.length);
+    assert.equal(recovered.stages.COURSE_INTRO_CANDIDATES!.textDiagnostics!.length, calls.length);
+    assert.ok(!calls.at(-1)!.body.input[1].content.includes("<contract_repair"), "new slot regenerates from original input");
+    assert.ok(calls.filter(c => c.model === "m1").every(c => c.body.reasoning.effort === "max"));
+    assert.ok(calls.filter(c => c.model === "m2").every(c => c.body.reasoning.effort === "low"));
+  }
+  for (const status of [400, 401, 402, 403, 429, 503]) {
+    calls.length = 0;
+    respond = (_index, body) => body.model === "m3" ? ok(introArtifact) : new Response("provider failure", { status });
+    const recovered = await runNext(context(), createVideosBatchLlmTextStageRegistry(executor));
+    assert.equal(recovered.stages.COURSE_INTRO_CANDIDATES!.status, "ready");
+    assert.deepEqual(calls.map(c => c.model), ["m1", "m2", "m3"]);
+  }
+  calls.length = 0;
+  respond = (_index, body) => body.model === "m1" ? new Response(JSON.stringify({ status: "completed", output_text: "invalid" })) : ok(introArtifact);
+  const invalidRecovered = await runNext(context(), createVideosBatchLlmTextStageRegistry(executor));
+  assert.equal(invalidRecovered.stages.COURSE_INTRO_CANDIDATES!.status, "ready");
+  assert.deepEqual(calls.map(c => c.model), ["m1", "m2"]);
+
+  const multiModelExecutor = createVideosBatchLlmExecutor({ ...config, fallbackModels: ["m2", "m2-other"] });
+  assert.deepEqual(multiModelExecutor.getProviderRoutes!("m2-other").map(r => r.routeId), ["fallback-2", "primary", "third"]);
+  calls.length = 0;
+  respond = (_index, body) => body.model === "m3" ? ok(introArtifact) : new Response("denied", { status: 401 });
+  const multiRecovered = await runNext(context(), createVideosBatchLlmTextStageRegistry(multiModelExecutor));
+  assert.equal(multiRecovered.stages.COURSE_INTRO_CANDIDATES!.status, "ready");
+  assert.deepEqual(calls.map(c => c.model), ["m1", "m2", "m3"]);
+  for (const name of ["Error", "AbortError"]) {
+    calls.length = 0;
+    respond = (_index, body) => { if (body.model === "m1") { const error = new Error("fetch failed"); error.name = name; throw error; } return ok(introArtifact); };
+    const recovered = await runNext(context(), createVideosBatchLlmTextStageRegistry(executor));
+    assert.equal(recovered.stages.COURSE_INTRO_CANDIDATES!.status, "ready");
+    assert.deepEqual(calls.map(c => c.model), ["m1", "m2"]);
+  }
 
   calls.length = 0; respond = () => ok({ candidates: [], recommendations: [] });
   let checkpointsSeen = 0;

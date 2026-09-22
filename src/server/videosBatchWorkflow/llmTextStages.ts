@@ -1020,6 +1020,7 @@ function mergeAttemptRecords(...groups: Array<readonly AttemptRecord[] | undefin
       const key = [
         item.attempt,
         item.provider,
+        item.metadata?.route_id || "",
         item.model,
         item.idempotencyKey || "",
         item.outcome,
@@ -1054,7 +1055,9 @@ async function executeStructuredStage(
   stageId: VideosBatchTextStageId,
   ctx: StageExecutionContext,
   spec: ReturnType<typeof getVideosBatchTextStageSpec>,
-  executor: VideosBatchLlmExecutor
+  executor: VideosBatchLlmExecutor,
+  initialBudget = MAX_STAGE_ATTEMPTS,
+  textDiagnostics: VideosBatchTextDiagnostic[] = []
 ): Promise<{ artifact: unknown; attempts: number; provider?: string; model?: string; attemptLog?: VideosBatchLlmAttemptBudget["records"]; textDiagnostics: VideosBatchTextDiagnostic[] }> {
   const basePrompt = spec.buildUserPrompt(ctx.workflow);
   let userPrompt = basePrompt;
@@ -1063,7 +1066,6 @@ async function executeStructuredStage(
   let lastModel: string | undefined;
   let repairRouteId: string | undefined;
   let repairModel: string | undefined;
-  const textDiagnostics: VideosBatchTextDiagnostic[] = [];
   const recordValidation = async (response: StructuredGenerationResult<unknown>, artifact: unknown, validation: ValidationResult, kind: VideosBatchTextDiagnostic["kind"]) => {
     const redact = (value: string) => sanitizeProviderDiagnosticText(value, 200_000);
     const artifactJson = JSON.stringify(artifact ?? null);
@@ -1077,7 +1079,7 @@ async function executeStructuredStage(
   };
   let lastErrors: string[] = [];
   let lastError: unknown;
-  const providerBudget = createVideosBatchLlmAttemptBudget(MAX_STAGE_ATTEMPTS);
+  const providerBudget = createVideosBatchLlmAttemptBudget(initialBudget);
   const responses: StructuredGenerationResult<unknown>[] = [];
   let logicalAttempt = 0;
   let requestCount = 0;
@@ -1274,6 +1276,48 @@ export function validateVideosBatchTextStage(stageId: VideosBatchTextStageId, ar
   return validationFor(stageId, artifact, ctx);
 }
 
+async function executeWithProviderFailover(stageId: VideosBatchTextStageId, ctx: StageExecutionContext,
+  spec: VideosBatchTextStageSpec, executor: VideosBatchLlmExecutor) {
+  const routes = executor.getProviderRoutes?.(stageId === "FINAL_STORYBOARD" ? process.env.VIDEOSBATCH_FINAL_STORYBOARD_MODEL?.trim() : undefined);
+  // Test/custom executors without routing retain the existing single-executor contract.
+  if (!routes) return executeStructuredStage(stageId, ctx, spec, executor);
+  const diagnostics: VideosBatchTextDiagnostic[] = [];
+  const records: AttemptRecord[] = [];
+  let lastResult: Awaited<ReturnType<typeof executeStructuredStage>> | undefined;
+  let lastError: unknown;
+  for (const route of routes.slice(0, 3)) {
+    const pinned: VideosBatchLlmExecutor = {
+      async generateStructured<T>(request: StructuredGenerationRequest) {
+        try {
+          return await executor.generateStructured<T>({ ...request, model: route.model, routeId: route.routeId,
+            providerRoute: "same-model", metadata: { ...request.metadata, provider_route: "same-model" } });
+        } finally {
+          records.push(...(request.budget?.records || []).filter(item => !records.includes(item)));
+        }
+      }
+    };
+    try {
+      const result = await executeStructuredStage(stageId, ctx, spec, pinned, 1, diagnostics);
+      lastResult = result;
+      lastError = undefined;
+      if (validationFor(stageId, result.artifact, ctx).ok) {
+        return { ...result, attempts: records.length, attemptLog: records, textDiagnostics: diagnostics };
+      }
+    } catch (error) {
+      // Local source/persistence failures are not provider failures.
+      if (!(error instanceof VideosBatchLlmError) || error.code === "TEXT_DIAGNOSTIC_CHECKPOINT_FAILED") throw error;
+      lastError = error;
+    }
+  }
+  if (lastError instanceof VideosBatchLlmError) {
+    lastError.attempts = records.length;
+    lastError.attemptLog = records;
+    throw lastError;
+  }
+  if (lastResult) return { ...lastResult, attempts: records.length, attemptLog: records, textDiagnostics: diagnostics };
+  throw new Error("No text provider slots configured.");
+}
+
 function createStage(stageId: VideosBatchTextStageId, executor: VideosBatchLlmExecutor): StageDefinition<any> {
   const spec = getVideosBatchTextStageSpec(stageId);
   return {
@@ -1286,7 +1330,7 @@ function createStage(stageId: VideosBatchTextStageId, executor: VideosBatchLlmEx
       const executionSpec = stageId === "FINAL_STORYBOARD"
         ? getVideosBatchTextStageSpec(stageId, ctx.workflow)
         : spec;
-      const generated = await executeStructuredStage(stageId, ctx, executionSpec, executor);
+      const generated = await executeWithProviderFailover(stageId, ctx, executionSpec, executor);
       return { artifact: generated.artifact, attempts: generated.attempts, provider: generated.provider, model: generated.model, attemptLog: generated.attemptLog, textDiagnostics: generated.textDiagnostics } as any;
     },
     validate(artifact, ctx) { return validationFor(stageId, artifact, ctx); },

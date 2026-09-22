@@ -124,6 +124,8 @@ export interface StructuredGenerationResult<T> {
 }
 
 export interface VideosBatchLlmExecutor {
+  /** Public routing identity only; never exposes credentials. */
+  getProviderRoutes?(model?: string): Array<{ routeId: string; model: string }>;
   generateStructured<T>(request: StructuredGenerationRequest): Promise<StructuredGenerationResult<T>>;
 }
 
@@ -415,6 +417,18 @@ type ProviderCandidate = {
 class OpenAIResponsesLlmExecutor implements VideosBatchLlmExecutor {
   constructor(private readonly config: VideosBatchLlmConfig) {}
 
+  getProviderRoutes(model?: string) {
+    const fallbackModels = [...new Set(this.config.fallbackModels.map(value => value.trim()).filter(Boolean))];
+    // Legacy model aliases share one provider slot; they must never displace slot three.
+    const fallbackIndex = Math.max(0, model ? fallbackModels.indexOf(model) : 0);
+    const routes = [{ routeId: "primary", model: this.config.model },
+      ...(fallbackModels.length ? [{ routeId: `fallback-${fallbackIndex + 1}`, model: fallbackModels[fallbackIndex] }] : []),
+      ...(this.config.secondFallback ? [{ routeId: "third", model: this.config.secondFallback.model }] : [])];
+    if (!model) return routes;
+    const selected = routes.find(route => route.model === model);
+    return selected ? [selected, ...routes.filter(route => route !== selected)] : [{ ...routes[0], model }, ...routes.slice(1)];
+  }
+
   async generateStructured<T>(request: StructuredGenerationRequest): Promise<StructuredGenerationResult<T>> {
     const configuredOutputMode = this.config.outputMode || "json_schema";
     if (configuredOutputMode !== "json_schema" || (request.outputMode && request.outputMode !== "json_schema")) {
@@ -459,7 +473,7 @@ class OpenAIResponsesLlmExecutor implements VideosBatchLlmExecutor {
         retryable: false
       });
     }
-    if (request.providerRoute !== "fallback-only" && !this.config.apiKey) throw missingKeyError();
+
 
     const primary: ProviderCandidate = {
       routeId: "primary",
@@ -489,7 +503,7 @@ class OpenAIResponsesLlmExecutor implements VideosBatchLlmExecutor {
     for (const candidate of candidates) {
       const { model, apiKey } = candidate;
       if (!apiKey) {
-        lastError = new VideosBatchLlmError({
+        lastError = candidate.routeId === "primary" ? missingKeyError() : new VideosBatchLlmError({
           code: "FALLBACK_NOT_CONFIGURED",
           message: `VideosBatch fallback model ${model} has no API key configured.`,
           retryable: false,
@@ -507,7 +521,7 @@ class OpenAIResponsesLlmExecutor implements VideosBatchLlmExecutor {
         const normalized = normalizeError(error, request.operation, model, budget.used);
         lastError = normalized;
         if (!candidate.fallback) budget.primaryExhausted = true;
-        if (!normalized.retryable || budget.used >= budget.maxAttempts) throw withAttemptEvidence(normalized, budget);
+        if (normalized.code === "TEXT_DIAGNOSTIC_CHECKPOINT_FAILED" || pinned || budget.used >= budget.maxAttempts) throw withAttemptEvidence(normalized, budget);
         const next = candidates[candidates.indexOf(candidate) + 1];
         if (next) console.warn(`[videosbatch-llm] ${request.operation} failed on ${model}; trying configured fallback ${next.model}`);
       }

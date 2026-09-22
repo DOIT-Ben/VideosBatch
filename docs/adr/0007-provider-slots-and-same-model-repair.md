@@ -2,7 +2,7 @@
 
 Decision: ACCEPTED
 Date: 2026-09-22
-Phase: PASSED (P0/P1 code/configuration); real-course acceptance blocked by provider failures; full-video acceptance remains incomplete
+Phase: PASSED (P0/P1/P2 code/configuration); real-course acceptance blocked by provider failures; full-video acceptance remains incomplete
 
 ## Original Requirement and Source
 
@@ -57,3 +57,23 @@ P0 验收记录（2026-09-22，原基线 f0c6e83）：
 - 诊断边界：保留模型文本响应（含非法 JSON／未完成输出），每条最多 200000 字符并显式标记截断；非成功 HTTP 响应只保留既有脱敏摘要，不保存所有原始 HTTP body。新运行清空旧诊断，旧运行快照由持久化结果保留。
 
 回滚：撤回代码提交并恢复本地第二槽为官方、删除第三槽配置；不删除测试成果。报价行为未改。
+
+## P2：所有供应商失败均顺序回退（2026-09-22）
+
+原始用户补充：“给我修改逻辑，只要是上个供应商不行，不管是什么问题，都要路由到下一个供应商重试，知道连续三个供应商失败才算失败。”
+
+FR-0007-004：文本阶段按三个供应商槽依次执行；每槽首次请求一次，内容不合格时同槽 repair 最多两次。网络、HTTP（含认证/余额）、空输出、非法 JSON、业务校验和 repair 失败都转下一槽从原始输入重新生成；仅全部配置槽失败才判阶段失败，最多三槽、九次提交。通过即停止，保留跨槽诊断与请求记录。局部存盘失败、用户取消或源材料错误不是供应商故障，不能靠外发重试解决，保持停止。
+
+P2: PASSED（逻辑与路由验收；真实课程内容仍未通过）。替代 P0 的“不可重试 HTTP 立即停止”和“合同修复耗尽即阶段失败”规则；报价行为不改。验证：主槽三次内容失败后第二槽成功、401/402 继续、三槽九次上限、第三槽成功、同名模型不同端点、诊断持久化失败停止；独立审查及完整 offline gate。
+
+
+P2 验收记录（基线 9bee4d4）：
+
+- IN_PROGRESS → REVIEW_1 → REWORK_1：独立审查发现第二槽旧多模型列表会挤占第三槽，改为按供应商分组（第二槽默认首模型，显式覆盖可选其他模型）。补充回归并消除旧规范的余额错误回退冲突。
+- REVIEW_2 → REWORK_2 → REVIEW_3：完整离线测试发现主槽缺密钥提示兼容回归，恢复 missingKeyError 原错误提示同时允许下一槽；最终独立复审无阻断问题。
+- ACCEPTANCE → PASSED：TypeScript、provider-slots-repair、executor smoke 及最终完整 `npm run verify:offline` 退出 0。新增回归覆盖首槽三次业务不合格后第二槽成功、第三槽成功、九次上限、400/401/402/403/429/503、网络/超时、非法 JSON、旧多模型槽位、诊断累积与存盘失败停止。
+- 同课程真实重跑：主槽 deepseek-v4.1-flash/max 首次返回 101178 ms（业务校验失败）；repair 第一次 70906 ms NETWORK_ERROR，第二次 96177 ms 返回但仍不合格；随后 JingAI gpt-5.6-terra/low 实际调用 89825 ms NETWORK_ERROR；第三槽官方 deepseek-v4-flash/none 调用 475 ms 返回 HTTP_402 余额不足。五次请求记录均保留，全部三个供应商失败后阶段才失败，未生成视频。
+- 本地忽略证据：`verify-adr0007-failover-final.log`、`workflow-failover-result.json`、`runs-failover-result.json`，均位于 `data/real-acceptance/20260922-live/`。真实运行在多模型兼容补丁之前启动，当前实际配置每槽单模型，其路由分支与最终代码相同；补丁边界由离线回归验证。失败后停止隔离服务，普通运行模式保持原配置。
+- 回滚：撤回 P2 提交可恢复 P1 原回退语义；不修改凭据、不删除历史验收文件。业务校验未放宽，真实课程成功仍受供应商响应与内容质量约束。
+
+本次真实运行 ID：`run_b62836b2-919d-4a3b-8456-0d0f340e67ba`。
