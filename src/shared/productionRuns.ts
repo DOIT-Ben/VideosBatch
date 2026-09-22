@@ -14,8 +14,12 @@ export interface ProductionRun {
   completedItems: number;
   message?: string;
   controlIntent?: "pause" | "stop";
+  feedback?: { kind: "working" | "validating" | "saving" | "saved" | "preview"; itemId: string; completedWork: number; outputRevision?: number; previewRef?: string };
 }
 export interface RunEvent { sequence: number; run: ProductionRun }
+export interface RunCursor { scope: string; offsets: Record<string, number> }
+export type RunPacket = { kind: "snapshot"; cursor: RunCursor; runs: ProductionRun[] }
+  | { kind: "delta"; previous: RunCursor; cursor: RunCursor; events: RunEvent[] };
 export const terminalRun = (status: RunStatus) => ["succeeded", "failed", "cancelled"].includes(status);
 export const runStatusLabel: Record<RunStatus, string> = {
   queued: "等待执行", running: "执行中", waiting_input: "待确认", pause_requested: "正在暂停",

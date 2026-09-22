@@ -3,6 +3,9 @@ import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState
 import { api } from "./api";
 import { VideosBatchHeader } from "./videosBatchStudio/VideosBatchHeader";
 import { TaskList } from "./videosBatchStudio/TaskList";
+import { useRunEvents, useManagedExecutionSessions } from "./productionCenter/useRunEvents";
+import { engineTracksShot } from "./productionCenter/synchronization";
+import { productionRuns } from "./productionCenter/runStore";
 import { VIDEOS_BATCH_PRODUCT_STEPS, deriveProductStepStatus } from "./videosBatchStudio/stageModel";
 import "./videosBatchStudio/videosBatchStudio.css";
 import "./videosBatchStudio/contentUx.css";
@@ -587,6 +590,14 @@ function GalleryPage({
 export function App() {
   const { lang, toggleLang, t } = useI18n();
   const [state, setState] = useState<StoreSnapshot>({ assets: [], sessions: [], shots: [], gallery: [] });
+  useRunEvents((sessionId, view) => setState(previous => {
+    if (!previous.sessions.some(session => session.id === sessionId)) return previous;
+    const assets = new Map(previous.assets.map(asset => [asset.id, asset]));
+    view.assets.forEach(asset => assets.set(asset.id, asset));
+    return mergeStateById(previous, { ...previous,
+      sessions: previous.sessions.map(session => session.id === sessionId ? { ...session, videosBatchWorkflow: view.workflow } : session),
+      shots: [...previous.shots.filter(shot => shot.sessionId !== sessionId), ...view.shots], assets: [...assets.values()] });
+  }));
   const stateRef = useRef(state);
   useEffect(() => { stateRef.current = state; }, [state]);
   const [activeView, setActiveView] = useState<AppView>(() => readRouteFromWindow().view);
@@ -787,13 +798,14 @@ export function App() {
   const pollShotIdsRef = useRef<string[]>([]);
   const pollInflightRef = useRef<Set<string>>(new Set());
   const pollFailuresRef = useRef<Map<string, number>>(new Map());
+  const managedExecution = useManagedExecutionSessions();
   const generatingIdsKey = useMemo(
     () => state.shots
-      .filter((shot) => hasActiveShotGeneration(shot))
+      .filter((shot) => hasActiveShotGeneration(shot) && !engineTracksShot(shot, state.sessions, managedExecution))
       .map((shot) => shot.id)
       .sort()
       .join(","),
-    [state.shots]
+    [state.shots, state.sessions, managedExecution]
   );
 
   // Lightweight poll for shots that are mid-generation. Stops automatically once nothing is busy.
@@ -844,9 +856,12 @@ export function App() {
   useEffect(() => {
     let cancelled = false;
     let timer: number | undefined;
+    let lastSnapshot = Date.now();
     const tick = async () => {
       if (cancelled) return;
       if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      if (productionRuns.connection === "connected" && Date.now() - lastSnapshot < 60000) return;
+      lastSnapshot = Date.now();
       try {
         const next = await api.pollState();
         if (cancelled || !next) return;

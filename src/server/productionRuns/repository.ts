@@ -88,6 +88,7 @@ export class RunRepository {
   private emit(run: ProductionRun) {
     const row = this.journal.db.prepare("SELECT COALESCE(MAX(sequence),0)+1 AS next FROM run_events WHERE ownerId=?").get(run.ownerId)!;
     this.journal.db.prepare("INSERT INTO run_events VALUES(?,?,?)").run(run.ownerId, Number(row.next), JSON.stringify(run));
+    this.journal.db.prepare("DELETE FROM run_events WHERE ownerId=? AND sequence<=?").run(run.ownerId, Number(row.next) - 10000);
   }
   controlResult(runId: string, requestId: string, command: string): ProductionRun | undefined {
     const row = this.journal.db.prepare("SELECT command,result FROM run_controls WHERE runId=? AND requestId=?").get(runId, requestId);
@@ -115,6 +116,7 @@ export class RunRepository {
       .all(ownerId, after).map(row => ({ sequence: Number(row.sequence), run: JSON.parse(String(row.body)) }));
   }
   cursor(ownerId: string) { return Number(this.journal.db.prepare("SELECT COALESCE(MAX(sequence),0) AS cursor FROM run_events WHERE ownerId=?").get(ownerId)!.cursor); }
+  oldestCursor(ownerId: string) { return Number(this.journal.db.prepare("SELECT COALESCE(MIN(sequence),1) AS cursor FROM run_events WHERE ownerId=?").get(ownerId)!.cursor); }
   begin(run: ProductionRun, stageId: string, input: unknown) {
     const inputHash = this.journal.writeResult(input);
     const item: WorkItem = { id: `item_${randomUUID()}`, runId: run.id, stageId, inputHash, status: "running" };

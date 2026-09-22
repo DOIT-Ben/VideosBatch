@@ -38,6 +38,7 @@ function isMutating(method: string) {
 function isSensitive(req: Request) {
   if (ALWAYS_OPEN_PATHS.has(req.path)) return false;
   if (isMutating(req.method)) return true;
+  if (req.path.startsWith("/api/production/") || /^\/api\/sessions\/[^/]+\/videosbatch\/(?:view|previews)/.test(req.path)) return true;
   return SENSITIVE_READ_PATHS.has(req.path);
 }
 

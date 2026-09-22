@@ -26,6 +26,8 @@ export interface StageExecutionContext {
   scheduleWork?: <T>(provider: string, operation: () => Promise<T>) => Promise<T>;
   workConcurrency?: number;
   shouldStopWork?: () => boolean;
+  /** Complete independently validated preview blocks only; never formal output. */
+  previewCheckpoint?: (block: { id: string; text: string }) => Promise<void>;
 }
 
 export interface StageResult<T = unknown> {
@@ -49,6 +51,7 @@ export interface StageDefinition<T = unknown> {
   id: VideosBatchStageId;
   execute(ctx: StageExecutionContext): Promise<StageResult<T>>;
   validate(artifact: T, ctx: StageExecutionContext): ValidationResult;
+  validatePreview?: (block: { id: string; text: string }, ctx: StageExecutionContext) => boolean;
   project?(artifact: T, ctx: StageExecutionContext): Promise<void>;
 }
 

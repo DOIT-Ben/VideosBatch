@@ -1,7 +1,7 @@
 # 自动化生产工作台：阶段计划与验收台账
 
 - 日期：2026-09-22；模式：Execute ADR；实施起点：`09fdde9`。
-- 当前执行：P0 **PASSED**（`27fc2b4`）；P1 **PASSED**（`fc773ce`）；P2 **PASSED**；P3—P6 未开始。
+- 当前执行：P0 **PASSED**（`27fc2b4`）；P1 **PASSED**（`fc773ce`）；P2 **PASSED**（`d221cfc`）；P3 **PASSED**；P4—P6 未开始。
 - 需求原文：[REQ-20260922-PIPELINE](sources/20260922-automated-production-workspace.md)。
 - 决策：[调度 ADR-0004](0004-durable-production-scheduler.md)、[实时反馈 ADR-0005](0005-realtime-rendering-feedback.md)、[编辑与管理 ADR-0006](0006-multitask-editing-workbench.md)。
 
@@ -35,7 +35,7 @@ flowchart LR
 | P0 合同与存储验证 | 0004/0005/0006 | 开始实施的用户指令；核对基线 | 规格、状态机和模块边界；Windows/Node SQLite 验证；跨存储恢复原型证明；确认实施方案 | PASSED |
 | P1 持久后台任务 | 0004 | P0 通过 | 异步运行 API、持久 Run/Attempt/Event、单写入投影、同一引擎兼容旧调用、owner 隔离 | PASSED |
 | P2 自动调度与恢复 | 0004 | P1 通过 | 依赖/限额/公平队列、确认关卡、暂停继续、重启恢复、未知受理核对；合成证据后才提高并发 | PASSED |
-| P3 实时反馈与渲染 | 0005 | P1 通过 | SSE/快照续接、局部渲染、真实预览、断线兜底、阅读不被打断 | NOT_STARTED |
+| P3 实时反馈与渲染 | 0005 | P1 通过 | SSE/快照续接、局部渲染、真实预览、断线兜底、阅读不被打断 | PASSED |
 | P4 编辑保存与推进 | 0006 | P2/P3 通过 | 草稿层、编辑占用、版本冲突、指定版本保存并推进、失败补偿、输入保护 | NOT_STARTED |
 | P5 多任务管理 | 0006 | P2/P3/P4 通过 | 增强现有任务页、待处理中心、批量操作、局部镜头控制、上下文保持 | NOT_STARTED |
 | P6 综合体验验收 | 全部 | P1—P5 通过 | 故障故事验收、性能数据、浏览器/键盘/响应式证据、离线回归、回退演练 | NOT_STARTED |
@@ -172,3 +172,14 @@ SQLite 驱动与运行时兼容性、事件保留窗口、各层并发/队列上
 - 新增9组混合批次路径（未提交/受理未知/暂停组合；无故障、raw result后持久化故障、JSON投影后故障），关闭并重开控制库；已知任务只查询一次、未提交项至多一次、暂停后可继续。这里是持久化故障注入，不冒充真实进程退出；P1既有5组子进程退出回归另行保留。过程中修正暂停的未派发镜头错误分类，避免恢复按钮被不可重试状态挡住。native-resilience、scheduling退出0；tsc检查中。
 
 - P2 REVIEW_3 → ACCEPTANCE → PASSED：review_storage_p0 第3轮PASS，2轮返工结束。最新native-resilience 9组、scheduling（videosbatch-scheduler-lL6CeM）、production-runs 5组真实子进程退出（videosbatch-runs-crash-oC5woB）、tsc/specs/secrets及diff检查均通过。需求FR/TR-0004对应调度恢复；Windows本地模拟证据，无真实Provider或生产变更。
+- P2提交 `d221cfc` 已推送 origin/master，工作区干净。P3 NOT_STARTED → PROPOSED → IN_PROGRESS：开始ADR-0005实时同步；沿用现有同源HTTP认证，单页一条SSE连接。
+
+### P3 验证与审查
+
+- 事件/预览协议集成smoke通过：快照订阅竞态、owner隔离、重复/乱序/缺包/过期、终态掉线、独立完整块校验；执行次数始终1。参考证据 videosbatch-events-Stc210；旧production-runs五组退出和native-resilience九组通过。生产适配器正文流式能力未宣称支持。
+- P3 REVIEW_1 → REWORK_1：review_runs_p1 指出全部VB镜头停止poll误伤手动生成、SSE半开无超时、成果读取失败丢重试。改为当前运行EXECUTION及当前分镜原生ID共同判断轮询归属；35秒无字节超时清理reader并重连；有界ViewSyncQueue保留失败读、指数退避、并发4和15秒单读超时，独立于事件游标。新增确定性测试覆盖三项，events退出0（videosbatch-events-r7DYLw）。
+- 浏览器隔离运行 http://localhost:5188，data仅随机临时目录，fake/fake：真实DOM创建任务、粘贴教案、连续运行，界面无需刷新显示9个候选及待确认状态；截图观察无重叠。后续复验继续，尚未以初验标通过。
+- P3 REVIEW_2 → REWORK_2：排除reconciling，因为该状态没有引擎实际轮询；当前批次手动新taskId继续沿用原pollShot。定向测试覆盖并通过。P3 REVIEW_3 → ACCEPTANCE：review_runs_p1 PASS，2轮返工结束。
+- 真实浏览器IAB，隔离fake/fake，2026-09-22：任务ses_7ea0b01d；断开并重启唯一测试服务，出现恢复提示后自行恢复，第一候选展开保持（展开按钮9→8且重连后仍8）。第二标签暂停，第一标签状态同步为已暂停，HTML scrollTop前后均1114.6666259765625，展开状态不变。故事编辑器追加P3实时事件输入保护测试，第二标签再次暂停触发事件，文本尾部保留、selectionStart/End均740、activeElement仍为textarea。状态、内容与草稿没有相互覆盖。这里只是定向交互证据，P6高频性能/完整响应式矩阵仍待测。
+
+- P3补充突发浏览器证据：第二标签6轮继续/暂停耗时3537ms，读取隔离台账最后3537ms窗口为36事件、覆盖3218ms；第一标签编辑器文本末尾不变、selectionStart/End=740、焦点不变。P3 ACCEPTANCE → PASSED。最终build/tsc通过，specs/secrets、旧workspace/task-experience和events定向回归通过。P6的60秒固定负载及p95仍未执行。

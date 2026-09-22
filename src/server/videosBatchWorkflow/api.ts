@@ -10,6 +10,7 @@ import path from "node:path";
 import { RunRepository } from "../productionRuns/repository";
 import { WorkflowRunHost, workflowVersion } from "../productionRuns/workflowHost";
 import { ProductionEngine } from "../productionRuns/engine";
+import { registerRunEvents } from "../productionRuns/events";
 import { MAX_LESSON_FILE_BYTES, parseLessonDocument } from "./lessonDocumentParser";
 import type { StageExecutionContext, StageRegistry } from "./stageContracts";
 import { reconcileVideosBatchReadiness, replaceStageArtifact, restartFrom, retryLineageIssues } from "./runner";
@@ -221,6 +222,20 @@ export function registerVideosBatchWorkflowApi(
   const repository = new RunRepository(path.join(DATA_DIR, "production-runs"));
   const host = new WorkflowRunHost(store, registry, repository, id => reconciledWorkflowContext(store, id), withWorkflowFlight);
   const engine = new ProductionEngine(repository, host);
+  registerRunEvents(app, store, engine, options.authorizeSession || defaultAuthorizeSession);
+  app.get("/api/sessions/:sessionId/videosbatch/previews/:hash", (req, res) => {
+    const session = requireSession(store, req, res, options); if (!session) return;
+    const hash = routeParam(req, "hash");
+    if (!repository.list(session.id).some(run => run.feedback?.previewRef === hash)) return res.status(404).json({ error: "预览已更新" });
+    res.setHeader("Cache-Control", "no-store"); res.json(repository.journal.readResult(hash));
+  });
+
+  app.get("/api/sessions/:sessionId/videosbatch/view", (req, res) => {
+    const session = requireSession(store, req, res, options); if (!session) return;
+    const ctx = workflowContext(store, session.id);
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ workflow: ctx?.workflow, shots: ctx?.shots || [], assets: ctx?.assets || [] });
+  });
 
   app.get("/api/sessions/:sessionId/videosbatch/runs", async (req, res) => {
     const session = requireSession(store, req, res, options); if (!session) return;

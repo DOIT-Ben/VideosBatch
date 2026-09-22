@@ -14,6 +14,8 @@ import { StudioErrorBoundary } from "./components/StudioErrorBoundary";
 import { WorkflowProgressRail } from "./components/WorkflowProgressRail";
 import { StageWorkspace } from "./stages/StageWorkspace";
 import { DraftSessionContext } from "./useStageDraft";
+import { RunFeedback } from "../productionCenter/RunFeedback";
+import { useProductionRun } from "../productionCenter/useRunEvents";
 import type { VideosBatchLessonDraft } from "./stages/LessonStage";
 import { buildAssetCandidateGroups, buildAssetConfirmationArtifact, updateStoryArtifactContent } from "./contentModel";
 import { parseLessonDocumentFile } from "./lessonDocumentClient";
@@ -119,6 +121,7 @@ function VideosBatchStudioView({
   onToggleLanguage
 }: VideosBatchStudioProps) {
   const currentStepId = workflow ? deriveCurrentProductStep(workflow) : "lesson";
+  const productionRun = useProductionRun(sessionId);
   const [selectedStepId, setSelectedStepId] = useState<VideosBatchProductStepId>(currentStepId);
   const previousCurrentStep = useRef(currentStepId);
   const [selectedAssetIds, setSelectedAssetIds] = useState<Record<string, string>>({});
@@ -189,7 +192,7 @@ function VideosBatchStudioView({
 
   // Server checkpoints are authoritative; local busy fills only the request startup gap.
   const runInFlight = busy === "next" || busy === "all";
-  const serverRunning = Object.values(workflow?.stages || {}).some((stage) => stage?.status === "running");
+  const serverRunning = ["queued", "running", "pause_requested", "cancel_requested"].includes(productionRun?.status || "") || Object.values(workflow?.stages || {}).some((stage) => stage?.status === "running");
   const statusForStep = (step: (typeof VIDEOS_BATCH_PRODUCT_STEPS)[number]) => {
     if (!workflow) return "pending" as const;
     if (runInFlight && step.stages.some((stageId) => workflow.stages[stageId]?.status === "running")) {
@@ -297,15 +300,18 @@ function VideosBatchStudioView({
   }
 
   async function runNext() {
-    if (!workflow) return;
-    const next = await perform("next", () => api.runNextVideosBatch(sessionId));
-    if (next) setSelectedStepId(selected => selected === currentStepId ? deriveCurrentProductStep(next) : selected);
+    await enqueue("next");
   }
 
   async function runAll() {
+    await enqueue("all");
+  }
+  async function enqueue(mode: "next" | "all") {
     if (!workflow) return;
-    const next = await perform("all", () => api.runAllVideosBatch(sessionId));
-    if (next) setSelectedStepId(selected => selected === currentStepId ? deriveCurrentProductStep(next) : selected);
+    setBusy(mode); setError("");
+    try { await api.startProduction(sessionId, mode, crypto.randomUUID()); }
+    catch (error) { setError(error instanceof Error ? error.message : "尚未确认加入队列，请重试"); }
+    finally { setBusy(""); }
   }
 
   async function restartSelected() {
@@ -392,6 +398,7 @@ function VideosBatchStudioView({
         <ModeBanner runtime={runtime} />
       </div>
       <main className="vbs-v2-workspace">
+        <RunFeedback sessionId={sessionId} />
         {(error || workflow?.stages[workflow.currentStage]?.error) && <div className="vbs-inline-error" role="alert">{error || workflow?.stages[workflow.currentStage]?.error}</div>}
         <div className="vbs-v2-stage-frame">
           <StageWorkspace
@@ -425,7 +432,7 @@ function VideosBatchStudioView({
           primaryLabel={primaryLabel}
           primaryDisabled={primaryDisabled}
           hint={footerHint}
-          busyLabel={runInFlight || serverRunning ? `正在生成${currentStep.label}，可以查看其他步骤。` : "正在保存更改…"}
+          busyLabel={runInFlight && !serverRunning ? "正在提交请求…" : serverRunning ? `正在处理${currentStep.label}，可以查看其他步骤。` : "正在保存更改…"}
           onPrevious={previous}
           onPrimary={primaryAction}
           onRunAll={workflow && !manualGate && !currentFailed ? () => void runAll() : undefined}

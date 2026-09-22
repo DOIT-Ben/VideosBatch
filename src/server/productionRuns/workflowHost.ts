@@ -38,13 +38,22 @@ export class WorkflowRunHost {
       const frozen = previous ? this.repository.journal.readResult(item.inputHash) as VideosBatchWorkflowState : ctx.workflow;
       const stageId = frozen.currentStage;
       const registry = { ...this.registry };
+      let completedWork = 0;
+      const previews = new Map<string, { id: string; text: string }>();
+      const feedback = (kind: NonNullable<ProductionRun["feedback"]>["kind"], extra: Partial<NonNullable<ProductionRun["feedback"]>> = {}) => {
+        if (this.repository.get(run.id)?.status === "cancelled") return;
+        const old = this.repository.get(run.id)?.feedback;
+        this.repository.update(run.id, { feedback: { ...(old?.itemId === item.id ? old : {}), kind, itemId: item.id, completedWork, ...extra } });
+      };
       const shouldStopWork = () => {
         const latest = this.repository.get(run.id);
         return Boolean(recoveryOnly || latest?.controlIntent || ["pause_requested", "cancel_requested", "cancelled"].includes(latest?.status || ""));
       };
       const scheduleWork = <T>(provider: string, operation: () => Promise<T>) => this.limiter.run({ owner: run.ownerId, session: run.sessionId, provider }, async () => {
         if (shouldStopWork() && provider !== "video-resume") throw Object.assign(new Error("任务已暂停，尚未提交"), { code: "WORK_NOT_SUBMITTED", retryable: true });
-        return operation();
+        const result = await operation();
+        completedWork++; feedback("working");
+        return result;
       });
       if (item.resultHash && registry[stageId]) {
         const result = this.repository.journal.readResult(item.resultHash) as StageResult;
@@ -55,17 +64,28 @@ export class WorkflowRunHost {
       }
       const workflow = await runNext({ ...ctx, workflow: frozen, session: { ...ctx.session, videosBatchWorkflow: frozen },
         scheduleWork, shouldStopWork, workConcurrency: 2,
-        resultCheckpoint: async result => this.repository.result(item, result),
+        previewCheckpoint: stageId !== "QUOTE" && registry[stageId]?.validatePreview ? async block => {
+          if (!block || typeof block.id !== "string" || block.id.length > 100 || typeof block.text !== "string" || block.text.length > 20000
+            || !registry[stageId]!.validatePreview!(block, ctx)) return;
+          if (previews.size >= 100 && !previews.has(block.id)) return;
+          previews.set(block.id, block);
+          const previewRef = this.repository.journal.writeResult({ blocks: [...previews.values()], itemId: item.id, inputVersion: run.inputVersion });
+          feedback("preview", { previewRef });
+        } : undefined,
+        resultCheckpoint: async result => { this.repository.result(item, result); feedback("validating"); },
         checkpoint: async next => {
           if (next.stages[stageId]?.status === "running") {
             if (!await this.store.checkpointWorkflow(run.sessionId, next)) throw new Error("RUN_SESSION_MISSING");
+            feedback("working");
             return;
           }
           const resultHash = this.repository.journal.writeResult(next);
           const operationId = `${item.id}:complete`;
           this.repository.journal.transaction(() => this.repository.journal.record({ operationId, ownerId: run.ownerId,
             sessionId: run.sessionId, expectedVersion: run.inputVersion, resultHash }));
+          feedback("saving");
           await this.repository.journal.project(operationId, this.apply);
+          feedback("saved", { outputRevision: next.stages[stageId]?.revision });
         }
       }, registry);
       const failed = workflow.stages[stageId]?.status === "failed" || workflow.stages[stageId]?.status === "stale";

@@ -112,3 +112,9 @@ Implementation status: `docs/adr/automation-workspace-plan.md`; these are accept
 - Task switching preserves navigation context. Ctrl/Cmd+S belongs to the editor only; dialogs restore focus, announcements do not flood and reduced motion is respected.
 - Dense task management remains operable at 390/768/1440px. Performance fixtures and proposed thresholds are defined in ADR-0005 and must be measured rather than presumed.
 - No quote, pricing, credit or payment UI is introduced or reworked.
+
+### P3 事件与游标具体合同
+
+一个页面一条fetch SSE（访问头不放URL），多owner可见范围用于本机共享和管理员模式。scope是授权session集合的摘要，offsets分别是每个owner的连续sequence；每包previous/cursor明确承认授权子集中过滤的事件，客户端只在previous等于当前cursor时应用，重复包忽略，缺口/乱序重新取快照。scope变化、超前或过期游标返回完整授权快照；cursor不是凭证。每owner保留最新10000条事件，心跳15秒，连接5分钟重建以重新认证；慢消费者断开重连。健康事件流时旧全局ETag轮询降至60秒；故障时运行快照和原状态轮询均5秒上限，页面隐藏不绘制内容，恢复可见后续接。
+
+完整预览块须适配器显式提供validatePreview并通过校验，作为临时预览存储，与正式workflow分离；当前生产适配器没有该能力，诚实显示阶段/工作项反馈。正式内容局部按session读取，成功落盘后才成为saved；不改QUOTE。

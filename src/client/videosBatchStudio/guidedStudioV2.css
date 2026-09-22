@@ -2119,3 +2119,9 @@ button.vbs-v2-project-meta:hover {
 .videosbatch-studio-v2 .vbs-screenplay-accordion .vbs-storyboard-content {
   padding: 2px 0 var(--vbs-v2-pad-card);
 }
+
+/* Background feedback owns its geometry; it never moves the reading position. */
+.videosbatch-studio-v2 .vbs-run-feedback { width: 100%; min-width: 0; }
+.videosbatch-studio-v2 .vbs-run-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.videosbatch-studio-v2 .vbs-run-actions button { min-height: 40px; }
+.videosbatch-studio-v2 .vbs-run-preview { max-height: 240px; overflow: auto; overflow-anchor: none; white-space: pre-wrap; }

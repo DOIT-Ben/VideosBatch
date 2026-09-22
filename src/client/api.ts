@@ -29,6 +29,7 @@ import type {
   WorkflowExecutionPlan
 } from "../shared/types";
 import type { VideosBatchStageId, VideosBatchWorkflowState } from "../shared/videosBatchWorkflow";
+import type { ProductionRun, RunPacket } from "../shared/productionRuns";
 import { networkDownMessage } from "./i18n";
 
 /**
@@ -77,7 +78,7 @@ function promptForAccessToken() {
   return entered;
 }
 
-function accessHeaders(): Record<string, string> {
+export function accessHeaders(): Record<string, string> {
   const token = readAccessToken();
   return token ? { "x-seereel-access": token, "x-reelyai-access": token } : {};
 }
@@ -263,6 +264,11 @@ export const api = {
     request<SessionWithShots>(`/api/sessions/${sessionId}`, { method: "PATCH", body: JSON.stringify(patch) }),
   videosBatchWorkflow: (sessionId: string) =>
     request<VideosBatchWorkflowState>(`/api/sessions/${sessionId}/videosbatch`),
+  productionSnapshot: () => request<RunPacket>("/api/production/snapshot"),
+  productionView: (sessionId: string) => request<{ workflow?: VideosBatchWorkflowState; shots: Shot[]; assets: Asset[] }>(`/api/sessions/${sessionId}/videosbatch/view`, { signal: AbortSignal.timeout(15000) }),
+  productionPreview: (sessionId: string, hash: string) => request<{ blocks: Array<{ id: string; text: string }>; itemId: string; inputVersion: string }>(`/api/sessions/${sessionId}/videosbatch/previews/${hash}`),
+  startProduction: (sessionId: string, mode: "next" | "all", requestId: string) => request<ProductionRun>(`/api/sessions/${sessionId}/videosbatch/runs`, { method: "POST", body: JSON.stringify({ mode, requestId }) }),
+  controlProduction: (sessionId: string, runId: string, action: "pause" | "resume" | "stop" | "priority", requestId: string, priority = 0) => request<ProductionRun>(`/api/sessions/${sessionId}/videosbatch/runs/${runId}/control`, { method: "POST", body: JSON.stringify({ action, requestId, priority }) }),
   startVideosBatch: (sessionId: string, payload: { projectId: string; lessonText: string }) =>
     request<VideosBatchWorkflowState>(`/api/sessions/${sessionId}/videosbatch/start`, {
       method: "POST",
