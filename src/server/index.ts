@@ -7,6 +7,7 @@ import { Readable } from "node:stream";
 import type { ReadableStream as WebReadableStream } from "node:stream/web";
 import { fileURLToPath } from "node:url";
 import cors from "cors";
+import { allowLocalSessionReview } from "./localSessionReview";
 import express, { type Request, type Response } from "express";
 import type {
   NarrationSubtitleMode,
@@ -901,27 +902,11 @@ function legacyPublicSessionsEnabled() {
 }
 
 function localSessionReviewEnabledForRequest(req: Request) {
-  if (configuredPublicUrlIsNonLocal()) return false;
-  return isLocalHostname(requestHostName(req));
+  return allowLocalSessionReview(req);
 }
 
 function localSessionReviewEnabled() {
   return localSessionReviewContext.getStore()?.enabled === true;
-}
-
-function requestHostName(req: Request) {
-  const forwardedHost = req.header("x-forwarded-host")?.split(",")[0]?.trim();
-  return normalizeHostName(forwardedHost || req.get("host") || `localhost:${port}`);
-}
-
-function configuredPublicUrlIsNonLocal() {
-  const configured = (process.env.APP_PUBLIC_URL || process.env.SEEREEL_PUBLIC_URL || process.env.REELYAI_PUBLIC_URL || "").trim();
-  if (!configured) return false;
-  try {
-    return !isLocalHostname(new URL(configured).hostname);
-  } catch {
-    return false;
-  }
 }
 
 function normalizeHostName(host: string | undefined) {

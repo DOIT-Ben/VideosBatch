@@ -239,7 +239,7 @@ export function registerVideosBatchWorkflowApi(
     const lessonText = typeof req.body?.lessonText === "string" ? req.body.lessonText : "";
     const source = sanitizeLessonSource(req.body?.source);
     try {
-      const workflow = await withWorkflowFlight(session.id, "start", async () => {
+      const workflow = await withWorkflowFlight(session.id, writeFlightKind("start", { projectId, lessonText, source }), async () => {
         const latest = store.getSession(session.id);
         if (!latest) throw Object.assign(new Error("Session not found"), { code: "SESSION_NOT_FOUND", retryable: false, status: 404 });
         const next = createVideosBatchWorkflow({ projectId, lessonText, source });

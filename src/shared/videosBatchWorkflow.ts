@@ -356,10 +356,17 @@ export interface CreateVideosBatchWorkflowInput {
   source?: VideosBatchLessonSource;
 }
 
+export function validateLessonInput(value: unknown): asserts value is CreateVideosBatchWorkflowInput {
+  const input = value as Partial<CreateVideosBatchWorkflowInput> | null;
+  if (!input || typeof input.projectId !== "string" || !input.projectId.trim()) throw new Error("projectId is required");
+  if (typeof input.lessonText !== "string" || !input.lessonText.trim()) throw new Error("lessonText is required");
+}
+
 export function createVideosBatchWorkflow(
   input: CreateVideosBatchWorkflowInput,
   now = new Date().toISOString()
 ): VideosBatchWorkflowState {
+  validateLessonInput(input);
   const projectId = input.projectId.trim();
   const lessonText = input.lessonText.trim();
 

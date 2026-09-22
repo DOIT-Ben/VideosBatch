@@ -1,4 +1,5 @@
 import {
+  validateLessonInput,
   VIDEOS_BATCH_STAGE_DEPENDENCIES,
   VIDEOS_BATCH_STAGE_ORDER,
   type VideosBatchAttemptRecord,
@@ -324,6 +325,11 @@ function mediaArtifactFailure(stageId: VideosBatchStageId, artifact: any): Video
 }
 
 function stageArtifactFailure(stageId: VideosBatchStageId, artifact: any): VideosBatchStageError | undefined {
+  if (stageId === "LESSON_INPUT") {
+    try { validateLessonInput(artifact); } catch (error) {
+      return { code: "LESSON_INPUT_MISSING", message: error instanceof Error ? error.message : "Invalid lesson", retryable: false, attempt: 0, provider: null };
+    }
+  }
   if (stageId === "COPYABLE_PROMPT") {
     const artifactStatus = String(artifact?.status || "");
     if (artifactStatus !== "PARTIAL" && artifactStatus !== "FAILED") return undefined;
@@ -345,7 +351,7 @@ function stageArtifactFailure(stageId: VideosBatchStageId, artifact: any): Video
 function legacyReadinessIssue(workflow: VideosBatchWorkflowState) {
   for (const stageId of VIDEOS_BATCH_STAGE_ORDER) {
     const stage = workflow.stages[stageId];
-    if (!stage || stage.status !== "ready" || stage.artifact === undefined) continue;
+    if (!stage || stage.status !== "ready" || (stage.artifact === undefined && stageId !== "LESSON_INPUT")) continue;
     const failure = stageArtifactFailure(stageId, stage.artifact);
     if (failure) return { stageId, failure };
   }
@@ -391,11 +397,10 @@ export async function runNext(ctx: StageExecutionContext, registry: StageRegistr
   const current = workflow.stages[stageId] || { status: "pending" as const, revision: 0 };
 
   if (stageId === "LESSON_INPUT") {
-    // `null` counts as missing: LESSON_INPUT has no registered validator, so a
-    // null artifact would otherwise be accepted and the lesson step marked done.
-    if (current.artifact === undefined || current.artifact === null) {
+    const failure = stageArtifactFailure(stageId, current.artifact);
+    if (failure) {
       const updatedAt = nowIso();
-      workflow.stages.LESSON_INPUT = { ...current, status: "failed", error: "LESSON_INPUT artifact is missing", errorInfo: { code: "LESSON_INPUT_MISSING", message: "LESSON_INPUT artifact is missing", retryable: false, attempt: 0, provider: null }, updatedAt };
+      workflow.stages.LESSON_INPUT = { ...current, status: "failed", error: failure.message, errorInfo: failure, updatedAt };
       workflow.updatedAt = updatedAt;
       return workflow;
     }
@@ -591,6 +596,7 @@ export function replaceStageArtifact(
   const previousCompleted = source.completed;
   const current = workflow.stages[stageId] || { status: "pending" as const, revision: 0 };
 
+  if (stageId === "LESSON_INPUT") validateLessonInput(artifact);
   if (stageId === "COURSE_INTRO_SELECTION") validateManualSelection(workflow, artifact);
   if (stageId === "ASSET_CONFIRMATION") {
     const candidateState = workflow.stages.ASSET_CANDIDATES;
