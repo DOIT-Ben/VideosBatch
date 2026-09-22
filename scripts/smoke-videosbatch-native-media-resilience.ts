@@ -254,6 +254,8 @@ try {
   };
 
   async function prepareExecutionSession() {
+    const sessionStoryboard = structuredClone(storyboard);
+    for (const segment of sessionStoryboard.segments) delete (segment as any).nativeShotId;
     const created = await store.createSession({
       title: "VideosBatch native media resilience execution",
       logline: "shot isolation",
@@ -297,9 +299,9 @@ try {
       storyType: "STORY",
       scenes: [{ sequence: 1, knowledgeFocus: "通过观察与比较理解可靠判断", evidence: [] }]
     };
-    await projection.projectFinalStoryboardIntoSeeReel(store, created.id, storyboard, {
+    await projection.projectFinalStoryboardIntoSeeReel(store, created.id, sessionStoryboard, {
       sourceRevision: 1,
-      sourceHash: canonicalModule.canonicalStoryboardSourceHash(storyboard),
+      sourceHash: canonicalModule.canonicalStoryboardSourceHash(sessionStoryboard),
       assetPlan: assetPlanStage,
       screenplay,
       assetConfirmation: confirmationArtifact
@@ -308,11 +310,11 @@ try {
     workflow.stages.ASSET_PLAN = assetPlanStage;
     workflow.stages.ASSET_CANDIDATES = ready(candidateArtifact);
     workflow.stages.ASSET_CONFIRMATION = ready(confirmationArtifact);
-    workflow.stages.FINAL_STORYBOARD = ready(storyboard);
+    workflow.stages.FINAL_STORYBOARD = ready(sessionStoryboard);
     workflow.stages.QUOTE = ready({
       quoteId: `quote_${created.id}`,
       sourceStageRevision: 1,
-      sourceHash: hash(storyboard),
+      sourceHash: hash(sessionStoryboard),
       targetDurationSeconds: 20,
       assetOrder: candidates.items.map((item: any) => item.publicAssetId),
       current: true
@@ -659,6 +661,9 @@ try {
     probeVideoDuration: async () => 10,
     stitchShotVideos: async () => ({ finalVideoUrl: "/media/batch-isolation-final.mp4", signature: "batch-isolation" })
   });
+  await store.updateShot(secondBatchShots[0].id, { videoUrl: oldRender.videoUrl, renders: [oldRender as any] });
+  await runnerModule.runNext({ ...context(batchSession.id, batchWorkflow), workConcurrency: 2, shouldStopWork: () => true }, batchRegistry);
+  assert.equal(batchExecutionCalls.length, 0, "old-batch video URL must not bypass pause and submit a new task");
   const batchExecution = await runnerModule.runNext(context(batchSession.id, batchWorkflow), batchRegistry);
   assert.equal(batchExecution.stages.EXECUTION?.status, "ready");
   assert.deepEqual(
@@ -713,6 +718,76 @@ try {
     "a later attempt without billing evidence must not downgrade a recorded CHARGED"
   );
 
+  // Recover a mixed batch through the durable engine. Poll accepted work first;
+  // an unrelated historical shot must not prevent recovery of the current batch.
+  const { currentExecutionShots } = await import("../src/server/productionRuns/executionRecovery");
+  assert.deepEqual(currentExecutionShots(store.getSession(batchSession.id)!, batchWorkflow).map(shot => shot.id), secondBatchShots.map(shot => shot.id));
+  const [{ RunRepository }, { WorkflowRunHost, workflowVersion }, { ProductionEngine }] = await Promise.all([
+    import("../src/server/productionRuns/repository"), import("../src/server/productionRuns/workflowHost"), import("../src/server/productionRuns/engine")
+  ]);
+  for (const { uncertain, cut, paused } of [false, true].flatMap(uncertain => ["", "result", "projection"].flatMap(cut => (uncertain ? [false] : [false, true]).map(paused => ({ uncertain, cut, paused }))))) {
+    const fixture = await prepareExecutionSession();
+    await store.updateSession(fixture.sessionId, { videosBatchWorkflow: fixture.workflow });
+    const shots = store.getSession(fixture.sessionId)!.shots;
+    await store.updateShot(shots[0].id, { generationTaskId: "accepted-task", generationStartedAt: new Date().toISOString(), status: "generating" });
+    if (uncertain) await store.updateShot(shots[1].id, { generationStartedAt: new Date().toISOString(), status: "generating" });
+    const calls: Array<string | undefined> = [];
+    const registry = mediaModule.createVideosBatchNativeMediaStageRegistry({
+      defaultAssetImageModel: () => "seedream-4-5",
+      generateAssetImage: async () => ({ url: "https://mock.invalid/unused.png", model: "seedream-4-5" as const }),
+      cacheGeneratedImage: async (url: string) => ({ imageUrl: url }),
+      generateShotVideo: async (shot: any, _assets: any, options: any) => {
+        calls.push(options?.taskId);
+        if (!options?.taskId) assert.equal(calls[0], "accepted-task", "known task must be reconciled before submitting new work");
+        return `https://mock.invalid/recovered-${shot.id}.mp4`;
+      },
+      cacheGeneratedVideo: async (url: string) => ({ videoUrl: url, remoteVideoUrl: url }),
+      probeVideoDuration: async () => 10,
+      stitchShotVideos: async () => ({ finalVideoUrl: "/media/unused.mp4", signature: "unused" })
+    });
+    const directory = path.join(tmp, `mixed-${uncertain}-${cut}-${paused}`);
+    let repository = new RunRepository(directory);
+    const run = repository.create({ ownerId: store.getSession(fixture.sessionId)!.ownerUserId || "legacy", sessionId: fixture.sessionId,
+      mode: "next", requestKey: "mixed", inputVersion: workflowVersion(fixture.workflow), stageId: "EXECUTION" });
+    repository.begin(run, "EXECUTION", fixture.workflow); repository.update(run.id, { status: "running", controlIntent: paused ? "pause" : undefined }); repository.close();
+    repository = new RunRepository(directory);
+    const makeHost = () => new WorkflowRunHost(store, registry, repository, async id => context(id, store.getSession(id)!.videosBatchWorkflow), async (_id, _kind, fn) => fn());
+    if (cut) {
+      const item = repository.items(run.id).at(-1)!; item.resumeKnown = true; repository.saveItem(item);
+      const interrupted = makeHost();
+      const checkpoint = store.checkpointWorkflow.bind(store);
+      if (cut === "result") {
+        const persistResult = repository.result.bind(repository);
+        repository.result = (work, result) => {
+          persistResult(work, result);
+          store.checkpointWorkflow = async () => { throw new Error("synthetic persistence outage after raw result"); };
+          throw new Error("synthetic persistence outage after raw result");
+        };
+      } else {
+        const apply = interrupted.apply;
+        interrupted.apply = async (intent, value) => { await apply(intent, value); throw new Error("synthetic outage after JSON projection"); };
+      }
+      await assert.rejects(interrupted.step(run, item));
+      store.checkpointWorkflow = checkpoint;
+      assert.equal(repository.get(run.id)?.status, "running");
+      assert.equal(calls.length, 1);
+      repository.close(); repository = new RunRepository(directory);
+    }
+    const host = makeHost();
+    const engine = new ProductionEngine(repository, host);
+    try {
+    await engine.ready;
+    const completed = await engine.wait(run.id);
+    assert.equal(completed.status, paused ? "paused" : uncertain ? "reconciling" : "succeeded", JSON.stringify(store.getSession(fixture.sessionId)!.videosBatchWorkflow?.stages.EXECUTION));
+    assert.deepEqual(calls, paused || uncertain ? ["accepted-task"] : ["accepted-task", undefined]);
+    if (paused) {
+      await engine.control(run.id, "resume", "resume-recovered");
+      assert.equal((await engine.wait(run.id)).status, "succeeded", "paused not-submitted items must remain resumable");
+      assert.deepEqual(calls, ["accepted-task", undefined]);
+    }
+    assert.ok(store.getShot(shots[0].id)!.videoUrl);
+    } finally { engine.close(); }
+  }
   console.log("VideosBatch native media resilience smoke passed");
 } finally {
   process.chdir(originalCwd);

@@ -1,7 +1,7 @@
 # 自动化生产工作台：阶段计划与验收台账
 
 - 日期：2026-09-22；模式：Execute ADR；实施起点：`09fdde9`。
-- 当前执行：P0 **PASSED**（`27fc2b4`）；P1 **PASSED**；P2—P6 未开始。
+- 当前执行：P0 **PASSED**（`27fc2b4`）；P1 **PASSED**（`fc773ce`）；P2 **PASSED**；P3—P6 未开始。
 - 需求原文：[REQ-20260922-PIPELINE](sources/20260922-automated-production-workspace.md)。
 - 决策：[调度 ADR-0004](0004-durable-production-scheduler.md)、[实时反馈 ADR-0005](0005-realtime-rendering-feedback.md)、[编辑与管理 ADR-0006](0006-multitask-editing-workbench.md)。
 
@@ -34,7 +34,7 @@ flowchart LR
 |---|---|---|---|---|
 | P0 合同与存储验证 | 0004/0005/0006 | 开始实施的用户指令；核对基线 | 规格、状态机和模块边界；Windows/Node SQLite 验证；跨存储恢复原型证明；确认实施方案 | PASSED |
 | P1 持久后台任务 | 0004 | P0 通过 | 异步运行 API、持久 Run/Attempt/Event、单写入投影、同一引擎兼容旧调用、owner 隔离 | PASSED |
-| P2 自动调度与恢复 | 0004 | P1 通过 | 依赖/限额/公平队列、确认关卡、暂停继续、重启恢复、未知受理核对；合成证据后才提高并发 | NOT_STARTED |
+| P2 自动调度与恢复 | 0004 | P1 通过 | 依赖/限额/公平队列、确认关卡、暂停继续、重启恢复、未知受理核对；合成证据后才提高并发 | PASSED |
 | P3 实时反馈与渲染 | 0005 | P1 通过 | SSE/快照续接、局部渲染、真实预览、断线兜底、阅读不被打断 | NOT_STARTED |
 | P4 编辑保存与推进 | 0006 | P2/P3 通过 | 草稿层、编辑占用、版本冲突、指定版本保存并推进、失败补偿、输入保护 | NOT_STARTED |
 | P5 多任务管理 | 0006 | P2/P3/P4 通过 | 增强现有任务页、待处理中心、批量操作、局部镜头控制、上下文保持 | NOT_STARTED |
@@ -154,3 +154,21 @@ SQLite 驱动与运行时兼容性、事件保留窗口、各层并发/队列上
 - P1 REVIEW_3 → ACCEPTANCE → PASSED：`review_runs_p1` 第3轮PASS，两个返工周期结束。最新屏障+崩溃测试 `videosbatch-runs-crash-yzyl0O`，tsc退出0。
 - P1完整离线回归采用隔离副本 `C:/Users/HB/AppData/Local/Temp/videosbatch-p1-verify-_9kzsty1`，不复制.env/data，强制fake。初次缺Git元数据、复制时遗漏Git引号包裹的中文路径、续跑未继承npm的tsx PATH，均为验证环境问题，已修复；按原 verify:offline 顺序保留成功前缀并从失败命令续跑，所有检查最终通过。日志：verify-p1.log、verify-p1-remaining.log、verify-p1-final.log；末段退出0，新故障恢复证据 `videosbatch-runs-crash-MLNg7A`。没有修改测试断言来绕过环境失败。
 - P1交付边界：后台运行与恢复已通过隔离集成/旧接口回归；P2调度控制、P3实时界面、P4编辑和P5管理未开始。无真实Provider或生产验收。
+
+- P2 NOT_STARTED → PROPOSED → IN_PROGRESS：`fc773ce`已推送且工作区干净，开始调度控制、依赖并行与恢复验证。
+
+
+### P2 验证与审查（进行中）
+
+- 调度器按阶段释放槽位；默认并发从1验证到2，独立项目及媒体项共享全局/owner/session/Provider工作上限2。队列全局100、单owner50；超限429，优先级仅等待中0—2且老任务随等待升序得到机会。这里是本地合成限制，不是生产容量结论。
+- 原生资产/镜头循环接入有界依赖执行；失败阻断依赖项，环/缺失依赖失败关闭，结果按原sequence排序。纯runner调用未传工作并发时仍为1。暂停阻止新提交，已知taskId或已生成结果允许核对/收集；恢复时不把未知受理当作可重发。
+- 持久控制receipt区分暂停、继续、停止后续、排队优先级，重放不改变后续新操作；必要人工关卡继续保留。未提供远端取消按钮。
+- `smoke:production-scheduling` 退出0（`videosbatch-scheduler-IJ3QU5`）：五项目混合状态、并发峰值2、依赖失败/环、分层工作限额、owner队列上限、暂停继续停止重放与重开台账。
+- `VIDEOSBATCH_TEST_CONCURRENCY=2 npm run smoke:videosbatch-native-media-stages` 退出0，实际原生stage适配器内资产并发峰值2；默认串行/native-resilience/production-runs/tsc也通过。新版恢复控制意图的补充测试正在核验。
+
+- P2 IN_PROGRESS → REVIEW_1 → REWORK_1：`review_storage_p0` 指出旧批次URL绕过暂停、混合批次恢复过严、no-op控制未存回执、恢复绕过容量四项问题。改为当前批次可复用render/已知taskId判定、先只轮询已知项再派未提交项、所有成功控制持久receipt、入队和恢复共用事务内容量检查。
+- 补充原生阶段+持久engine集成测试：已知任务与未提交项混合时先poll后新提交；有受理未知项时poll已知项后保持reconciling；历史批次不参与当前恢复。旧批次URL在暂停时生成调用为0。控制no-op迟到重放不恢复新暂停、满队列恢复429且保留paused。隔离模拟适配器，无真实Provider。
+- P2 REVIEW_2 → REWORK_2：复审发现恢复扫描的PARTIAL结果再次退出后丢失resumeKnown语义。现在结果回放/已投影恢复/正常完成共用状态判定，控制意图优先，未派发项继续、受理未知保持核对、真实失败才失败。
+- 新增9组混合批次路径（未提交/受理未知/暂停组合；无故障、raw result后持久化故障、JSON投影后故障），关闭并重开控制库；已知任务只查询一次、未提交项至多一次、暂停后可继续。这里是持久化故障注入，不冒充真实进程退出；P1既有5组子进程退出回归另行保留。过程中修正暂停的未派发镜头错误分类，避免恢复按钮被不可重试状态挡住。native-resilience、scheduling退出0；tsc检查中。
+
+- P2 REVIEW_3 → ACCEPTANCE → PASSED：review_storage_p0 第3轮PASS，2轮返工结束。最新native-resilience 9组、scheduling（videosbatch-scheduler-lL6CeM）、production-runs 5组真实子进程退出（videosbatch-runs-crash-oC5woB）、tsc/specs/secrets及diff检查均通过。需求FR/TR-0004对应调度恢复；Windows本地模拟证据，无真实Provider或生产变更。

@@ -30,6 +30,8 @@ try {
   const sessionId = created.id;
 
   const imageCalls: string[] = [];
+  const concurrency = Number(process.env.VIDEOSBATCH_TEST_CONCURRENCY) === 2 ? 2 : 1;
+  let activeImages = 0; let peakImages = 0;
   const videoCalls: string[] = [];
   const stitchCalls: string[] = [];
 
@@ -37,6 +39,8 @@ try {
     defaultAssetImageModel: () => "seedream-4-5",
     generateAssetImage: async (asset: any, model: any) => {
       imageCalls.push(asset.id);
+      activeImages++; peakImages = Math.max(peakImages, activeImages);
+      await new Promise(resolve => setTimeout(resolve, 20)); activeImages--;
       return {
         url: `https://mock.invalid/images/${asset.id}.png`,
         composedPrompt: asset.prompt,
@@ -118,7 +122,7 @@ try {
 
   const makeCtx = (state: any) => {
     const session = store.getSession(sessionId)!;
-    return {
+    return { workConcurrency: concurrency,
       session,
       workflow: state,
       assets: store.snapshot().assets,
@@ -315,7 +319,8 @@ try {
   assert.equal(job.finalVideoUrl, stitchArtifact.finalVideoUrl);
   assert.equal(job.finalVideoSignature, "sig-native-media");
 
-  console.log("VideosBatch native media stages smoke passed");
+  assert.equal(peakImages, concurrency, "real native stage adapter must honor work concurrency");
+  console.log(`VideosBatch native media stages smoke passed (image concurrency ${peakImages})`);
 } finally {
   process.chdir(originalCwd);
   await rm(tmp, { recursive: true, force: true });

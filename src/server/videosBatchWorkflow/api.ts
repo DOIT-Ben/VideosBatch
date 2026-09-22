@@ -235,6 +235,16 @@ export function registerVideosBatchWorkflowApi(
     try { res.status(202).json(await engine.start(session.id, req.body.mode, req.body.requestId)); }
     catch (error) { sendCaughtError(res, (error as any)?.status || 500, error, "RUN_START_FAILED"); }
   });
+  app.post("/api/sessions/:sessionId/videosbatch/runs/:runId/control", async (req, res) => {
+    const session = requireSession(store, req, res, options); if (!session) return;
+    const run = repository.get(routeParam(req, "runId"));
+    if (!run || run.sessionId !== session.id) return sendWorkflowError(res, 404, { code: "RUN_NOT_FOUND", message: "任务不存在" });
+    const { action, requestId, priority = 0 } = req.body || {};
+    if (!["pause", "resume", "stop", "priority"].includes(action) || typeof requestId !== "string" || !/^[A-Za-z0-9_:-]{1,100}$/.test(requestId)
+      || !Number.isInteger(priority) || priority < 0 || priority > 2) return sendWorkflowError(res, 400, { code: "RUN_CONTROL_INVALID", message: "任务操作无效" });
+    try { res.json(await engine.control(run.id, action, requestId, priority)); }
+    catch (error) { sendCaughtError(res, (error as any)?.status || 500, error, "RUN_CONTROL_FAILED"); }
+  });
 
   app.post(
     "/api/sessions/:sessionId/videosbatch/lesson/parse",

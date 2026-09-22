@@ -6,6 +6,7 @@ import { contentHash } from "../videosBatchWorkflow/canonicalStoryboard";
 import type { ProductionRun } from "../../shared/productionRuns";
 import type { ProjectionIntent } from "./projectionJournal";
 import type { RunRepository, WorkItem } from "./repository";
+import { WorkLimiter } from "./scheduling";
 
 export function workflowVersion(workflow: VideosBatchWorkflowState) {
   return contentHash({ intentId: workflow.productionIntentId, currentStage: workflow.currentStage, completed: workflow.completed, stages: Object.fromEntries(
@@ -13,6 +14,7 @@ export function workflowVersion(workflow: VideosBatchWorkflowState) {
 }
 
 export class WorkflowRunHost {
+  readonly limiter = new WorkLimiter();
   constructor(readonly store: CinemaStore, readonly registry: StageRegistry, readonly repository: RunRepository,
     readonly context: (sessionId: string) => Promise<StageExecutionContext | undefined>,
     readonly exclusive: <T>(sessionId: string, kind: string, fn: () => Promise<T>) => Promise<T>) {}
@@ -32,14 +34,27 @@ export class WorkflowRunHost {
       if (!ctx || (ctx.session.ownerUserId || "legacy") !== run.ownerId) throw new Error("RUN_SESSION_MISSING");
       if (workflowVersion(ctx.workflow) !== run.inputVersion) throw new Error("RUN_INPUT_CHANGED");
       const item = previous || this.repository.begin(run, ctx.workflow.currentStage, ctx.workflow);
+      const recoveryOnly = Boolean(previous?.resumeKnown);
       const frozen = previous ? this.repository.journal.readResult(item.inputHash) as VideosBatchWorkflowState : ctx.workflow;
       const stageId = frozen.currentStage;
       const registry = { ...this.registry };
+      const shouldStopWork = () => {
+        const latest = this.repository.get(run.id);
+        return Boolean(recoveryOnly || latest?.controlIntent || ["pause_requested", "cancel_requested", "cancelled"].includes(latest?.status || ""));
+      };
+      const scheduleWork = <T>(provider: string, operation: () => Promise<T>) => this.limiter.run({ owner: run.ownerId, session: run.sessionId, provider }, async () => {
+        if (shouldStopWork() && provider !== "video-resume") throw Object.assign(new Error("任务已暂停，尚未提交"), { code: "WORK_NOT_SUBMITTED", retryable: true });
+        return operation();
+      });
       if (item.resultHash && registry[stageId]) {
         const result = this.repository.journal.readResult(item.resultHash) as StageResult;
         registry[stageId] = { ...registry[stageId]!, execute: async () => result };
+      } else if (registry[stageId] && !["ASSET_CANDIDATES", "EXECUTION"].includes(stageId)) {
+        const definition = registry[stageId]!;
+        registry[stageId] = { ...definition, execute: context => scheduleWork("text-audio", () => definition.execute(context)) };
       }
       const workflow = await runNext({ ...ctx, workflow: frozen, session: { ...ctx.session, videosBatchWorkflow: frozen },
+        scheduleWork, shouldStopWork, workConcurrency: 2,
         resultCheckpoint: async result => this.repository.result(item, result),
         checkpoint: async next => {
           if (next.stages[stageId]?.status === "running") {
@@ -55,7 +70,7 @@ export class WorkflowRunHost {
       }, registry);
       const failed = workflow.stages[stageId]?.status === "failed" || workflow.stages[stageId]?.status === "stale";
       this.repository.finish(item, failed ? "failed" : "succeeded");
-      return { workflow, failed, progressed: workflow.currentStage !== stageId || workflow.completed };
+      return { workflow, failed, progressed: workflow.currentStage !== stageId || workflow.completed, recoveryOnly };
     });
   }
 }

@@ -7,6 +7,7 @@ import { acquireProductionWriter } from "./writerLock";
 export interface WorkItem {
   id: string; runId: string; stageId: string; inputHash: string;
   status: "running" | "succeeded" | "failed"; resultHash?: string;
+  resumeKnown?: boolean;
 }
 
 /** Small control transactions only; generated content lives in hashed files. */
@@ -22,6 +23,7 @@ export class RunRepository {
     this.journal.db.exec(`
       CREATE TABLE IF NOT EXISTS runs(id TEXT PRIMARY KEY, ownerId TEXT NOT NULL, sessionId TEXT NOT NULL, requestKey TEXT NOT NULL, requestHash TEXT NOT NULL, body TEXT NOT NULL, UNIQUE(ownerId,sessionId,requestKey));
       CREATE TABLE IF NOT EXISTS run_requests(ownerId TEXT NOT NULL, sessionId TEXT NOT NULL, requestKey TEXT NOT NULL, runId TEXT NOT NULL, mode TEXT NOT NULL, PRIMARY KEY(ownerId,sessionId,requestKey));
+      CREATE TABLE IF NOT EXISTS run_controls(runId TEXT NOT NULL, requestId TEXT NOT NULL, command TEXT NOT NULL, result TEXT NOT NULL, PRIMARY KEY(runId,requestId));
       CREATE TABLE IF NOT EXISTS work_items(id TEXT PRIMARY KEY, runId TEXT NOT NULL, body TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS attempts(id TEXT PRIMARY KEY, itemId TEXT NOT NULL, state TEXT NOT NULL, startedAt TEXT NOT NULL, finishedAt TEXT);
       CREATE TABLE IF NOT EXISTS run_events(ownerId TEXT NOT NULL, sequence INTEGER NOT NULL, body TEXT NOT NULL, PRIMARY KEY(ownerId,sequence));
@@ -61,6 +63,7 @@ export class RunRepository {
         this.alias(input, active.id);
         return active;
       }
+      this.checkCapacity(input.ownerId);
       const time = new Date().toISOString();
       const run: ProductionRun = { id: `run_${randomUUID()}`, ownerId: input.ownerId, sessionId: input.sessionId, mode: input.mode,
         inputVersion: input.inputVersion, stageId: input.stageId, status: "queued", priority: 0, completedItems: 0, createdAt: time, updatedAt: time };
@@ -85,6 +88,27 @@ export class RunRepository {
   private emit(run: ProductionRun) {
     const row = this.journal.db.prepare("SELECT COALESCE(MAX(sequence),0)+1 AS next FROM run_events WHERE ownerId=?").get(run.ownerId)!;
     this.journal.db.prepare("INSERT INTO run_events VALUES(?,?,?)").run(run.ownerId, Number(row.next), JSON.stringify(run));
+  }
+  controlResult(runId: string, requestId: string, command: string): ProductionRun | undefined {
+    const row = this.journal.db.prepare("SELECT command,result FROM run_controls WHERE runId=? AND requestId=?").get(runId, requestId);
+    if (!row) return undefined;
+    if (row.command !== command) throw Object.assign(new Error("请求标识已用于不同控制操作"), { status: 409 });
+    return JSON.parse(String(row.result));
+  }
+  applyControl(id: string, requestId: string, command: string, patch: Partial<ProductionRun>) {
+    return this.journal.transaction(() => {
+      const saved = this.controlResult(id, requestId, command); if (saved) return saved;
+      const run = this.get(id); if (!run) throw new Error("RUN_NOT_FOUND");
+      if (patch.status === "queued" && !["queued", "running"].includes(run.status)) this.checkCapacity(run.ownerId);
+      const next = { ...run, ...patch, updatedAt: new Date().toISOString() };
+      this.journal.db.prepare("UPDATE runs SET body=? WHERE id=?").run(JSON.stringify(next), id); this.emit(next);
+      this.journal.db.prepare("INSERT INTO run_controls VALUES(?,?,?,?)").run(id, requestId, command, JSON.stringify(next));
+      return next;
+    });
+  }
+  private checkCapacity(ownerId: string) {
+    const queue = this.list().filter(run => ["queued", "running", "pause_requested", "cancel_requested"].includes(run.status));
+    if (queue.length >= 100 || queue.filter(run => run.ownerId === ownerId).length >= 50) throw Object.assign(new Error("任务队列已满，请等待已有任务完成"), { status: 429 });
   }
   events(ownerId: string, after: number): RunEvent[] {
     return this.journal.db.prepare("SELECT sequence,body FROM run_events WHERE ownerId=? AND sequence>? ORDER BY sequence LIMIT 200")

@@ -13,6 +13,7 @@ export interface ProductionRun {
   priority: number;
   completedItems: number;
   message?: string;
+  controlIntent?: "pause" | "stop";
 }
 export interface RunEvent { sequence: number; run: ProductionRun }
 export const terminalRun = (status: RunStatus) => ["succeeded", "failed", "cancelled"].includes(status);

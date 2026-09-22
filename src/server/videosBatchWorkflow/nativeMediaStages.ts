@@ -1,3 +1,4 @@
+import { runDependencyTasks, shotDependencies } from "../productionRuns/scheduling";
 import { randomUUID } from "node:crypto";
 import type { Asset, AssetImageModel, AssetPromptAdaptation, Shot, ShotRender } from "../../shared/types";
 import {
@@ -1174,8 +1175,15 @@ export function createVideosBatchNativeMediaStageRegistry(
       const resultItems: NativeAssetCandidateItem[] = [];
       const failedItems: Array<NativeAssetCandidateItem & { error: VideosBatchMediaError }> = [];
       let maxAttempt = 0;
-      for (let index = 0; index < items.length; index += 1) {
-        const planned = items[index] as any;
+      await runDependencyTasks(items.map((planned: any, index: number) => ({
+        id: text(planned?.assetKey), dependencies: [],
+        blocked: async (reason: string) => {
+          const error = mediaError(Object.assign(new Error(reason === "paused" ? "任务已暂停，尚未提交" : "依赖未就绪"), { code: "WORK_NOT_SUBMITTED", retryable: true }), "WORK_NOT_SUBMITTED", 0);
+          const item: NativeAssetCandidateItem = { assetKey: text(planned?.assetKey), publicAssetId: `${projectId}-A${String(index + 1).padStart(3, "0")}`, candidateAssetIds: [], required: planned?.required !== false, status: "failed", attempt: 0, error };
+          resultItems.push(item); failedItems.push({ ...item, error });
+        },
+        execute: async () => {
+        const perform = async () => {
         const key = text(planned?.assetKey);
         const projected = projectedByKey.get(key);
         const publicId = text(projected?.publicAssetId) || `${projectId}-A${String(index + 1).padStart(3, "0")}`;
@@ -1246,7 +1254,12 @@ export function createVideosBatchNativeMediaStageRegistry(
           resultItems.push(item);
           failedItems.push({ ...item, error: info });
         }
-      }
+        return resultItems.find(item => item.assetKey === text(planned?.assetKey))?.status === "ready";
+        };
+        return ctx.scheduleWork ? ctx.scheduleWork("image", perform) : perform();
+        }
+      })), ctx.workConcurrency || 1, ctx.shouldStopWork);
+      resultItems.sort((a, b) => items.findIndex((item: any) => item.assetKey === a.assetKey) - items.findIndex((item: any) => item.assetKey === b.assetKey));
 
       const requiredFailures = resultItems.filter((item) => item.required && item.status === "failed");
       const status: NativeAssetCandidatesArtifact["status"] = requiredFailures.length
@@ -1301,7 +1314,17 @@ export function createVideosBatchNativeMediaStageRegistry(
       const nativeShotIds: string[] = [];
       let maxAttempt = 0;
 
-      for (const [batchIndex, initial] of batchShots.entries()) {
+      await runDependencyTasks(batchShots.map((initial, batchIndex) => ({
+        id: initial.id,
+        inFlight: Boolean(initial.generationTaskId || newestReadyRenderId(initial, batch.batchId)),
+        dependencies: shotDependencies(initial, batchShots, store.snapshot().assets),
+        blocked: async (reason: string) => {
+          items.push({ shotId: initial.id, sequence: batchIndex + 1, status: reason === "paused" ? "failed" : "blocked", attempt: 0,
+            error: mediaError(Object.assign(new Error(reason === "paused" ? "任务已暂停，尚未提交" : "依赖镜头未完成"), { code: "WORK_NOT_SUBMITTED", retryable: true }), "WORK_NOT_SUBMITTED", 0) });
+          nativeShotIds.push(initial.id);
+        },
+        execute: async () => {
+        const perform = async () => {
         const sequence = batchIndex + 1;
         let current = initial;
         nativeShotIds.push(current.id);
@@ -1344,7 +1367,7 @@ export function createVideosBatchNativeMediaStageRegistry(
             };
             items.push(item);
             renderIds.push(reusable);
-            continue;
+            return true;
           }
 
           if (!current.generationTaskId && isUnknownSubmission(current.error || current.videosBatchError)) {
@@ -1368,7 +1391,9 @@ export function createVideosBatchNativeMediaStageRegistry(
           let submittedPrompt: string | undefined;
           let charged: H3ChargedEvidence | undefined;
           const remoteUrl = assertRealMediaUrl(
-            await deps.generateShotVideo(current, activeAssets, {
+            await (async () => {
+              if (!current.generationTaskId && ctx.shouldStopWork?.()) throw Object.assign(new Error("任务已暂停，尚未提交"), { code: "WORK_NOT_SUBMITTED", retryable: true });
+              return deps.generateShotVideo(current, activeAssets, {
               taskId: current.generationTaskId,
               onProviderReferenceBindingsPrepared: async (bindings) => {
                 const persisted = await store.updateShot(current.id, {
@@ -1405,7 +1430,8 @@ export function createVideosBatchNativeMediaStageRegistry(
                 if (!persisted) throw new Error(`Failed to persist provider task id for native shot ${current.id}`);
                 current = persisted;
               }
-            }),
+              });
+            })(),
             `Shot ${current.index}`
           );
           const renderId = `render_vb_${randomUUID().slice(0, 8)}`;
@@ -1503,7 +1529,14 @@ export function createVideosBatchNativeMediaStageRegistry(
           };
           items.push(item);
         }
-      }
+        return items.find(item => item.shotId === initial.id)?.status === "ready";
+        };
+        return ctx.scheduleWork ? ctx.scheduleWork(initial.generationTaskId || newestReadyRenderId(initial, batch.batchId) ? "video-resume" : "video", perform) : perform();
+        }
+      })), ctx.workConcurrency || 1, ctx.shouldStopWork);
+      items.sort((a, b) => a.sequence - b.sequence);
+      nativeShotIds.splice(0, nativeShotIds.length, ...items.map(item => item.shotId));
+      renderIds.splice(0, renderIds.length, ...items.flatMap(item => item.renderId ? [item.renderId] : []));
 
       const status = executionStatus(items);
       return {

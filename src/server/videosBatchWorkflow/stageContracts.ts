@@ -22,6 +22,10 @@ export interface StageExecutionContext {
   checkpoint?: (workflow: VideosBatchWorkflowState) => Promise<void>;
   /** Persist a returned result before validation/native projection can fail. */
   resultCheckpoint?: (result: StageResult) => Promise<void>;
+  /** Optional bounded work scheduler; absent in pure runner callers. */
+  scheduleWork?: <T>(provider: string, operation: () => Promise<T>) => Promise<T>;
+  workConcurrency?: number;
+  shouldStopWork?: () => boolean;
 }
 
 export interface StageResult<T = unknown> {

@@ -31,9 +31,13 @@ const app = express(); app.use(express.json());
 const engine = registerVideosBatchWorkflowApi(app, store, registry, { authorizeSession: (session, req) => session.ownerUserId === req.header("x-user") });
 await engine.ready;
 if (mode === "child") {
-  if (fault === "result") {
+  if (["result", "pause-result", "stop-result"].includes(fault)) {
     const save = engine.repository.result.bind(engine.repository);
-    engine.repository.result = (item, value) => { save(item, value); process.exit(73); };
+    engine.repository.result = (item, value) => {
+      save(item, value);
+      if (fault !== "result") engine.repository.update(item.runId, { status: fault === "pause-result" ? "pause_requested" : "cancel_requested", controlIntent: fault === "pause-result" ? "pause" : "stop" });
+      process.exit(73);
+    };
   }
   if (fault === "projection") {
     const apply = engine.host.apply;
@@ -115,7 +119,7 @@ if (mode === "child") {
     assert.notEqual(afterRace.id, old.id); await engine.wait(afterRace.id); assert.equal(count, 4);
   } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); engine.close(); process.chdir(cwd); }
   const evidence = mkdtempSync(path.join(os.tmpdir(), "videosbatch-runs-crash-"));
-  for (const point of ["unknown", "result", "projection"]) {
+  for (const point of ["unknown", "result", "projection", "pause-result", "stop-result"]) {
     const dir = mkdtempSync(path.join(evidence, point));
     const child = (at: string) => spawnSync(process.execPath, ["--import", "tsx", fileURLToPath(import.meta.url), "child", dir, at], { cwd, encoding: "utf8", timeout: 15_000, windowsHide: true });
     const crash = child(point); assert.equal(crash.status, 73, crash.stderr);
@@ -124,9 +128,11 @@ if (mode === "child") {
     assert.equal(readFileSync(path.join(dir, "calls.txt"), "utf8").trim().split("\n").length, 1, "recovery must not submit again");
     if (point === "unknown") assert.equal(outcome.run.status, "reconciling");
     else {
-      assert.ok(["succeeded", "waiting_input"].includes(outcome.run.status), outcome.run.status);
+      if (point === "pause-result") assert.equal(outcome.run.status, "paused");
+      else if (point === "stop-result") assert.equal(outcome.run.status, "cancelled");
+      else assert.ok(["succeeded", "waiting_input"].includes(outcome.run.status), outcome.run.status);
       assert.equal(outcome.workflow.stages.COURSE_INTRO_CANDIDATES.revision, 1);
     }
   }
-  console.log(`production runs passed: async/compat dedup, owner isolation, 3 crash boundaries without resubmit; ${evidence}`);
+  console.log(`production runs passed: async/compat dedup, owner isolation, 5 crash scenarios without resubmit; ${evidence}`);
 }
