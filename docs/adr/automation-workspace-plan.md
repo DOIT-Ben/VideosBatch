@@ -1,7 +1,7 @@
 # 自动化生产工作台：阶段计划与验收台账
 
 - 日期：2026-09-22；模式：Execute ADR；实施起点：`09fdde9`。
-- 当前执行：P0 **PASSED**（`27fc2b4`）；P1 **PASSED**（`fc773ce`）；P2 **PASSED**（`d221cfc`）；P3 **PASSED**；P4—P6 未开始。
+- 当前执行：P0 **PASSED**（`27fc2b4`）；P1 **PASSED**（`fc773ce`）；P2 **PASSED**（`d221cfc`）；P3 **PASSED**（`5a6277b`）；P4 **PASSED**；P5—P6 未开始。
 - 需求原文：[REQ-20260922-PIPELINE](sources/20260922-automated-production-workspace.md)。
 - 决策：[调度 ADR-0004](0004-durable-production-scheduler.md)、[实时反馈 ADR-0005](0005-realtime-rendering-feedback.md)、[编辑与管理 ADR-0006](0006-multitask-editing-workbench.md)。
 
@@ -36,7 +36,7 @@ flowchart LR
 | P1 持久后台任务 | 0004 | P0 通过 | 异步运行 API、持久 Run/Attempt/Event、单写入投影、同一引擎兼容旧调用、owner 隔离 | PASSED |
 | P2 自动调度与恢复 | 0004 | P1 通过 | 依赖/限额/公平队列、确认关卡、暂停继续、重启恢复、未知受理核对；合成证据后才提高并发 | PASSED |
 | P3 实时反馈与渲染 | 0005 | P1 通过 | SSE/快照续接、局部渲染、真实预览、断线兜底、阅读不被打断 | PASSED |
-| P4 编辑保存与推进 | 0006 | P2/P3 通过 | 草稿层、编辑占用、版本冲突、指定版本保存并推进、失败补偿、输入保护 | NOT_STARTED |
+| P4 编辑保存与推进 | 0006 | P2/P3 通过 | 草稿层、编辑占用、版本冲突、指定版本保存并推进、失败补偿、输入保护 | PASSED |
 | P5 多任务管理 | 0006 | P2/P3/P4 通过 | 增强现有任务页、待处理中心、批量操作、局部镜头控制、上下文保持 | NOT_STARTED |
 | P6 综合体验验收 | 全部 | P1—P5 通过 | 故障故事验收、性能数据、浏览器/键盘/响应式证据、离线回归、回退演练 | NOT_STARTED |
 
@@ -183,3 +183,18 @@ SQLite 驱动与运行时兼容性、事件保留窗口、各层并发/队列上
 - 真实浏览器IAB，隔离fake/fake，2026-09-22：任务ses_7ea0b01d；断开并重启唯一测试服务，出现恢复提示后自行恢复，第一候选展开保持（展开按钮9→8且重连后仍8）。第二标签暂停，第一标签状态同步为已暂停，HTML scrollTop前后均1114.6666259765625，展开状态不变。故事编辑器追加P3实时事件输入保护测试，第二标签再次暂停触发事件，文本尾部保留、selectionStart/End均740、activeElement仍为textarea。状态、内容与草稿没有相互覆盖。这里只是定向交互证据，P6高频性能/完整响应式矩阵仍待测。
 
 - P3补充突发浏览器证据：第二标签6轮继续/暂停耗时3537ms，读取隔离台账最后3537ms窗口为36事件、覆盖3218ms；第一标签编辑器文本末尾不变、selectionStart/End=740、焦点不变。P3 ACCEPTANCE → PASSED。最终build/tsc通过，specs/secrets、旧workspace/task-experience和events定向回归通过。P6的60秒固定负载及p95仍未执行。
+- P3提交 `5a6277b` 已推送origin/master，工作区干净；P4 NOT_STARTED → PROPOSED → IN_PROGRESS。按ADR0006实施服务端草稿/占用、CAS发布和指定版本推进。
+
+### P4实施合同细化
+
+- 编辑草稿独立SQLite记录，draftId稳定、instanceId区分页面，clientVersion单调；相同版本不同内容冲突。占用45秒续期，但过期未发布草稿仍阻止自动派单；另一个页面不能释放自己的实例以外的占用。页面退出尽力释放活跃租约但保留草稿，重开可恢复；新的编辑实例可恢复已离线草稿，活跃的另一实例保持隔离。
+- 保存使用持久operationId/requestId和expectedRevision，先记录投影意图再发布；保留失效下游成果。运行中的冻结输入可完成保存后，新的发布在同一项目写屏障内应用，旧运行退役，防止旧结果回盖。
+- 保存只发布；保存并继续记录精确版本的持久意图，native投影成功后才能入队。保存成功而入队失败返回明确状态，重试仅补入队。恢复和请求回放均不重复增revision或提交。
+
+- P4 REVIEW_1 → REWORK_1：review_storage_p0 REQUEST_CHANGES：复制标签页缺独立副本、同步前丢弃404无法退出、分镜原生ID规范化后伪冲突。修复草稿写入串行与丢弃屏障、404幂等丢弃、独立副本入口，以及发布回执携带持久规范化成果。首次API+三个真实子进程退出测试通过，浏览器Ctrl+S保存后焦点保留，selectionStart/End=73，未启动后续生成；继续补交互测试。
+
+- P4 REWORK_1 交互复验：隔离 browser fixture 使用实际 React useStageDraft、接口为内存替身。立即进入并丢弃：editing=false、writes=0、activeDrafts=0；复制标签草稿创建独立副本后保存：publishes=1、saved=true、conflict=false，结果包含规范化 nativeShotId；保存后 700ms 延迟返回期间继续输入并卸载，重新挂载仍保留“保存期间的新内容，必须保留”，显式冲突待对照。API+prepared/json/queue 三组真实退出恢复、tsc、specs、secrets 再次通过。真实整应用 Ctrl+S 证据与替身 hook 证据分别记录，不宣称真实 Provider。
+
+- P4 REVIEW_2 → REWORK_2：复审指出已同步v1、本机v2尚未debounce时丢弃仍409。将同实例显式discard定义为关闭不晚于所丢弃版本，保留该版本墓碑，迟到PUT不能重新建立占用；普通lease释放仍要求精确版本。新增真实API v1→丢弃v2→迟到PUT v2拒绝测试。进入最后一轮复验，未跳过审查上限。
+
+- P4 REVIEW_3 → ACCEPTANCE → PASSED：review_storage_p0 第3轮PASS，2轮返工结束。最后补回归真实在途 ASSET_PLAN 旧冻结请求与 STORY_SCRIPT 保存竞争：发布等待旧请求、旧成果保留为stale、新正文未覆盖。API与三个真实退出窗口（最新 videosbatch-editing-WJzF2A）通过；build/tsc、旧workspace/task-experience、events/scheduling、specs/secrets、diff通过。启动恢复只执行一次，避免每次派单等待其他项目正在发布的写屏障。全离线与大负载矩阵留在P6，真实Provider/生产未执行。

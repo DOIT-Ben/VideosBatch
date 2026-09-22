@@ -3,6 +3,7 @@ import type { ProductionRun, RunEvent, RunMode } from "../../shared/productionRu
 import { terminalRun } from "../../shared/productionRuns";
 import { ProjectionJournal } from "./projectionJournal";
 import { acquireProductionWriter } from "./writerLock";
+import { EditingStore } from "./editingStore";
 
 export interface WorkItem {
   id: string; runId: string; stageId: string; inputHash: string;
@@ -14,6 +15,7 @@ export interface WorkItem {
 export class RunRepository {
   readonly journal: ProjectionJournal;
   private readonly releaseWriter: () => void;
+  readonly editing: EditingStore;
   constructor(directory: string) {
     const [major, minor] = process.versions.node.split(".").map(Number);
     if (major < 22 || (major === 22 && minor < 16)) throw new Error("Production runs require Node >=22.16");
@@ -30,6 +32,7 @@ export class RunRepository {
       CREATE INDEX IF NOT EXISTS runs_session ON runs(sessionId);
       CREATE INDEX IF NOT EXISTS items_run ON work_items(runId);
     `);
+    this.editing = new EditingStore(this.journal);
   }
   get(id: string): ProductionRun | undefined {
     const row = this.journal.db.prepare("SELECT body FROM runs WHERE id=?").get(id);

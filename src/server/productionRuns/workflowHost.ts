@@ -32,6 +32,7 @@ export class WorkflowRunHost {
     return this.exclusive(run.sessionId, `production:${run.id}`, async () => {
       const ctx = await this.context(run.sessionId);
       if (!ctx || (ctx.session.ownerUserId || "legacy") !== run.ownerId) throw new Error("RUN_SESSION_MISSING");
+      if (!previous && this.repository.editing.blocked(run.sessionId, ctx.workflow.currentStage)) throw new Error("EDIT_HOLD");
       if (workflowVersion(ctx.workflow) !== run.inputVersion) throw new Error("RUN_INPUT_CHANGED");
       const item = previous || this.repository.begin(run, ctx.workflow.currentStage, ctx.workflow);
       const recoveryOnly = Boolean(previous?.resumeKnown);
@@ -47,7 +48,7 @@ export class WorkflowRunHost {
       };
       const shouldStopWork = () => {
         const latest = this.repository.get(run.id);
-        return Boolean(recoveryOnly || latest?.controlIntent || ["pause_requested", "cancel_requested", "cancelled"].includes(latest?.status || ""));
+        return Boolean(recoveryOnly || this.repository.editing.blocked(run.sessionId, stageId) || latest?.controlIntent || ["pause_requested", "cancel_requested", "cancelled"].includes(latest?.status || ""));
       };
       const scheduleWork = <T>(provider: string, operation: () => Promise<T>) => this.limiter.run({ owner: run.ownerId, session: run.sessionId, provider }, async () => {
         if (shouldStopWork() && provider !== "video-resume") throw Object.assign(new Error("任务已暂停，尚未提交"), { code: "WORK_NOT_SUBMITTED", retryable: true });

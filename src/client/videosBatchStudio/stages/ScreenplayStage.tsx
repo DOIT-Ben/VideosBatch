@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { DraftNotice, useStageDraft } from "../useStageDraft";
+import { useStageDraft } from "../useStageDraft";
 import * as Accordion from "@radix-ui/react-accordion";
 import { ChevronDown, Pencil, Save, X } from "lucide-react";
 import { updateScreenplaySceneFields } from "../contentModel";
@@ -29,7 +29,7 @@ export function ScreenplayStage({
 }) {
   const scenes = Array.isArray(artifact?.scenes) ? artifact.scenes : [];
   const duration = Number(artifact?.targetDurationSeconds || 0);
-  const { editing, setEditing, draft, setDraft, conflict, storageFailed, captureSave, completeSave } = useStageDraft<any>("screenplay", artifact);
+  const { editing, setEditing, draft, setDraft, conflict, notice, publish, saving, saved, captureSave, completeSave } = useStageDraft<any>("screenplay", artifact);
   // Progressive disclosure: collapsed by default except the first scene, so a
   // 12-scene script reads as a table of contents instead of a wall of text.
   // Editing forces every scene open; leaving edit mode restores the user's set.
@@ -37,7 +37,9 @@ export function ScreenplayStage({
 
 
   const draftScenes = Array.isArray(draft?.scenes) ? draft.scenes : [];
-  const save = async () => {
+  const save = async (advance = false) => {
+    if (saving || saved) return;
+    if (publish) { if (!conflict) await publish(advance); return; }
     if (conflict) return;
     const submitted = captureSave();
     try {
@@ -51,6 +53,7 @@ export function ScreenplayStage({
 
   return (
     <StagePage
+      onKeyDown={event => { if (editing && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s" && (event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLInputElement)) { event.preventDefault(); void save(); } }}
       stepId="screenplay"
       title={artifact?.title || "正式视频剧本"}
       lead="逐场景写出画面、对白和声音，作为后续分镜依据。"
@@ -58,15 +61,16 @@ export function ScreenplayStage({
       actions={(editing ? draftScenes.length : scenes.length) && onSaveArtifact ? (
         editing ? (
           <>
-            <button type="button" className="vbs-primary" disabled={busy || conflict} onClick={() => void save()}><Save size={15} /> 保存视频剧本</button>
-            <button type="button" className="vbs-secondary" disabled={busy} onClick={() => setEditing(false)}><X size={15} /> 丢弃草稿</button>
+            <button type="button" className="vbs-primary" disabled={busy || saving || saved || conflict} onClick={() => void save()}><Save size={15} /> 保存视频剧本</button>
+            {publish && <button type="button" className="vbs-secondary" disabled={busy || saving || saved || conflict} onClick={() => void save(true)}>保存并继续</button>}
+            <button type="button" className="vbs-secondary" disabled={busy || saving} onClick={() => setEditing(false)}><X size={15} /> 丢弃草稿</button>
           </>
         ) : (
           <button type="button" className="vbs-secondary" disabled={busy} onClick={() => setEditing(true)}><Pencil size={15} /> 编辑视频剧本</button>
         )
       ) : null}
     >
-      {editing && <DraftNotice conflict={conflict} storageFailed={storageFailed} />}
+      {notice}
       {!(editing ? draftScenes.length : scenes.length) ? <StageEmpty>正式视频剧本尚未生成。</StageEmpty> : (
         <Accordion.Root
           className="vbs-storyboard-accordion vbs-screenplay-accordion"

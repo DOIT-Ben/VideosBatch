@@ -116,7 +116,7 @@ export function AssetGalleryStage({
           {needsConfirmation && (
             <div className="vbs-stage-confirm-bar">
               <div><strong>确认最终资产</strong><span>确认后，后续剧本与分镜只使用这里选定的图片。</span></div>
-              <button type="button" className="vbs-primary" disabled={busy || !readyToConfirm} onClick={onConfirmAll}>确认全部资产 →</button>
+              <button type="button" className="vbs-primary" disabled={busy || !readyToConfirm} onClick={onConfirmAll}>确认并继续 →</button>
             </div>
           )}
         </>

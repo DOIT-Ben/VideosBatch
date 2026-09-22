@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ReactNode, KeyboardEventHandler } from "react";
 import { productStepIndexLabel, productStepName, type VideosBatchProductStepId } from "../stageModel";
 
 /**
@@ -21,7 +21,8 @@ export function StagePage({
   actions,
   aside,
   className,
-  children
+  children,
+  onKeyDown
 }: {
   stepId: VideosBatchProductStepId;
   title: ReactNode;
@@ -32,6 +33,7 @@ export function StagePage({
   aside?: ReactNode;
   className?: string;
   children?: ReactNode;
+  onKeyDown?: KeyboardEventHandler<HTMLElement>;
 }) {
   const asideContent = aside ?? (facts || actions ? (
     <>
@@ -48,7 +50,7 @@ export function StagePage({
   );
 
   return (
-    <section className={`vbs-stage-page${className ? ` ${className}` : ""}`}>
+    <section onKeyDown={onKeyDown} className={`vbs-stage-page${className ? ` ${className}` : ""}`}>
       <header className="vbs-stage-slate">
         <span className="vbs-stage-numeral" aria-hidden="true">{productStepIndexLabel(stepId)}</span>
         <div className="vbs-stage-heading">

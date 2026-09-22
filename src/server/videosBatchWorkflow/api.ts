@@ -11,6 +11,7 @@ import { RunRepository } from "../productionRuns/repository";
 import { WorkflowRunHost, workflowVersion } from "../productionRuns/workflowHost";
 import { ProductionEngine } from "../productionRuns/engine";
 import { registerRunEvents } from "../productionRuns/events";
+import { EditingService, editableStages } from "../productionRuns/editingService";
 import { MAX_LESSON_FILE_BYTES, parseLessonDocument } from "./lessonDocumentParser";
 import type { StageExecutionContext, StageRegistry } from "./stageContracts";
 import { reconcileVideosBatchReadiness, replaceStageArtifact, restartFrom, retryLineageIssues } from "./runner";
@@ -222,6 +223,43 @@ export function registerVideosBatchWorkflowApi(
   const repository = new RunRepository(path.join(DATA_DIR, "production-runs"));
   const host = new WorkflowRunHost(store, registry, repository, id => reconciledWorkflowContext(store, id), withWorkflowFlight);
   const engine = new ProductionEngine(repository, host);
+  const editing = new EditingService(engine);
+  // Startup recovery precedes dispatch once. Live publishing owns its session
+  // barrier; scanning it on every tick would make other projects wait on it.
+  let recoveredEdits: Promise<void> | undefined;
+  engine.beforeDispatch = () => recoveredEdits ||= editing.recover();
+  app.get("/api/sessions/:sessionId/videosbatch/drafts", (req, res) => {
+    const session = requireSession(store, req, res, options); if (!session) return;
+    res.setHeader("Cache-Control", "no-store");
+    res.json(repository.editing.drafts(session.id).filter(draft => draft.active && draft.ownerId === (session.ownerUserId || "legacy")));
+  });
+  app.put("/api/sessions/:sessionId/videosbatch/drafts/:draftId", (req, res) => {
+    const session = requireSession(store, req, res, options); if (!session) return;
+    const body = req.body || {};
+    const validId = (value: unknown) => typeof value === "string" && /^[a-zA-Z0-9_-]{1,120}$/.test(value);
+    if (!validId(routeParam(req, "draftId")) || !validId(body.instanceId) || !editableStages.includes(body.stageId)
+      || !Number.isSafeInteger(body.clientVersion) || body.clientVersion < 1 || !Number.isSafeInteger(body.baseRevision) || body.baseRevision < 0
+      || typeof body.baseSignature !== "string" || !Object.hasOwn(body, "value") || JSON.stringify(body).length > 500000) return res.status(400).json({ error: { message: "草稿格式不正确或内容过长" } });
+    try { res.json(repository.editing.sync({ id: routeParam(req, "draftId"), sessionId: session.id, ownerId: session.ownerUserId || "legacy",
+      stageId: body.stageId, instanceId: body.instanceId, clientVersion: body.clientVersion, baseRevision: body.baseRevision, baseSignature: body.baseSignature, value: body.value })); }
+    catch (error) { sendCaughtError(res, (error as any).status || 409, error); }
+  });
+  app.post("/api/sessions/:sessionId/videosbatch/drafts/:draftId/release", (req, res) => {
+    const session = requireSession(store, req, res, options); if (!session) return;
+    const draft = repository.editing.draft(routeParam(req, "draftId"));
+    if (!draft || draft.sessionId !== session.id || draft.ownerId !== (session.ownerUserId || "legacy")) return res.status(404).json({ error: { message: "草稿不存在" } });
+    try { repository.editing.release(draft.id, req.body?.instanceId, req.body?.clientVersion, req.body?.discard === true); res.json({ released: true }); }
+    catch (error) { sendCaughtError(res, (error as any).status || 409, error); }
+  });
+  app.post("/api/sessions/:sessionId/videosbatch/edits", async (req, res) => {
+    const session = requireSession(store, req, res, options); if (!session) return;
+    const body = req.body || {};
+    if (!editableStages.includes(body.stageId) || typeof body.requestId !== "string" || body.requestId.length < 1 || body.requestId.length > 120
+      || !Number.isSafeInteger(body.expectedRevision) || body.expectedRevision < 0 || typeof body.continue !== "boolean"
+      || body.artifact == null || (body.draftId && (typeof body.instanceId !== "string" || !Number.isSafeInteger(body.clientVersion)))) return res.status(400).json({ error: { message: "保存请求不完整" } });
+    try { res.json(await editing.publish(session.id, session.ownerUserId || "legacy", body)); }
+    catch (error) { sendCaughtError(res, (error as any).status || 400, error); }
+  });
   registerRunEvents(app, store, engine, options.authorizeSession || defaultAuthorizeSession);
   app.get("/api/sessions/:sessionId/videosbatch/previews/:hash", (req, res) => {
     const session = requireSession(store, req, res, options); if (!session) return;

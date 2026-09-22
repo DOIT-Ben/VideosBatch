@@ -10,6 +10,7 @@ export class ProductionEngine {
   private lastOwner = "";
   private stopped = false;
   readonly ready: Promise<void>;
+  beforeDispatch?: () => Promise<void>;
   constructor(readonly repository: RunRepository, readonly host: WorkflowRunHost, readonly concurrency = 2) {
     this.ready = this.recover();
     void this.ready.then(() => this.wake()).catch(() => { /* recovery leaves visible reconciling states */ });
@@ -75,10 +76,16 @@ export class ProductionEngine {
   }
   private async tick() {
     if (this.stopped) return;
+    try { await this.beforeDispatch?.(); } catch { return; }
+    if (this.stopped) return;
     const candidates = this.repository.list().filter(item => item.status === "queued" && !this.active.has(item.id));
     candidates.sort((a, b) => (Date.parse(a.updatedAt) - a.priority * 1000) - (Date.parse(b.updatedAt) - b.priority * 1000)
       || Number(a.ownerId === this.lastOwner) - Number(b.ownerId === this.lastOwner));
     for (const run of candidates) {
+      if (this.repository.editing.blocked(run.sessionId, run.stageId as any)) {
+        this.repository.update(run.id, { status: "waiting_input", message: "编辑中的草稿尚未发布，自动推进已暂缓。" });
+        continue;
+      }
       if (this.active.size >= this.concurrency) break;
       if ([...this.active.values()].filter(active => active.ownerId === run.ownerId).length >= 2) continue;
       if ([...this.active.values()].some(active => active.sessionId === run.sessionId)) continue;
@@ -98,9 +105,9 @@ export class ProductionEngine {
       this.repository.update(run.id, { status,
         inputVersion: workflowVersion(workflow), stageId: workflow.currentStage, completedItems: run.completedItems + (progressed ? 1 : 0),
         message: failed ? "此步骤失败，请查看项目中的原因" : undefined });
-    } catch {
+    } catch (error) {
       if (this.repository.get(run.id)?.status !== "cancelled") {
-        this.repository.update(run.id, { status: "reconciling", message: "执行或保存未确认完成，已暂停后续工作，请核对项目状态。" });
+        this.repository.update(run.id, { status: error instanceof Error && error.message === "EDIT_HOLD" ? "waiting_input" : "reconciling", message: error instanceof Error && error.message === "EDIT_HOLD" ? "草稿尚未发布，自动推进已暂缓。" : "执行或保存未确认完成，已暂停后续工作，请核对项目状态。" });
       }
     } finally { this.active.delete(run.id); this.wake(); }
   }

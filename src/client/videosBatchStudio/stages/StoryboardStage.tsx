@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Accordion, Tabs } from "radix-ui";
 import { Check, ChevronDown, Copy, Pencil, Save, X } from "lucide-react";
 import { StageEmpty, StageFact, StagePage } from "../components/StagePage";
-import { DraftNotice, useStageDraft } from "../useStageDraft";
+import { useStageDraft } from "../useStageDraft";
 import {
   storyboardSegmentFieldDefinitions,
   storyboardSegmentSubshots,
@@ -41,7 +41,7 @@ export function StoryboardStage({
 }) {
   const segments = Array.isArray(artifact?.segments) ? artifact.segments : [];
   const promptSegments = Array.isArray(copyablePromptArtifact?.segments) ? copyablePromptArtifact.segments : [];
-  const { editing, setEditing, draft, setDraft, conflict, storageFailed, captureSave, completeSave } = useStageDraft<any>("storyboard", artifact);
+  const { editing, setEditing, draft, setDraft, conflict, notice, publish, saving, saved, captureSave, completeSave } = useStageDraft<any>("storyboard", artifact);
   const [copiedKey, setCopiedKey] = useState("");
 
 
@@ -49,7 +49,9 @@ export function StoryboardStage({
     ? (editing ? draft : artifact).segments
     : [];
 
-  const save = async () => {
+  const save = async (advance = false) => {
+    if (saving || saved) return;
+    if (publish) { if (!conflict) await publish(advance); return; }
     if (conflict) return;
     const submitted = captureSave();
     try {
@@ -77,8 +79,9 @@ export function StoryboardStage({
 
   const editActions = editing ? (
     <>
-      <button type="button" className="vbs-primary" disabled={busy || conflict} onClick={() => void save()}><Save size={15} /> 保存分镜</button>
-      <button type="button" className="vbs-secondary" disabled={busy} onClick={() => setEditing(false)}><X size={15} /> 丢弃草稿</button>
+      <button type="button" className="vbs-primary" disabled={busy || saving || saved || conflict} onClick={() => void save()}><Save size={15} /> 保存分镜</button>
+            {publish && <button type="button" className="vbs-secondary" disabled={busy || saving || saved || conflict} onClick={() => void save(true)}>保存并继续</button>}
+      <button type="button" className="vbs-secondary" disabled={busy || saving} onClick={() => setEditing(false)}><X size={15} /> 丢弃草稿</button>
     </>
   ) : onSaveArtifact && segments.length ? (
     <button type="button" className="vbs-secondary" disabled={busy} onClick={() => setEditing(true)}><Pencil size={15} /> 编辑分镜</button>
@@ -86,6 +89,7 @@ export function StoryboardStage({
 
   return (
     <StagePage
+      onKeyDown={event => { if (editing && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s" && (event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLInputElement)) { event.preventDefault(); void save(); } }}
       stepId="storyboard"
       title={artifact?.title || "最终分镜"}
       lead="逐镜头确认画面、动作和声音。"
@@ -97,7 +101,7 @@ export function StoryboardStage({
       }
       actions={editActions}
     >
-      {editing && <DraftNotice conflict={conflict} storageFailed={storageFailed} />}
+      {notice}
       <Tabs.Root className="vbs-storyboard-tabs" defaultValue="structure">
         <Tabs.List className="vbs-tabs-list" aria-label="视频分镜视图">
           <Tabs.Trigger className="vbs-tab-trigger" value="structure">分镜结构</Tabs.Trigger>

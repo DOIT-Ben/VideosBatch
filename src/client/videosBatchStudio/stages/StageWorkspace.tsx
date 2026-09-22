@@ -25,6 +25,7 @@ export function StageWorkspace({
   workflow,
   stepId,
   busy,
+  editingBusy,
   onParseLessonFile,
   parsedLessonDraft,
   onParsedLessonDraftChange,
@@ -45,6 +46,7 @@ export function StageWorkspace({
   workflow?: VideosBatchWorkflowState;
   stepId: VideosBatchProductStepId;
   busy?: boolean;
+  editingBusy?: boolean;
   onParseLessonFile?: (file: File) => Promise<VideosBatchParsedLessonDocument>;
   parsedLessonDraft?: VideosBatchLessonDraft;
   onParsedLessonDraftChange?: (draft: VideosBatchLessonDraft | undefined) => void;
@@ -77,7 +79,7 @@ export function StageWorkspace({
     case "intro":
       return <IntroCandidatesStage artifact={stage("COURSE_INTRO_CANDIDATES")} selectedIntroId={workflow?.selectedIntroId} busy={busy} onSelect={onSelectIntro} />;
     case "story":
-      return <StoryStage artifact={stage("STORY_SCRIPT")} busy={busy} onSaveContent={onSaveStory} />;
+      return <StoryStage artifact={stage("STORY_SCRIPT")} busy={editingBusy} onSaveContent={onSaveStory} />;
     case "asset-plan":
       return <AssetPlanStage artifact={stage("ASSET_PLAN")} />;
     case "assets":
@@ -95,14 +97,14 @@ export function StageWorkspace({
         />
       );
     case "screenplay":
-      return <ScreenplayStage artifact={stage("SCREENPLAY")} busy={busy} onSaveArtifact={onSaveScreenplay} />;
+      return <ScreenplayStage artifact={stage("SCREENPLAY")} busy={editingBusy} onSaveArtifact={onSaveScreenplay} />;
     case "storyboard":
       return (
         <StoryboardStage
           artifact={stage("FINAL_STORYBOARD")}
           copyablePromptArtifact={stage("COPYABLE_PROMPT")}
           copyablePromptStatus={workflow?.stages.COPYABLE_PROMPT?.status}
-          busy={busy}
+          busy={editingBusy}
           onSaveArtifact={onSaveStoryboard}
         />
       );

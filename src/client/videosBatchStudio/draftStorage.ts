@@ -1,4 +1,5 @@
-export type DraftRecord<T> = { base: string; value: T; id?: string };
+import type { EditRequest } from "../../shared/editing";
+export type DraftRecord<T> = { base: string; value: T; id?: string; draftId?: string; clientVersion?: number; baseRevision?: number; pendingRequest?: EditRequest; saved?: boolean };
 export const draftKey = (sessionId: string, stage: string) => `videosbatch:edit-draft:${sessionId}:${stage}`;
 export const draftSignature = (value: unknown) => JSON.stringify(value) ?? "undefined";
 

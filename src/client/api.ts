@@ -30,6 +30,7 @@ import type {
 } from "../shared/types";
 import type { VideosBatchStageId, VideosBatchWorkflowState } from "../shared/videosBatchWorkflow";
 import type { ProductionRun, RunPacket } from "../shared/productionRuns";
+import type { ServerDraft, EditRequest, EditResponse } from "../shared/editing";
 import { networkDownMessage } from "./i18n";
 
 /**
@@ -144,7 +145,7 @@ async function fetchWithRetry(url: string, options?: RequestInit): Promise<Respo
             : typeof body?.message === "string"
               ? body.message
               : `${response.status} ${response.statusText}`;
-        throw new Error(message);
+        throw Object.assign(new Error(message), { status: response.status, code: errorBody?.code });
       }
       if (idempotent) {
         const etag = response.headers.get("etag");
@@ -283,6 +284,12 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ artifact, ...(expectedRevision === undefined ? {} : { expectedRevision }) })
     }),
+  editingDrafts: (sessionId: string) => request<ServerDraft[]>(`/api/sessions/${sessionId}/videosbatch/drafts`),
+  syncEditingDraft: (sessionId: string, draft: Omit<ServerDraft, "ownerId" | "sessionId" | "active" | "leaseUntil" | "updatedAt">) =>
+    request<ServerDraft>(`/api/sessions/${sessionId}/videosbatch/drafts/${draft.id}`, { method: "PUT", body: JSON.stringify(draft) }),
+  releaseEditingDraft: (sessionId: string, id: string, instanceId: string, clientVersion: number, discard = false) =>
+    request<{ released: boolean }>(`/api/sessions/${sessionId}/videosbatch/drafts/${id}/release`, { method: "POST", keepalive: true, body: JSON.stringify({ instanceId, clientVersion, discard }) }),
+  publishEdit: (sessionId: string, edit: EditRequest) => request<EditResponse>(`/api/sessions/${sessionId}/videosbatch/edits`, { method: "POST", body: JSON.stringify(edit) }),
   restartVideosBatchFrom: (sessionId: string, stageId: VideosBatchStageId) =>
     request<VideosBatchWorkflowState>(`/api/sessions/${sessionId}/videosbatch/restart-from/${stageId}`, { method: "POST", body: "{}" }),
   retryVideosBatchStage: (

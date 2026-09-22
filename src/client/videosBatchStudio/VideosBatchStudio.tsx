@@ -13,7 +13,7 @@ import { ModeBanner } from "./components/ModeBanner";
 import { StudioErrorBoundary } from "./components/StudioErrorBoundary";
 import { WorkflowProgressRail } from "./components/WorkflowProgressRail";
 import { StageWorkspace } from "./stages/StageWorkspace";
-import { DraftSessionContext } from "./useStageDraft";
+import { DraftSessionContext, DraftWorkflowContext } from "./useStageDraft";
 import { RunFeedback } from "../productionCenter/RunFeedback";
 import { useProductionRun } from "../productionCenter/useRunEvents";
 import type { VideosBatchLessonDraft } from "./stages/LessonStage";
@@ -249,9 +249,15 @@ function VideosBatchStudioView({
     }
   }
 
+  async function publishConfirmation(stageId: "COURSE_INTRO_SELECTION" | "ASSET_CONFIRMATION", artifact: unknown) {
+    const result = await api.publishEdit(sessionId, { stageId, artifact, expectedRevision: workflow?.stages[stageId]?.revision ?? 0, requestId: crypto.randomUUID(), continue: true });
+    if (result.continuation.status === "pending" || result.continuation.status === "blocked") setError(result.continuation.reason || "确认已保存，尚未开始，请继续执行。");
+    return result.workflow;
+  }
+
   async function selectIntro(candidate: any) {
     if (!workflow) return;
-    const next = await perform("select-intro", () => api.saveVideosBatchArtifact(sessionId, "COURSE_INTRO_SELECTION", {
+    const next = await perform("select-intro", () => publishConfirmation("COURSE_INTRO_SELECTION", {
       selectedIntroId: candidate.id,
       selectionMode: "user_selected",
       selectionReason: "用户在流程制作界面确认此课程导入方案。",
@@ -295,7 +301,7 @@ function VideosBatchStudioView({
       setError(err instanceof Error ? err.message : "每个资产都需要选择一张候选图后才能确认。");
       return;
     }
-    const next = await perform("confirm-assets", () => api.saveVideosBatchArtifact(sessionId, "ASSET_CONFIRMATION", artifact));
+    const next = await perform("confirm-assets", () => publishConfirmation("ASSET_CONFIRMATION", artifact));
     if (next) setSelectedStepId(deriveCurrentProductStep(next));
   }
 
@@ -408,6 +414,7 @@ function VideosBatchStudioView({
             selectedAssetIds={selectedAssetIds}
             workflow={workflow}
             stepId={selectedStepId}
+            editingBusy={Boolean(busy)}
             busy={Boolean(busy) || serverRunning}
             onParseLessonFile={(file) => parseLessonDocumentFile(sessionId, file)}
             parsedLessonDraft={parsedLessonDraft}
@@ -467,7 +474,9 @@ export function VideosBatchStudio(props: VideosBatchStudioProps) {
     // the header that normally owns that entry point lives inside the boundary.
     <StudioErrorBoundary key={props.sessionId} onBackToSessions={props.onBackToSessions}>
       <DraftSessionContext.Provider value={props.sessionId}>
+      <DraftWorkflowContext.Provider value={{ workflow: props.workflow, onChange: props.onWorkflowChange }}>
       <VideosBatchStudioView {...props} />
+      </DraftWorkflowContext.Provider>
       </DraftSessionContext.Provider>
     </StudioErrorBoundary>
   );

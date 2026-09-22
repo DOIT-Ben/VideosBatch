@@ -1,4 +1,4 @@
-import { DraftNotice, useStageDraft } from "../useStageDraft";
+import { useStageDraft } from "../useStageDraft";
 import { Pencil, Save, X } from "lucide-react";
 import { Clamp } from "../components/Clamp";
 import { StageEmpty, StageFact, StagePage } from "../components/StagePage";
@@ -13,9 +13,11 @@ export function StoryStage({
   onSaveContent?: (content: string) => Promise<void> | void;
 }) {
   const content = String(artifact?.content || "");
-  const { editing, setEditing, draft, setDraft, conflict, storageFailed, captureSave, completeSave } = useStageDraft("story", content);
+  const { editing, setEditing, draft, setDraft, conflict, notice, publish, saving, saved, captureSave, completeSave } = useStageDraft("story", content);
 
-  const save = async () => {
+  const save = async (advance = false) => {
+    if (saving || saved) return;
+    if (publish) { if (!conflict) await publish(advance); return; }
     if (!draft.trim() || conflict) return;
     const submitted = captureSave();
     try {
@@ -32,6 +34,7 @@ export function StoryStage({
 
   return (
     <StagePage
+      onKeyDown={event => { if (editing && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s" && (event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLInputElement)) { event.preventDefault(); void save(); } }}
       stepId="story"
       title={artifact?.title || "故事文稿"}
       lead="课程导入故事的完整文稿，可直接编辑。保存后后续内容都以这一版为准。"
@@ -39,15 +42,16 @@ export function StoryStage({
       actions={onSaveContent && hasContent ? (
         editing ? (
           <>
-            <button type="button" className="vbs-primary" disabled={busy || conflict || !draft.trim()} onClick={() => void save()}><Save size={15} /> 保存正文</button>
-            <button type="button" className="vbs-secondary" disabled={busy} onClick={() => setEditing(false)}><X size={15} /> 丢弃草稿</button>
+            <button type="button" className="vbs-primary" disabled={busy || saving || saved || conflict || !draft.trim()} onClick={() => void save()}><Save size={15} /> 保存正文</button>
+            {publish && <button type="button" className="vbs-secondary" disabled={busy || saving || saved || conflict} onClick={() => void save(true)}>保存并继续</button>}
+            <button type="button" className="vbs-secondary" disabled={busy || saving} onClick={() => setEditing(false)}><X size={15} /> 丢弃草稿</button>
           </>
         ) : (
           <button type="button" className="vbs-secondary" disabled={busy} onClick={() => setEditing(true)}><Pencil size={15} /> 编辑故事正文</button>
         )
       ) : null}
     >
-      {editing && <DraftNotice conflict={conflict} storageFailed={storageFailed} />}
+      {notice}
       {artifact?.truthfulnessNote ? (
         <div className="vbs-note-card"><strong>真实性说明</strong><p>{artifact.truthfulnessNote}</p></div>
       ) : null}

@@ -81,7 +81,7 @@ export function IntroCandidatesStage({
                       {candidate.truthfulnessCategory && <small>{String(candidate.truthfulnessCategory)}</small>}
                       {recommended && <div className="vbs-reason">{recommended}</div>}
                       <button type="button" className={selected ? "vbs-confirmed" : "vbs-primary"} disabled={busy || selected} onClick={() => onSelect(candidate)}>
-                        {selected ? "✓ 已锁定" : "选择此方案"}
+                        {selected ? "✓ 已锁定" : "确认并继续"}
                       </button>
                     </article>
                   );
