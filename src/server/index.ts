@@ -61,6 +61,7 @@ import {
 } from "./volcAsr";
 import { CinemaStore } from "./store";
 import { registerVideosBatchWorkflowApi } from "./videosBatchWorkflow/api";
+import { acquireProductionWriter } from "./productionRuns/writerLock";
 import {
   createVideosBatchRuntimeStageRegistry,
   getVideosBatchProviderReadiness,
@@ -154,6 +155,8 @@ const storyboardMediaDir = path.join(mediaDir, "codex-storyboards");
 
 const app = express();
 app.set("trust proxy", 1);
+// Acquire before load(), which may itself persist interrupted workflow states.
+acquireProductionWriter(path.resolve(process.cwd(), "data", "production-runs"));
 const store = new CinemaStore();
 await store.load();
 const serviceStartedAt = Date.now();

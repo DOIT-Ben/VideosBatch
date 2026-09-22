@@ -339,6 +339,10 @@ export interface VideosBatchStageState<T = unknown> {
 
 export interface VideosBatchWorkflowState {
   version: 1;
+  /** Atomic marker for durable result projection; not a business revision. */
+  productionOperationId?: string;
+  /** Explicit reset/restart identity, so identical text is still a new intent. */
+  productionIntentId?: string;
   currentStage: VideosBatchStageId;
   completed: boolean;
   /** The canonical flow locks exactly one course intro before story generation. */

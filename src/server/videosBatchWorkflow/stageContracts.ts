@@ -20,9 +20,11 @@ export interface StageExecutionContext {
   store?: CinemaStore;
   /** Durable stage boundary; failures must stop execution before external side effects. */
   checkpoint?: (workflow: VideosBatchWorkflowState) => Promise<void>;
+  /** Persist a returned result before validation/native projection can fail. */
+  resultCheckpoint?: (result: StageResult) => Promise<void>;
 }
 
-interface StageResult<T = unknown> {
+export interface StageResult<T = unknown> {
   artifact: T;
   /** Optional execution evidence persisted by the runner with the artifact. */
   attempts?: number;

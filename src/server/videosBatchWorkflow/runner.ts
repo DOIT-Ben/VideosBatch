@@ -466,6 +466,7 @@ async function executeNext(ctx: StageExecutionContext, registry: StageRegistry):
   let failedResultState: VideosBatchStageState<any> | undefined;
   try {
     stageResult = await definition.execute(runningCtx);
+    await ctx.resultCheckpoint?.(stageResult);
     const validation = definition.validate(stageResult.artifact, runningCtx);
     const withMeta = stateWithResultMeta({ ...current, artifact: stageResult.artifact }, stageResult);
     failedResultState = withMeta;

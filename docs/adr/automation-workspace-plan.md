@@ -1,7 +1,7 @@
 # 自动化生产工作台：阶段计划与验收台账
 
 - 日期：2026-09-22；模式：Execute ADR；实施起点：`09fdde9`。
-- 当前执行：P0 **PASSED**；P1—P6 未开始。
+- 当前执行：P0 **PASSED**（`27fc2b4`）；P1 **PASSED**；P2—P6 未开始。
 - 需求原文：[REQ-20260922-PIPELINE](sources/20260922-automated-production-workspace.md)。
 - 决策：[调度 ADR-0004](0004-durable-production-scheduler.md)、[实时反馈 ADR-0005](0005-realtime-rendering-feedback.md)、[编辑与管理 ADR-0006](0006-multitask-editing-workbench.md)。
 
@@ -33,7 +33,7 @@ flowchart LR
 | 阶段 | 对应 ADR | 进入条件 | 交付与通过条件 | 状态 |
 |---|---|---|---|---|
 | P0 合同与存储验证 | 0004/0005/0006 | 开始实施的用户指令；核对基线 | 规格、状态机和模块边界；Windows/Node SQLite 验证；跨存储恢复原型证明；确认实施方案 | PASSED |
-| P1 持久后台任务 | 0004 | P0 通过 | 异步运行 API、持久 Run/Attempt/Event、单写入投影、同一引擎兼容旧调用、owner 隔离 | NOT_STARTED |
+| P1 持久后台任务 | 0004 | P0 通过 | 异步运行 API、持久 Run/Attempt/Event、单写入投影、同一引擎兼容旧调用、owner 隔离 | PASSED |
 | P2 自动调度与恢复 | 0004 | P1 通过 | 依赖/限额/公平队列、确认关卡、暂停继续、重启恢复、未知受理核对；合成证据后才提高并发 | NOT_STARTED |
 | P3 实时反馈与渲染 | 0005 | P1 通过 | SSE/快照续接、局部渲染、真实预览、断线兜底、阅读不被打断 | NOT_STARTED |
 | P4 编辑保存与推进 | 0006 | P2/P3 通过 | 草稿层、编辑占用、版本冲突、指定版本保存并推进、失败补偿、输入保护 | NOT_STARTED |
@@ -135,3 +135,22 @@ SQLite 驱动与运行时兼容性、事件保留窗口、各层并发/队列上
 - P0 REVIEW_1 → REWORK_1：独立审查发现备份测试未包含 JSON 成果。修改为停写窗口共同备份 DB/results/JSON，断言恢复的 revision/operationId/artifact 和重放不重复；方法命名明确只备份控制库。
 - P0 REWORK_1 → REVIEW_2 → ACCEPTANCE → PASSED：`review_storage_p0` 第2轮 PASS；`npm run smoke:production-storage` 退出0（证据 `videosbatch-storage-ZgzRvc`）；`npm run build`、tsc、specs均通过。接受范围是单写入者进程退出恢复，未宣称断电/生产证据。
 - 运行时合同：执行模块要求 Node >=22.16（本机22.22，CI与Docker配置均为22系列）；P1 接线增加启动版本检查。同步 SQLite 仅用于小型控制事务，性能在P6测量。
+
+- P1 NOT_STARTED → PROPOSED → IN_PROGRESS：基线 `27fc2b4`，P0通过且工作区干净。实现者开始持久运行、既有API适配与owner隔离。
+
+
+### P1 验证与审查（进行中）
+
+- 新增 shared Run 状态合同、SQLite Run/WorkItem/Attempt/事件记录；HTTP 异步入口返回202，旧入口等候同一个执行器。返回结果在校验/投影前保存以供恢复；JSON与operationId一起检查点，崩溃后恢复结果不重复调用执行器。
+- `smoke:production-runs`：新旧入口交叠只执行一次、重复请求回同一run、跨owner拒绝、非法mode拒绝；三个真实子进程退出点（受理未知/结果已返回/JSON已投影）重启无重复提交。证据临时目录 `videosbatch-runs-crash-MAdH8D`，退出0。
+- `smoke:adr0003-api`、`smoke:videosbatch-api-retry`、stage-registry-injection、tsc通过。新增长寿命数据库后，原测试显式关闭engine再清理临时目录。
+- 单写入锁在服务端 store.load 前取得；SQLite原语不承担多进程业务调度。Provider取消、限额、公平调度和编辑并发属于后续阶段，尚未宣称完成。
+
+- P1 IN_PROGRESS → REVIEW_1：独立审查者 `review_runs_p1`。最新单写入保护使用独立SQLite连接持有文件锁，`smoke:production-writer`证明第二进程拒绝、SIGKILL后可重新取得锁；最新运行恢复证据 `videosbatch-runs-crash-hf2e1C`。secrets/specs通过。
+
+- P1 REVIEW_1 → REWORK_1：三项发现为活跃run复用遗漏requestId映射、不同mode被吞掉、明确restart被历史reconciling挡住。新增持久request alias、mode冲突409、显式新意图ID与旧运行归档；普通重放不解除未知受理保护。增加完成/重启重放与显式重启测试，退出0（`videosbatch-runs-crash-9ynVLl`）。
+- P1 REVIEW_2 → REWORK_2：迟到的旧任务异常可把已cancelled改回reconciling。异常路径保留取消终态；新增真实session flight保存屏障，旧worker排在reset之后，确认新项目仍能执行。第3轮审查待结论。
+
+- P1 REVIEW_3 → ACCEPTANCE → PASSED：`review_runs_p1` 第3轮PASS，两个返工周期结束。最新屏障+崩溃测试 `videosbatch-runs-crash-yzyl0O`，tsc退出0。
+- P1完整离线回归采用隔离副本 `C:/Users/HB/AppData/Local/Temp/videosbatch-p1-verify-_9kzsty1`，不复制.env/data，强制fake。初次缺Git元数据、复制时遗漏Git引号包裹的中文路径、续跑未继承npm的tsx PATH，均为验证环境问题，已修复；按原 verify:offline 顺序保留成功前缀并从失败命令续跑，所有检查最终通过。日志：verify-p1.log、verify-p1-remaining.log、verify-p1-final.log；末段退出0，新故障恢复证据 `videosbatch-runs-crash-MLNg7A`。没有修改测试断言来绕过环境失败。
+- P1交付边界：后台运行与恢复已通过隔离集成/旧接口回归；P2调度控制、P3实时界面、P4编辑和P5管理未开始。无真实Provider或生产验收。

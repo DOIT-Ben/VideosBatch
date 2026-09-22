@@ -34,7 +34,7 @@ const entered = new Promise<void>((r) => { enter = r; });
 const gate = new Promise<void>((r) => { release = r; });
 registry.COURSE_INTRO_CANDIDATES!.execute = async (ctx) => { enter(); await gate; return execute(ctx); };
 const app = express(); app.use(express.json());
-registerVideosBatchWorkflowApi(app, store, registry, { authorizeSession: (session, req) => session.ownerUserId === req.header("x-test-user") || allowLocalSessionReview(req, {}) });
+const productionEngine = registerVideosBatchWorkflowApi(app, store, registry, { authorizeSession: (session, req) => session.ownerUserId === req.header("x-test-user") || allowLocalSessionReview(req, {}) });
 const server = app.listen(0, "127.0.0.1"); await once(server, "listening");
 const address = server.address() as { port: number };
 const session = await store.createSession({ title: "isolated", shotCount: 0 } as any, "owner-a");
@@ -83,6 +83,7 @@ try {
   console.log("ADR0003 API smoke passed: trust boundary, distinct starts, invalid lesson preservation");
 } finally {
   release(); server.closeAllConnections(); await new Promise<void>((r) => server.close(() => r()));
+  productionEngine.close();
   clearTimeout(timeout); process.chdir(cwd);
   if (path.dirname(tmp) !== os.tmpdir() || !path.basename(tmp).startsWith("videosbatch-adr0003-api-")) throw new Error("Unexpected test directory");
   await rm(tmp, { recursive: true });

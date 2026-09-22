@@ -90,7 +90,7 @@ try {
 
   const app = express();
   app.use(express.json());
-  apiModule.registerVideosBatchWorkflowApi(app, store, registry, {
+  const productionEngine = apiModule.registerVideosBatchWorkflowApi(app, store, registry, {
     authorizeSession: (session, req) => !session.ownerUserId || session.ownerUserId === req.header("x-test-user")
   });
   const server = app.listen(0, "127.0.0.1");
@@ -405,6 +405,7 @@ try {
   } finally {
     server.close();
     await once(server, "close");
+    productionEngine.close();
   }
 
   console.log("VideosBatch retry API smoke passed");

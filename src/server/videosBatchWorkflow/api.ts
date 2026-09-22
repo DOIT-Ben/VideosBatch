@@ -5,10 +5,14 @@ import {
   type VideosBatchLessonSource,
   type VideosBatchStageId
 } from "../../shared/videosBatchWorkflow";
-import type { CinemaStore } from "../store";
+import { DATA_DIR, type CinemaStore } from "../store";
+import path from "node:path";
+import { RunRepository } from "../productionRuns/repository";
+import { WorkflowRunHost, workflowVersion } from "../productionRuns/workflowHost";
+import { ProductionEngine } from "../productionRuns/engine";
 import { MAX_LESSON_FILE_BYTES, parseLessonDocument } from "./lessonDocumentParser";
 import type { StageExecutionContext, StageRegistry } from "./stageContracts";
-import { reconcileVideosBatchReadiness, replaceStageArtifact, restartFrom, retryLineageIssues, runAll, runNext } from "./runner";
+import { reconcileVideosBatchReadiness, replaceStageArtifact, restartFrom, retryLineageIssues } from "./runner";
 import { contentHash } from "./canonicalStoryboard";
 import { sanitizeProviderDiagnosticText } from "./providerDiagnostics";
 
@@ -214,6 +218,24 @@ export function registerVideosBatchWorkflowApi(
   registry: StageRegistry,
   options: VideosBatchWorkflowApiOptions = {}
 ) {
+  const repository = new RunRepository(path.join(DATA_DIR, "production-runs"));
+  const host = new WorkflowRunHost(store, registry, repository, id => reconciledWorkflowContext(store, id), withWorkflowFlight);
+  const engine = new ProductionEngine(repository, host);
+
+  app.get("/api/sessions/:sessionId/videosbatch/runs", async (req, res) => {
+    const session = requireSession(store, req, res, options); if (!session) return;
+    await engine.ready;
+    res.json({ runs: repository.list(session.id) });
+  });
+  app.post("/api/sessions/:sessionId/videosbatch/runs", async (req, res) => {
+    const session = requireSession(store, req, res, options); if (!session) return;
+    if (!["next", "all"].includes(req.body?.mode) || typeof req.body?.requestId !== "string" || !/^[A-Za-z0-9_:-]{1,100}$/.test(req.body.requestId)) {
+      return sendWorkflowError(res, 400, { code: "RUN_REQUEST_INVALID", message: "mode and requestId are required" });
+    }
+    try { res.status(202).json(await engine.start(session.id, req.body.mode, req.body.requestId)); }
+    catch (error) { sendCaughtError(res, (error as any)?.status || 500, error, "RUN_START_FAILED"); }
+  });
+
   app.post(
     "/api/sessions/:sessionId/videosbatch/lesson/parse",
     express.raw({ type: () => true, limit: MAX_LESSON_FILE_BYTES }),
@@ -247,7 +269,9 @@ export function registerVideosBatchWorkflowApi(
         const latest = store.getSession(session.id);
         if (!latest) throw Object.assign(new Error("Session not found"), { code: "SESSION_NOT_FOUND", retryable: false, status: 404 });
         const next = createVideosBatchWorkflow({ projectId, lessonText, source });
+        next.productionIntentId = crypto.randomUUID();
         await persistWorkflow(store, session.id, next);
+        engine.retireForNewIntent(session.id);
         return next;
       });
       res.json(workflow);
@@ -272,47 +296,18 @@ export function registerVideosBatchWorkflowApi(
     }
   });
 
-  app.post("/api/sessions/:sessionId/videosbatch/run-next", async (req, res) => {
-    const sessionId = routeParam(req, "sessionId");
-    if (!requireSession(store, req, res, options)) return;
-    try {
-      const workflow = await withWorkflowFlight(sessionId, "run-next", async () => {
-        const ctx = await reconciledWorkflowContext(store, sessionId);
-        if (!ctx) {
-          if (!store.getSession(sessionId)) throw Object.assign(new Error("Session not found"), { code: "SESSION_NOT_FOUND", retryable: false, status: 404 });
-          throw Object.assign(new Error("VideosBatch workflow has not been started"), { code: "WORKFLOW_NOT_STARTED", retryable: false, status: 409 });
-        }
-        const next = await runNext(ctx, registry);
-        await persistWorkflow(store, sessionId, next);
-        return next;
-      });
-      res.json(workflow);
-    } catch (error) {
-      const status = typeof (error as any)?.status === "number" ? (error as any).status : 500;
-      sendCaughtError(res, status, error);
-    }
-  });
-
-  app.post("/api/sessions/:sessionId/videosbatch/run-all", async (req, res) => {
-    const sessionId = routeParam(req, "sessionId");
-    if (!requireSession(store, req, res, options)) return;
-    try {
-      const workflow = await withWorkflowFlight(sessionId, "run-all", async () => {
-        const ctx = await reconciledWorkflowContext(store, sessionId);
-        if (!ctx) {
-          if (!store.getSession(sessionId)) throw Object.assign(new Error("Session not found"), { code: "SESSION_NOT_FOUND", retryable: false, status: 404 });
-          throw Object.assign(new Error("VideosBatch workflow has not been started"), { code: "WORKFLOW_NOT_STARTED", retryable: false, status: 409 });
-        }
-        const next = await runAll(ctx, registry);
-        await persistWorkflow(store, sessionId, next);
-        return next;
-      });
-      res.json(workflow);
-    } catch (error) {
-      const status = typeof (error as any)?.status === "number" ? (error as any).status : 500;
-      sendCaughtError(res, status, error);
-    }
-  });
+  for (const mode of ["next", "all"] as const) {
+    app.post(`/api/sessions/:sessionId/videosbatch/run-${mode}`, async (req, res) => {
+      const session = requireSession(store, req, res, options); if (!session) return;
+      if (!session.videosBatchWorkflow) return sendWorkflowError(res, 409, { code: "WORKFLOW_NOT_STARTED", message: "VideosBatch workflow has not been started" });
+      try {
+        const key = `compat:${mode}:${workflowVersion(session.videosBatchWorkflow)}`;
+        const run = await engine.start(session.id, mode, key);
+        await engine.wait(run.id);
+        res.json(store.getSession(session.id)?.videosBatchWorkflow);
+      } catch (error) { sendCaughtError(res, (error as any)?.status || 500, error); }
+    });
+  }
 
   app.put("/api/sessions/:sessionId/videosbatch/stages/:stageId/artifact", async (req, res) => {
     const workflow = requireWorkflow(store, req, res, options);
@@ -385,7 +380,9 @@ export function registerVideosBatchWorkflowApi(
         const latest = store.getSession(sessionId);
         if (!latest?.videosBatchWorkflow) throw Object.assign(new Error("VideosBatch workflow has not been started"), { code: "WORKFLOW_NOT_STARTED", retryable: false, status: 409 });
         const restarted = restartFrom(latest.videosBatchWorkflow, stageId);
+        restarted.productionIntentId = crypto.randomUUID();
         await persistWorkflow(store, sessionId, restarted);
+        engine.retireForNewIntent(sessionId);
         return restarted;
       });
       res.json(next);
@@ -446,19 +443,23 @@ export function registerVideosBatchWorkflowApi(
         // An explicit retry is a new user operation: restartFrom preserves the
         // failed artifact and runNext creates fresh bounded budgets.
         const restarted = restartFrom(latestWorkflow, stageId);
+        restarted.productionIntentId = crypto.randomUUID();
         const retryCtx: StageExecutionContext = {
           ...latestCtx,
           workflow: restarted,
           session: { ...latestCtx.session, videosBatchWorkflow: restarted }
         };
-        const result = await runNext(retryCtx, registry);
-        await persistWorkflow(store, sessionId, result);
-        return result;
+        await persistWorkflow(store, sessionId, retryCtx.workflow);
+        engine.retireForNewIntent(sessionId);
+        return retryCtx.workflow;
       });
-      res.json(next);
+      const run = await engine.start(sessionId, "next", `retry:${crypto.randomUUID()}`);
+      await engine.wait(run.id);
+      res.json(store.getSession(sessionId)?.videosBatchWorkflow || next);
     } catch (error) {
       const status = typeof (error as any)?.status === "number" ? (error as any).status : 500;
       sendCaughtError(res, status, error, "STAGE_RETRY_FAILED");
     }
   });
+  return engine;
 }
