@@ -2,7 +2,7 @@
 
 Decision: ACCEPTED
 Date: 2026-09-22
-Phase: PASSED (P0 code/configuration); full-video acceptance remains incomplete
+Phase: PASSED (P0/P1 code/configuration); real-course acceptance blocked by provider failures; full-video acceptance remains incomplete
 
 ## Original Requirement and Source
 
@@ -27,6 +27,21 @@ Phase: PASSED (P0 code/configuration); full-video acceptance remains incomplete
 P0：实现、相关离线 smoke、独立审查、真实单阶段验收、文档与提交。真实视频仍受后续人工创作门禁及媒体服务状态约束，不作为本 ADR 全部代码验收的替代。
 
 ## Evidence
+
+### P1：主槽 max 思考（2026-09-22）
+
+原始用户补充：“如果deepseek-v4.1-flash 还不行，那就尝试切换思考模式，设置max思考模式。”
+
+FR-0007-003：增加主槽 `VIDEOSBATCH_LLM_REASONING=max`，映射 Responses API 的 `reasoning.effort`。显式槽位设置优先于阶段默认；同模型 repair 继承原槽位，其他槽位推理设置独立。参考 [DeepSeek 官方思考模式](https://api-docs.deepseek.com/guides/thinking_mode/)，第三方兼容性以实际请求验证。P1: PASSED（配置与代码）；真实课程验收受外部服务失败阻塞。验收包括 max 请求体、有效参数日志、备用 low 隔离和同课程真实重跑；不得把请求参数当作推理质量提升的证明。
+
+P1 验收记录（2026-09-22，原基线 73d9acc）：
+
+- IN_PROGRESS → REVIEW_1 → ACCEPTANCE → PASSED（代码/配置）：独立只读审查无阻断问题；新增 smoke 覆盖主槽 max 覆盖阶段默认、两次同模型 repair 保持 max、第二槽 low 隔离和有效参数日志。TypeScript、完整 `npm run verify:offline`、`smoke:env-hygiene` 均退出 0。
+- 本地忽略配置启用 `VIDEOSBATCH_LLM_REASONING=max`；普通启动的执行/媒体/语音开关仍为 fake，真实验收仅由隔离进程启用。
+- 同课程真实运行 `run_d3cd9311-d665-451e-9ceb-717c7298f081`：primary / deepseek-v4.1-flash / max 在 79388 ms 后 NETWORK_ERROR；fallback-1 / gpt-5.6-terra / low 在 120016 ms 后 TIMEOUT；third / deepseek-v4-flash / none 在 495 ms 返回 HTTP 402 Insufficient Balance。
+- 三槽均未取得可校验的课程输出，本轮未进入合同 repair，未生成视频。实际请求日志证实发送 max，不能证明供应商内部执行 max，也不能判断它是否改善结构遵循。没有降低校验规则或修改报价行为。
+- 外部阻塞影响：真实课程和视频验收仍未通过；保留当前 max 配置及历史证据，不自动充值或无限重试。隔离验收进程在失败后停止。
+- 本机忽略证据：`data/real-acceptance/20260922-live/verify-adr0007-max.log`、`workflow-before-max.json`、`workflow-max-result.json`、`runs-max-result.json`。P1 回滚只需移除本地主槽 reasoning 设置并撤回对应代码，不覆盖三槽凭据或 P0 成果。
 
 P0 验收记录（2026-09-22，原基线 f0c6e83）：
 

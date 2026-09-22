@@ -26,6 +26,19 @@ globalThis.fetch = async (url, init) => {
 const ok = (value: unknown, model = "reported-model-alias") => new Response(JSON.stringify({ model, status: "completed", output_text: JSON.stringify(value) }));
 try {
   const executor = createVideosBatchLlmExecutor(config);
+  respond = () => ok({ ok: true });
+  const maxExecutor = createVideosBatchLlmExecutor({ ...config, reasoningEffort: "max" });
+  const maxResult = await maxExecutor.generateStructured({ ...request, reasoningEffort: "none", metadata: { reasoning_effort: "none" } });
+  assert.equal(calls[0].body.reasoning.effort, "max");
+  assert.equal(maxResult.attemptLog![0].metadata?.reasoning_effort, "max");
+  const maxRepairBudget = createVideosBatchLlmAttemptBudget(2);
+  for (let i = 0; i < 2; i++) await maxExecutor.generateStructured({ ...request, providerRoute: "same-model", routeId: "primary", model: "m1", reasoningEffort: "none", budget: maxRepairBudget });
+  assert.ok(calls.every(c => c.body.reasoning.effort === "max"));
+  await maxExecutor.generateStructured({ ...request, model: "m2", reasoningEffort: "max" });
+  assert.equal(calls.at(-1)!.body.reasoning.effort, "low", "primary max must not leak into the JingAI slot");
+  assert.equal(resolveVideosBatchLlmConfig({ VIDEOSBATCH_LLM_REASONING: "max" }).reasoningEffort, "max");
+  assert.throws(() => resolveVideosBatchLlmConfig({ VIDEOSBATCH_LLM_REASONING: "unlimited" }));
+  calls.length = 0;
   respond = (index) => index < 3 ? new Response("unavailable", { status: 503 }) : ok({ ok: true });
   const third = await executor.generateStructured(request);
   assert.deepEqual(calls.map(c => c.model), ["m1", "m2", "m3"]);

@@ -84,7 +84,7 @@ export interface StructuredGenerationRequest {
   schemaName: string;
   jsonSchema: JsonSchema;
   model?: string;
-  reasoningEffort?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+  reasoningEffort?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
   outputMode?: VideosBatchLlmOutputMode;
   temperature?: number;
   /** Optional provider output cap; prevents unbounded structured generations. */
@@ -132,6 +132,7 @@ export interface VideosBatchLlmConfig {
   apiKey?: string;
   baseUrl: string;
   model: string;
+  reasoningEffort?: StructuredGenerationRequest["reasoningEffort"];
   fallbackModels: string[];
   fallbackApiKey?: string;
   fallbackBaseUrl?: string;
@@ -200,7 +201,9 @@ export function resolveVideosBatchLlmConfig(env: EnvLike = process.env): VideosB
     throw new Error(`VideosBatch requires VIDEOSBATCH_LLM_FALLBACK_OUTPUT_MODE=json_schema (received: ${fallbackOutputModeRaw})`);
   }
   const fallbackReasoningEffortRaw = clean(env.VIDEOSBATCH_LLM_FALLBACK_REASONING)?.toLowerCase();
-  const validReasoningEfforts = new Set(["none", "minimal", "low", "medium", "high", "xhigh"]);
+  const validReasoningEfforts = new Set(["none", "minimal", "low", "medium", "high", "xhigh", "max"]);
+  const primaryReasoning = clean(env.VIDEOSBATCH_LLM_REASONING)?.toLowerCase();
+  if (primaryReasoning && !validReasoningEfforts.has(primaryReasoning)) throw new Error("VIDEOSBATCH_LLM_REASONING is invalid.");
   if (fallbackReasoningEffortRaw && !validReasoningEfforts.has(fallbackReasoningEffortRaw)) {
     throw new Error(`VIDEOSBATCH_LLM_FALLBACK_REASONING is invalid (received: ${fallbackReasoningEffortRaw})`);
   }
@@ -220,6 +223,7 @@ export function resolveVideosBatchLlmConfig(env: EnvLike = process.env): VideosB
     apiKey,
     baseUrl,
     model: clean(env.VIDEOSBATCH_LLM_MODEL) || clean(env.OPENAI_TEXT_MODEL) || "gpt-4.1-mini",
+    reasoningEffort: primaryReasoning as StructuredGenerationRequest["reasoningEffort"],
     fallbackModels,
     ...(thirdModel && thirdBase && thirdKey ? { secondFallback: { model: thirdModel, baseUrl: normalizeBaseUrl(thirdBase), apiKey: thirdKey, reasoningEffort: thirdReasoning as StructuredGenerationRequest["reasoningEffort"] } } : {}),
     fallbackApiKey,
@@ -460,6 +464,7 @@ class OpenAIResponsesLlmExecutor implements VideosBatchLlmExecutor {
     const primary: ProviderCandidate = {
       routeId: "primary",
       model: this.config.model,
+      reasoningEffort: this.config.reasoningEffort,
       apiKey: this.config.apiKey,
       baseUrl: this.config.baseUrl,
       fallback: false
@@ -534,15 +539,8 @@ class OpenAIResponsesLlmExecutor implements VideosBatchLlmExecutor {
     if (Number.isFinite(request.maxOutputTokens) && Number(request.maxOutputTokens) > 0) {
       body.max_output_tokens = Math.floor(Number(request.maxOutputTokens));
     }
-    // A fallback route may declare its own reasoning policy. This lets the
-    // primary storyboard request keep medium reasoning while the DeepSeek
-    // fallback explicitly disables thinking; omission is not equivalent and
-    // can consume the whole output budget before JSON is emitted.
-    const reasoningEffort = candidate.fallback && fallbackReasoningEffort !== undefined
-      ? fallbackReasoningEffort
-      : request.reasoningEffort !== undefined
-        ? request.reasoningEffort
-        : fallbackReasoningEffort;
+    // Explicit per-slot policy wins over stage defaults, including during repair.
+    const reasoningEffort = fallbackReasoningEffort ?? request.reasoningEffort;
     if (reasoningEffort !== undefined) body.reasoning = { effort: reasoningEffort };
 
     const maxRetries = Math.min(2, Math.max(0, Math.floor(this.config.maxRetries ?? 0)));
@@ -581,6 +579,8 @@ class OpenAIResponsesLlmExecutor implements VideosBatchLlmExecutor {
       );
       const requestMetadata = {
         ...(request.metadata || {}),
+        ...(reasoningEffort !== undefined ? { reasoning_effort: reasoningEffort } : {}),
+        route_id: candidate.routeId,
         attempt: String(attempt),
         attempt_budget_used: String(attempt),
         attempt_budget_max: String(budget.maxAttempts)
