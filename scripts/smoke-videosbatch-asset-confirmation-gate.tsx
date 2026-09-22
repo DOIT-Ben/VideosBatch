@@ -141,7 +141,7 @@ function renderGallery(confirmationArtifact: any, confirmationStageStatus?: "pen
 
 const staleMarkup = renderGallery(staleConfirmedArtifact);
 assert.ok(
-  staleMarkup.includes("确认全部资产"),
+  /<button[^>]*>确认并继续 →<\/button>/.test(staleMarkup),
   "the confirmation bar must stay visible while the gate is not satisfied, even with confirmed: true"
 );
 
@@ -150,13 +150,13 @@ assert.ok(
 // check — the stage still waits for an explicit confirmation save.
 const staleStageMarkup = renderGallery(completeArtifact, "stale");
 assert.ok(
-  staleStageMarkup.includes("确认全部资产"),
+  /<button[^>]*>确认并继续 →<\/button>/.test(staleStageMarkup),
   "the confirmation bar must stay visible while the ASSET_CONFIRMATION stage itself is stale, even with a complete artifact"
 );
 
 const completeMarkup = renderGallery(completeArtifact, "ready");
 assert.ok(
-  !completeMarkup.includes("确认全部资产"),
+  !completeMarkup.includes("确认并继续"),
   "the confirmation bar must hide once the confirmation is complete"
 );
 

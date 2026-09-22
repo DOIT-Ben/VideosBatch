@@ -14,3 +14,5 @@
 本次自动化方案的[需求原文与解释边界](sources/20260922-automated-production-workspace.md)单独留存。报价确认、价格/费用/积分展示、计费与支付不在改造范围；已有 QUOTE 合同保持不变。
 
 业务合同以 [canonical workflow spec](../../specs/videosbatch-workflow-canonical.md) 和 [UI spec](../../specs/ui-system.md) 为准；提案接受后、实现前同步相关规格。
+
+自动化工作台的本地固定负载、五项目故事、恢复及回归证据见[综合验收记录](automation-workspace-acceptance.md)。生产和真实Provider边界单独列明，阶段通过状态仍只由阶段台账维护。

@@ -121,3 +121,7 @@
 .vbs-note-card label { display: block; }
 .vbs-note-card textarea { display: block; width: 100%; min-height: 120px; margin: 8px 0; }
 @media(max-width: 700px) { .vb-batch-bar { padding: 12px; gap: 8px; } .vb-task-filters { flex-wrap: wrap; } .vb-batch-bar select { max-width: 100%; } }
+@media(max-width: 768px) {
+  .videosbatch-studio-v2 .vbs-run-feedback .vbs-run-actions button,
+  .vb-task-page button, .vb-task-page select { min-height: 44px; }
+}

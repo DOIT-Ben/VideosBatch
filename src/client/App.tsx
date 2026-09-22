@@ -382,6 +382,16 @@ function mergeStateById(prev: StoreSnapshot, next: StoreSnapshot): StoreSnapshot
   };
 }
 
+/** Shared by the actual event subscriber and the isolated browser acceptance harness. */
+export function mergeProductionView(previous: StoreSnapshot, sessionId: string, view: Awaited<ReturnType<typeof api.productionView>>) {
+  if (!previous.sessions.some(session => session.id === sessionId)) return previous;
+  const assets = new Map(previous.assets.map(asset => [asset.id, asset]));
+  view.assets.forEach(asset => assets.set(asset.id, asset));
+  return mergeStateById(previous, { ...previous,
+    sessions: previous.sessions.map(session => session.id === sessionId ? { ...session, videosBatchWorkflow: view.workflow } : session),
+    shots: [...previous.shots.filter(shot => shot.sessionId !== sessionId), ...view.shots], assets: [...assets.values()] });
+}
+
 function mergeStateForDisplay({
   prev,
   next,
@@ -590,14 +600,7 @@ function GalleryPage({
 export function App() {
   const { lang, toggleLang, t } = useI18n();
   const [state, setState] = useState<StoreSnapshot>({ assets: [], sessions: [], shots: [], gallery: [] });
-  useRunEvents((sessionId, view) => setState(previous => {
-    if (!previous.sessions.some(session => session.id === sessionId)) return previous;
-    const assets = new Map(previous.assets.map(asset => [asset.id, asset]));
-    view.assets.forEach(asset => assets.set(asset.id, asset));
-    return mergeStateById(previous, { ...previous,
-      sessions: previous.sessions.map(session => session.id === sessionId ? { ...session, videosBatchWorkflow: view.workflow } : session),
-      shots: [...previous.shots.filter(shot => shot.sessionId !== sessionId), ...view.shots], assets: [...assets.values()] });
-  }));
+  useRunEvents((sessionId, view) => setState(previous => mergeProductionView(previous, sessionId, view)));
   const stateRef = useRef(state);
   useEffect(() => { stateRef.current = state; }, [state]);
   const [activeView, setActiveView] = useState<AppView>(() => readRouteFromWindow().view);
