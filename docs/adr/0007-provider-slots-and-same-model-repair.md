@@ -2,7 +2,7 @@
 
 Decision: ACCEPTED
 Date: 2026-09-22
-Phase: PASSED (P0/P1/P2 code/configuration); real-course acceptance blocked by provider failures; full-video acceptance remains incomplete
+Phase: PASSED (P0/P1/P2/P3 code/configuration); streaming course-intro acceptance passed; full-video acceptance remains incomplete
 
 ## Original Requirement and Source
 
@@ -77,3 +77,21 @@ P2 验收记录（基线 9bee4d4）：
 - 回滚：撤回 P2 提交可恢复 P1 原回退语义；不修改凭据、不删除历史验收文件。业务校验未放宽，真实课程成功仍受供应商响应与内容质量约束。
 
 本次真实运行 ID：`run_b62836b2-919d-4a3b-8456-0d0f340e67ba`。
+
+## P3：Responses 流式读取（2026-09-22）
+
+原始用户补充：“我这有东西啊。是不是你逻辑写错了？？？你开一下流式好吗？”附件为供应商两行调用截图，显示约56.46s与53.51s，不能仅凭截图映射具体请求。现场代码确认没有 stream:true，使用 response.json 等待完整正文。
+
+FR-0007-005：文本生成和同模型 repair 开启 stream:true，解析 Responses SSE，只有 response.completed 才允许提交完整 JSON 到业务校验；断流、失败、未完成终止保留已接收文本并执行既定有界回退。保留最终模型/usage/responseId，正确处理UTF-8跨块和事件分块，不采集思维链。JSON响应兼容读取不新增请求；严格Schema不降级。本地当前180秒总超时保持。
+
+P3: PASSED。实现与测试覆盖SSE分块、终止事件、错误/断流、部分输出留存及repair接线，独立审查、offline验证、JingAI独占真实验收。协议依据：https://platform.openai.com/docs/api-reference/responses-streaming 。截图及本机测试不是供应商稳定性证明。
+
+
+P3 验收（2026-09-23，基线 c09b0b0）：
+
+- REVIEW_1 → REWORK_1 → REVIEW_2：独立审查发现 CR-only SSE 换行兼容缺陷，补齐 CR/LF/CRLF 及跨块测试；第二轮通过。
+- TypeScript、新增 `smoke:responses-stream` 与完整 `npm run verify:offline` 退出0。覆盖单字节UTF-8、三种换行、仅DONE未完成、failed/incomplete、非法事件、读取断流partial保存、terminal输出优先、repair流式及思维链排除。16MB响应总字节上限与原总超时共同约束读取。
+- 真实 JingAI 独占流式运行 `run_4e412438-fea4-461d-ac27-307e3578591b`：首次生成57939ms通过，9个候选、3个推荐，校验0错误，未调用repair。实际响应头6019ms、首段文本56996ms；日志确认 stream_requested=true、response_transport=sse、reasoning=low。完整内容已持久化到课程任务，状态waiting_input等待选择候选；未生成完整视频。
+- 本次成功证明流式读取与当前课程单阶段可用，不能证明历史每次错误的原因或长期稳定性。真实运行在CR-only兼容补丁前启动，当前供应商响应由原分行器成功解析；最终换行兼容由回归验证。
+- 本机忽略证据：`verify-stream.log`、`workflow-jingai-stream-result.json`、`runs-jingai-stream-result.json`、`JINGAI-STREAM-CANDIDATES.md`，均位于 `data/real-acceptance/20260922-live/`。XT保持禁用、JingAI主槽、本地超时180秒；独占验收服务停止，不改变普通fake开关。
+- 回滚P3提交可恢复非流式读取，保留P2三槽有界回退与全部历史证据。严格业务校验和报价行为未改。

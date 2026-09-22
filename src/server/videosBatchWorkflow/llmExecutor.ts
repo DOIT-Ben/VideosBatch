@@ -1,3 +1,4 @@
+import { readResponsesStream, ResponsesStreamError } from "./responsesStream";
 import { createHash } from "node:crypto";
 import { sanitizeProviderDiagnosticText } from "./providerDiagnostics";
 
@@ -541,6 +542,7 @@ class OpenAIResponsesLlmExecutor implements VideosBatchLlmExecutor {
     const body: Record<string, unknown> = {
       model,
       store: false,
+      stream: true,
       input: [
         { role: "system", content: request.systemPrompt },
         { role: "user", content: request.userPrompt }
@@ -591,9 +593,10 @@ class OpenAIResponsesLlmExecutor implements VideosBatchLlmExecutor {
         request.idempotencyKey?.trim() || request.metadata?.idempotency_key?.trim(),
         candidate
       );
-      const requestMetadata = {
+      const requestMetadata: Record<string, string> = {
         ...(request.metadata || {}),
         ...(reasoningEffort !== undefined ? { reasoning_effort: reasoningEffort } : {}),
+        stream_requested: "true",
         route_id: candidate.routeId,
         attempt: String(attempt),
         attempt_budget_used: String(attempt),
@@ -632,7 +635,20 @@ class OpenAIResponsesLlmExecutor implements VideosBatchLlmExecutor {
           continue;
         }
 
-         const payload = await response.json() as any;
+         requestMetadata.response_headers_ms = String(Date.now() - startedAt);
+         const streaming = response.headers.get("content-type")?.includes("text/event-stream");
+         requestMetadata.response_transport = streaming ? "sse" : "json";
+         let payload: any;
+         try {
+           payload = streaming ? await readResponsesStream(response, () => {
+             requestMetadata.first_text_ms ??= String(Date.now() - startedAt);
+           }) : await response.json();
+         } catch (error) {
+           if (!(error instanceof ResponsesStreamError)) throw error;
+           try { await request.onInvalidResponse?.({ rawText: error.partialText, model, routeId: candidate.routeId, error: error.code }); }
+           catch { throw new VideosBatchLlmError({ code: "TEXT_DIAGNOSTIC_CHECKPOINT_FAILED", message: "Text diagnostic checkpoint failed.", retryable: false, model }); }
+           throw new VideosBatchLlmError({ code: error.code, message: `VideosBatch stream failed for ${request.operation}: ${error.code}`, retryable: true, attempt, provider: "openai-responses", model });
+         }
          const rawText = extractOutputText(payload);
          const preserveInvalid = async (error: string) => {
            try { await request.onInvalidResponse?.({ rawText: rawText || "", model, routeId: candidate.routeId, error }); }

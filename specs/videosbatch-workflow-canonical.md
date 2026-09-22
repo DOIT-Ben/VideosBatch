@@ -2512,6 +2512,8 @@ P001-A004：黄色小花（道具）
 
 ### 8.1 文本 Provider
 
+- Responses 文本调用（含 repair）发送 `stream:true`，按 SSE 读取 `response.output_text.delta`，以 `response.completed` 作为完成条件，再执行完整 JSON/业务校验。断流、error、failed/incomplete 不能因部分 JSON 可解析而通过；失败前已接收文本纳入脱敏诊断。保留最终 usage/model/responseId，不保存思维链。代理若直接返回 JSON 则兼容原读取，不额外发起请求；总请求超时仍适用。
+
 - 文本支持三个独立槽（ADR-0007）：主槽、`FALLBACK_*` 第二槽、可选 `FALLBACK_2_*` 第三槽。每槽独立模型、端点、凭据及推理配置；实际供应商顺序来自受保护运行时配置，本文不记录秘密。
 - 主槽推理设置 `VIDEOSBATCH_LLM_REASONING` 可显式设置 `max`（Responses `reasoning.effort`）。已配置的槽位推理设置优先于阶段默认，同槽 repair 继承该设置；未配置时沿用阶段默认。记录实际发送的推理档位，不能仅凭本地配置声称供应商执行了最高思考。
 - 1.4.3 历史 Tier 1 验收中，大 JSON 阶段（FINAL_STORYBOARD）经代理出现 ~126s 网关超时（HTTP 524），应在验收中关注完整输出时间。ADR-0007 起，分镜默认跟随主槽，显式覆盖为已配置模型时选择对应槽端点；未配置的旧模型覆盖保留主端点兼容路径，repair 固定该实际请求模型与原端点。弱模型产物的机械违规以 6.5 节确定性清理为准，不依赖提示词服从。
