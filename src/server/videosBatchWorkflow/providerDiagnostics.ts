@@ -18,7 +18,7 @@ const INLINE_DATA_PATTERN = /data:[a-z0-9.+-]+\/[a-z0-9.+-]+(?:;[a-z0-9=.+-]+)*,
 /** Any absolute http(s) URL, including signed ones with query strings. */
 const ABSOLUTE_URL_PATTERN = /https?:\/\/[^\s"'<>]+/giu;
 const BEARER_PATTERN = /Bearer\s+[^\s]+/giu;
-const CREDENTIAL_PATTERN = /(?:api[_-]?key|token|secret|password)\s*[:=]\s*[^,\s}]+/giu;
+const CREDENTIAL_PATTERN = /["']?(?:api[_-]?key|token|secret|password)["']?\s*[:=]\s*(?:"(?:\\.|[^"\\])*"|'[^']*'|[^,\s}]+)/giu;
 
 /** Budget for a persisted diagnostic message. Long enough to diagnose, short enough to store. */
 export const MAX_PROVIDER_DIAGNOSTIC_LENGTH = 2_000;
@@ -35,8 +35,10 @@ export function sanitizeProviderDiagnosticText(
   const raw = typeof value === "string" ? value : value instanceof Error ? value.message : "";
   if (!raw) return "";
   const redacted = raw
+    .replace(/\\"(?:api[_-]?key|token|secret|password)\\"\s*:\s*\\".*?\\"/giu, "credential=[redacted]")
     .replace(BEARER_PATTERN, "Bearer [redacted]")
-    .replace(CREDENTIAL_PATTERN, "$1=[redacted]")
+    .replace(CREDENTIAL_PATTERN, "credential=[redacted]")
+    .replace(/\bsk-[a-z0-9_-]{16,}/giu, "[redacted]")
     .replace(INLINE_DATA_PATTERN, "data:[redacted]")
     .replace(ABSOLUTE_URL_PATTERN, "[url redacted]")
     .trim();

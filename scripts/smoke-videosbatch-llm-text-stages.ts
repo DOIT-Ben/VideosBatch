@@ -443,7 +443,7 @@ ctx = context(workflow);
 const storyboardResult = await registry.FINAL_STORYBOARD!.execute(ctx);
 assert.equal(registry.FINAL_STORYBOARD!.validate(storyboardResult.artifact, ctx).ok, true);
 const storyboardRequest = calls.find((request) => request.operation === "FINAL_STORYBOARD");
-assert.equal(storyboardRequest?.model, "gpt-5.6-terra");
+assert.equal(storyboardRequest?.model, process.env.VIDEOSBATCH_FINAL_STORYBOARD_MODEL?.trim() || undefined, "default storyboard follows the configured primary slot");
 assert.equal(storyboardRequest?.reasoningEffort, "medium");
 assert.equal(storyboardRequest?.timeoutMs, 300_000, "FINAL_STORYBOARD must use its dedicated full-output timeout by default");
 assert.equal(storyboardRequest?.maxOutputTokens, 24_000, "FINAL_STORYBOARD must use a bounded full-output cap by default");

@@ -1,4 +1,5 @@
-import type { VideosBatchStageId } from "../../shared/videosBatchWorkflow";
+import type { VideosBatchStageId, VideosBatchTextDiagnostic } from "../../shared/videosBatchWorkflow";
+import { sanitizeProviderDiagnosticText } from "./providerDiagnostics";
 import {
   createVideosBatchLlmAttemptBudget,
   type VideosBatchLlmAttemptBudget,
@@ -1054,12 +1055,26 @@ async function executeStructuredStage(
   ctx: StageExecutionContext,
   spec: ReturnType<typeof getVideosBatchTextStageSpec>,
   executor: VideosBatchLlmExecutor
-): Promise<{ artifact: unknown; attempts: number; provider?: string; model?: string; attemptLog?: VideosBatchLlmAttemptBudget["records"] }> {
+): Promise<{ artifact: unknown; attempts: number; provider?: string; model?: string; attemptLog?: VideosBatchLlmAttemptBudget["records"]; textDiagnostics: VideosBatchTextDiagnostic[] }> {
   const basePrompt = spec.buildUserPrompt(ctx.workflow);
   let userPrompt = basePrompt;
   let lastArtifact: unknown;
   let lastProvider: string | undefined;
   let lastModel: string | undefined;
+  let repairRouteId: string | undefined;
+  let repairModel: string | undefined;
+  const textDiagnostics: VideosBatchTextDiagnostic[] = [];
+  const recordValidation = async (response: StructuredGenerationResult<unknown>, artifact: unknown, validation: ValidationResult, kind: VideosBatchTextDiagnostic["kind"]) => {
+    const redact = (value: string) => sanitizeProviderDiagnosticText(value, 200_000);
+    const artifactJson = JSON.stringify(artifact ?? null);
+    textDiagnostics.push({ kind, model: response.requestedModel || response.model, routeId: response.routeId,
+      rawText: redact(response.rawText || artifactJson), artifactJson: redact(artifactJson),
+      validationErrors: validation.errors.map(redact), truncated: (response.rawText || artifactJson).length > 200_000 || artifactJson.length > 200_000 });
+    const state = ctx.workflow.stages[stageId];
+    if (state) state.textDiagnostics = structuredClone(textDiagnostics);
+    try { await ctx.checkpoint?.(ctx.workflow); }
+    catch { throw Object.assign(new Error("Text diagnostic checkpoint failed; no further provider requests submitted."), { code: "TEXT_DIAGNOSTIC_CHECKPOINT_FAILED", retryable: false }); }
+  };
   let lastErrors: string[] = [];
   let lastError: unknown;
   const providerBudget = createVideosBatchLlmAttemptBudget(MAX_STAGE_ATTEMPTS);
@@ -1072,6 +1087,7 @@ async function executeStructuredStage(
     const repairAttempts = repairBudget?.used || 0;
     return {
       artifact,
+      textDiagnostics,
       attempts: Math.max(providerAttempts + repairAttempts, requestCount),
       provider: lastProvider,
       model: lastModel,
@@ -1090,7 +1106,8 @@ async function executeStructuredStage(
     scope: string,
     requestSpec: VideosBatchTextStageSpec = spec
   ): StructuredGenerationRequest => {
-    const route: StructuredGenerationRequest["providerRoute"] = "auto";
+    const isRepair = scope.startsWith("contract-repair");
+    const route: StructuredGenerationRequest["providerRoute"] = isRepair ? "same-model" : "auto";
     const reasoningEffort = stageReasoningEffort(stageId);
     const timeoutMs = stageTimeoutMs(stageId);
     const maxOutputTokens = stageMaxOutputTokens(stageId);
@@ -1102,7 +1119,7 @@ async function executeStructuredStage(
       schemaName: requestSpec.schemaName,
       jsonSchema: requestSpec.jsonSchema,
       ...(stageId === "FINAL_STORYBOARD" ? {
-        model: process.env.VIDEOSBATCH_FINAL_STORYBOARD_MODEL?.trim() || "gpt-5.6-terra",
+        ...(process.env.VIDEOSBATCH_FINAL_STORYBOARD_MODEL?.trim() ? { model: process.env.VIDEOSBATCH_FINAL_STORYBOARD_MODEL.trim() } : {}),
         reasoningEffort: (process.env.VIDEOSBATCH_FINAL_STORYBOARD_REASONING?.trim() || "medium") as "medium"
       } : {}),
       ...(reasoningEffort !== undefined ? { reasoningEffort } : {}),
@@ -1110,6 +1127,9 @@ async function executeStructuredStage(
       ...(timeoutMs !== undefined ? { timeoutMs } : {}),
       outputMode: "json_schema",
       providerRoute: route,
+      onInvalidResponse: async input => recordValidation({ data: null, provider: "openai-responses", model: input.model,
+        routeId: input.routeId, rawText: input.rawText }, null, { ok: false, errors: [input.error] }, isRepair ? "contract_repair" : "provider"),
+      ...(isRepair ? { model: repairModel, routeId: repairRouteId } : {}),
       budget,
       idempotencyKey: stageIdempotencyKey(ctx.session.id, stageId, prompt, scope),
       metadata: {
@@ -1155,6 +1175,9 @@ async function executeStructuredStage(
       lastProvider = response.provider;
       lastModel = response.model;
       const validation = validationFor(stageId, lastArtifact, ctx);
+      repairRouteId = response.routeId;
+      repairModel = response.requestedModel || response.model;
+      await recordValidation(response, lastArtifact, validation, "provider");
       if (validation.ok) return resultWithEvidence(lastArtifact, providerBudget);
       lastErrors = validation.errors;
       break;
@@ -1221,6 +1244,7 @@ async function executeStructuredStage(
       lastProvider = response.provider;
       lastModel = response.model;
       const validation = validationFor(stageId, lastArtifact, ctx);
+      await recordValidation(response, lastArtifact, validation, "contract_repair");
       if (validation.ok) return resultWithEvidence(lastArtifact, providerBudget, repairBudget);
       lastErrors = validation.errors;
       if (partialRange) {
@@ -1263,7 +1287,7 @@ function createStage(stageId: VideosBatchTextStageId, executor: VideosBatchLlmEx
         ? getVideosBatchTextStageSpec(stageId, ctx.workflow)
         : spec;
       const generated = await executeStructuredStage(stageId, ctx, executionSpec, executor);
-      return { artifact: generated.artifact, attempts: generated.attempts, provider: generated.provider, model: generated.model, attemptLog: generated.attemptLog } as any;
+      return { artifact: generated.artifact, attempts: generated.attempts, provider: generated.provider, model: generated.model, attemptLog: generated.attemptLog, textDiagnostics: generated.textDiagnostics } as any;
     },
     validate(artifact, ctx) { return validationFor(stageId, artifact, ctx); },
     ...(stageId === "FINAL_STORYBOARD" ? {

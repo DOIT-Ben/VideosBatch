@@ -275,6 +275,7 @@ function stateWithResultMeta<T extends VideosBatchStageState<any>>(state: T, res
   const attemptLog = resultAttemptLog(result);
   return {
     ...state,
+    ...(Array.isArray(result?.textDiagnostics) ? { textDiagnostics: result.textDiagnostics } : {}),
     ...(typeof result?.attempts === "number" ? { attempts: result.attempts } : {}),
     ...(result?.provider !== undefined ? { provider: result.provider || null } : {}),
     ...(result?.model !== undefined ? { model: result.model || null } : {}),
@@ -457,7 +458,7 @@ async function executeNext(ctx: StageExecutionContext, registry: StageRegistry):
   }
 
   const startedAt = nowIso();
-  workflow.stages[stageId] = { ...current, status: "running", error: undefined, errorInfo: undefined, staleReason: undefined, updatedAt: startedAt };
+  workflow.stages[stageId] = { ...current, status: "running", error: undefined, errorInfo: undefined, textDiagnostics: undefined, staleReason: undefined, updatedAt: startedAt };
   workflow.updatedAt = startedAt;
   await ctx.checkpoint?.(workflow);
   const runningCtx = contextWithWorkflow(ctx, workflow);
@@ -533,7 +534,7 @@ async function executeNext(ctx: StageExecutionContext, registry: StageRegistry):
     const info = stageErrorInfo(error);
     const errorBase = stageResult?.artifact !== undefined
       ? stateWithErrorMeta(failedResultState || { ...current, artifact: stageResult.artifact }, stageResult)
-      : stateWithErrorMeta(current, error);
+      : stateWithErrorMeta(workflow.stages[stageId] || current, error);
     workflow.stages[stageId] = {
       ...errorBase,
       status: "failed",

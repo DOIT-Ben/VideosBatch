@@ -33,6 +33,7 @@ export interface StageExecutionContext {
 
 export interface StageResult<T = unknown> {
   artifact: T;
+  textDiagnostics?: import("../../shared/videosBatchWorkflow").VideosBatchTextDiagnostic[];
   /** Optional execution evidence persisted by the runner with the artifact. */
   attempts?: number;
   provider?: string | null;

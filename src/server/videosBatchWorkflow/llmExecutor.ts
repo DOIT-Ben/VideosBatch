@@ -92,7 +92,10 @@ export interface StructuredGenerationRequest {
   /** Optional per-request timeout override, in milliseconds. */
   timeoutMs?: number;
   metadata?: Record<string, string>;
-  providerRoute?: "auto" | "fallback-only";
+  providerRoute?: "auto" | "fallback-only" | "same-model";
+  /** Exact configured slot used by the original generation, never a secret. */
+  routeId?: string;
+  onInvalidResponse?: (input: { rawText: string; model: string; routeId: string; error: string }) => Promise<void>;
   /** Budget for one bounded submission class. Omit only for a standalone call. */
   budget?: VideosBatchLlmAttemptBudget;
   /** Stable key reused for network retries of the same logical submission. */
@@ -110,6 +113,8 @@ export interface StructuredGenerationResult<T> {
   data: T;
   provider: VideosBatchLlmProvider;
   model: string;
+  routeId?: string;
+  requestedModel?: string;
   responseId?: string;
   rawText: string;
   usage?: StructuredGenerationUsage;
@@ -132,6 +137,7 @@ export interface VideosBatchLlmConfig {
   fallbackBaseUrl?: string;
   fallbackOutputMode?: VideosBatchLlmOutputMode;
   fallbackReasoningEffort?: StructuredGenerationRequest["reasoningEffort"];
+  secondFallback?: { model: string; baseUrl: string; apiKey: string; reasoningEffort?: StructuredGenerationRequest["reasoningEffort"] };
   timeoutMs: number;
   maxRetries: number;
   retryDelaysMs: number[];
@@ -201,12 +207,21 @@ export function resolveVideosBatchLlmConfig(env: EnvLike = process.env): VideosB
   if (fallbackModels.length && fallbackBaseUrl !== baseUrl && !fallbackApiKey) {
     throw new Error("VIDEOSBATCH_LLM_FALLBACK_MODELS with a different base URL requires VIDEOSBATCH_LLM_FALLBACK_API_KEY.");
   }
+  const thirdModel = clean(env.VIDEOSBATCH_LLM_FALLBACK_2_MODEL);
+  const thirdBase = clean(env.VIDEOSBATCH_LLM_FALLBACK_2_BASE_URL);
+  const thirdKey = clean(env.VIDEOSBATCH_LLM_FALLBACK_2_API_KEY);
+  const thirdReasoning = clean(env.VIDEOSBATCH_LLM_FALLBACK_2_REASONING)?.toLowerCase();
+  if ((thirdModel || thirdBase || thirdKey) && !(thirdModel && thirdBase && thirdKey)) {
+    throw new Error("Third text slot requires FALLBACK_2_MODEL, FALLBACK_2_BASE_URL and FALLBACK_2_API_KEY.");
+  }
+  if (thirdReasoning && !validReasoningEfforts.has(thirdReasoning)) throw new Error("Invalid third-slot reasoning effort.");
   return {
     provider: "openai-responses",
     apiKey,
     baseUrl,
     model: clean(env.VIDEOSBATCH_LLM_MODEL) || clean(env.OPENAI_TEXT_MODEL) || "gpt-4.1-mini",
     fallbackModels,
+    ...(thirdModel && thirdBase && thirdKey ? { secondFallback: { model: thirdModel, baseUrl: normalizeBaseUrl(thirdBase), apiKey: thirdKey, reasoningEffort: thirdReasoning as StructuredGenerationRequest["reasoningEffort"] } } : {}),
     fallbackApiKey,
     fallbackBaseUrl,
     fallbackOutputMode: fallbackOutputModeRaw as VideosBatchLlmOutputMode | undefined,
@@ -385,6 +400,7 @@ function normalizeError(error: unknown, operation: string, model: string, attemp
 }
 
 type ProviderCandidate = {
+  routeId: string;
   model: string;
   apiKey?: string;
   baseUrl: string;
@@ -422,14 +438,15 @@ class OpenAIResponsesLlmExecutor implements VideosBatchLlmExecutor {
       .filter(Boolean)
       .filter((model, index, candidates) => candidates.indexOf(model) === index);
     const fallbackCandidates: ProviderCandidate[] = fallbackModels
-      .filter((model) => model !== primaryModel)
-      .map((model) => ({
+      .map((model, index) => ({
+        routeId: `fallback-${index + 1}`,
         model,
         apiKey: this.config.fallbackApiKey,
         baseUrl: this.config.fallbackBaseUrl || this.config.baseUrl,
         fallback: true,
         reasoningEffort: this.config.fallbackReasoningEffort
       }));
+    if (this.config.secondFallback) fallbackCandidates.push({ ...this.config.secondFallback, routeId: "third", fallback: true });
 
     if (request.providerRoute === "fallback-only" && !fallbackCandidates.length) {
       throw new VideosBatchLlmError({
@@ -441,16 +458,28 @@ class OpenAIResponsesLlmExecutor implements VideosBatchLlmExecutor {
     if (request.providerRoute !== "fallback-only" && !this.config.apiKey) throw missingKeyError();
 
     const primary: ProviderCandidate = {
-      model: primaryModel,
+      routeId: "primary",
+      model: this.config.model,
       apiKey: this.config.apiKey,
       baseUrl: this.config.baseUrl,
       fallback: false
     };
-    const candidates = request.providerRoute === "fallback-only"
+    const allCandidates = [primary, ...fallbackCandidates];
+    const pinned = request.providerRoute === "same-model";
+    const selected = request.routeId ? allCandidates.find(item => item.routeId === request.routeId)
+      : allCandidates.find(item => item.model === primaryModel);
+    if (pinned && !selected) {
+      throw new VideosBatchLlmError({ code: "REPAIR_ROUTE_MISSING", message: "Original repair slot/model is no longer configured.", retryable: false });
+    }
+    // Resolve explicit stage model overrides to their configured endpoint.
+    const ordered = selected ? [selected, ...allCandidates.filter(item => item !== selected)]
+      : [{ ...primary, model: primaryModel }, ...fallbackCandidates];
+    const candidates = pinned ? [{ ...selected!, model: request.model || selected!.model }]
+      : request.providerRoute === "fallback-only"
       ? fallbackCandidates
       : (budget.primaryExhausted || budget.fallbackStarted) && fallbackCandidates.length
         ? fallbackCandidates
-        : [primary, ...fallbackCandidates];
+        : ordered;
     let lastError: unknown;
     for (const candidate of candidates) {
       const { model, apiKey } = candidate;
@@ -465,7 +494,8 @@ class OpenAIResponsesLlmExecutor implements VideosBatchLlmExecutor {
         continue;
       }
       try {
-        const result = await this.generateForModel<T>(request, candidate, budget, Boolean(!candidate.fallback && fallbackCandidates.length));
+        const reserve = pinned ? 0 : candidates.length - candidates.indexOf(candidate) - 1;
+        const result = await this.generateForModel<T>(request, candidate, budget, reserve);
         if (candidate.fallback) budget.fallbackStarted = true;
         return result;
       } catch (error) {
@@ -485,7 +515,7 @@ class OpenAIResponsesLlmExecutor implements VideosBatchLlmExecutor {
     request: StructuredGenerationRequest,
     candidate: ProviderCandidate,
     budget: VideosBatchLlmAttemptBudget,
-    reserveForFallback: boolean
+    reservedSubmissions: number
   ): Promise<StructuredGenerationResult<T>> {
     const { model, apiKey, baseUrl, reasoningEffort: fallbackReasoningEffort } = candidate;
     if (!apiKey) throw new VideosBatchLlmError({ code: "PROVIDER_NOT_CONFIGURED", message: `VideosBatch model ${model} has no API key configured.`, retryable: false, provider: "openai-responses", model });
@@ -529,7 +559,7 @@ class OpenAIResponsesLlmExecutor implements VideosBatchLlmExecutor {
           model
         });
       }
-      if (reserveForFallback && budget.used >= budget.maxAttempts - 1) {
+      if (reservedSubmissions > 0 && budget.used >= budget.maxAttempts - reservedSubmissions) {
         throw new VideosBatchLlmError({
           code: "PRIMARY_ATTEMPT_LIMIT",
           message: `VideosBatch ${request.operation} left no reserved submission for the configured fallback provider.`,
@@ -582,17 +612,23 @@ class OpenAIResponsesLlmExecutor implements VideosBatchLlmExecutor {
             status: response.status
           });
           budget.records.push({ attempt, provider: "openai-responses", model, idempotencyKey, outcome: "error", errorCode: error.code, status: response.status, durationMs: Date.now() - startedAt, metadata: safeAttemptMetadata(requestMetadata) });
-          if (!error.retryable || localAttempt > maxRetries || budget.used >= budget.maxAttempts || (reserveForFallback && budget.used >= budget.maxAttempts - 1)) throw error;
+          if (!error.retryable || localAttempt > maxRetries || budget.used >= budget.maxAttempts || (reservedSubmissions > 0 && budget.used >= budget.maxAttempts - reservedSubmissions)) throw error;
           console.warn(`[videosbatch-llm] retrying ${request.operation} after HTTP ${response.status} (attempt ${attempt}/${budget.maxAttempts})`);
           await sleep(this.config.retryDelaysMs?.[localAttempt - 1] ?? this.config.retryDelaysMs?.at(-1) ?? 0);
           continue;
         }
 
          const payload = await response.json() as any;
+         const rawText = extractOutputText(payload);
+         const preserveInvalid = async (error: string) => {
+           try { await request.onInvalidResponse?.({ rawText: rawText || "", model, routeId: candidate.routeId, error }); }
+           catch { throw new VideosBatchLlmError({ code: "TEXT_DIAGNOSTIC_CHECKPOINT_FAILED", message: "Text diagnostic checkpoint failed.", retryable: false, model }); }
+         };
          if (typeof payload?.status === "string" && payload.status !== "completed") {
            const reason = typeof payload?.incomplete_details?.reason === "string"
              ? ` (${payload.incomplete_details.reason})`
              : "";
+           await preserveInvalid(`INCOMPLETE_STRUCTURED_OUTPUT${reason}`);
            throw new VideosBatchLlmError({
              code: "INCOMPLETE_STRUCTURED_OUTPUT",
              message: `VideosBatch LLM returned an incomplete response for ${request.operation}${reason}.`,
@@ -602,8 +638,8 @@ class OpenAIResponsesLlmExecutor implements VideosBatchLlmExecutor {
              model
            });
          }
-         const rawText = extractOutputText(payload);
         if (!rawText) {
+          await preserveInvalid("EMPTY_STRUCTURED_OUTPUT");
           throw new VideosBatchLlmError({ code: "EMPTY_STRUCTURED_OUTPUT", message: `VideosBatch LLM returned no structured text for ${request.operation}.`, retryable: true, attempt, provider: "openai-responses", model });
         }
 
@@ -612,12 +648,15 @@ class OpenAIResponsesLlmExecutor implements VideosBatchLlmExecutor {
            data = parseStructuredJson<T>(rawText);
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
+          await preserveInvalid(`INVALID_JSON: ${message}`);
           throw new VideosBatchLlmError({ code: "INVALID_JSON", message: `VideosBatch LLM returned invalid JSON for ${request.operation}: ${message.slice(0, 180)}`, retryable: true, attempt, provider: "openai-responses", model });
         }
 
         budget.records.push({ attempt, provider: "openai-responses", model, idempotencyKey, outcome: "success", durationMs: Date.now() - startedAt, metadata: safeAttemptMetadata(requestMetadata) });
         return {
           data,
+          routeId: candidate.routeId,
+          requestedModel: model,
           provider: "openai-responses",
           model: typeof payload?.model === "string" && payload.model ? payload.model : model,
           responseId: typeof payload?.id === "string" ? payload.id : undefined,
@@ -635,7 +674,7 @@ class OpenAIResponsesLlmExecutor implements VideosBatchLlmExecutor {
             : new VideosBatchLlmError({ code: "NETWORK_ERROR", message: `VideosBatch LLM network request failed for ${request.operation} on ${model}.`, retryable: isRetryableNetworkError(error), attempt, provider: "openai-responses", model });
         const alreadyRecorded = budget.records.some((record) => record.attempt === attempt && record.model === model);
         if (!alreadyRecorded) budget.records.push({ attempt, provider: "openai-responses", model, idempotencyKey, outcome: "error", errorCode: normalized.code, durationMs: Date.now() - startedAt, metadata: safeAttemptMetadata(requestMetadata) });
-        if (!normalized.retryable || localAttempt > maxRetries || budget.used >= budget.maxAttempts || (reserveForFallback && budget.used >= budget.maxAttempts - 1)) throw normalized;
+        if (!normalized.retryable || localAttempt > maxRetries || budget.used >= budget.maxAttempts || (reservedSubmissions > 0 && budget.used >= budget.maxAttempts - reservedSubmissions)) throw normalized;
         console.warn(`[videosbatch-llm] retrying ${request.operation} after ${normalized.code} (attempt ${attempt}/${budget.maxAttempts})`);
         await sleep(this.config.retryDelaysMs?.[localAttempt - 1] ?? this.config.retryDelaysMs?.at(-1) ?? 0);
       } finally {

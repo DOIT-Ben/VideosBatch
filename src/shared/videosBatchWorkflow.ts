@@ -313,6 +313,16 @@ export interface VideosBatchLessonInputArtifact {
   source?: VideosBatchLessonSource;
 }
 
+export interface VideosBatchTextDiagnostic {
+  kind: "provider" | "contract_repair";
+  model: string;
+  routeId?: string;
+  rawText: string;
+  artifactJson: string;
+  validationErrors: string[];
+  truncated: boolean;
+}
+
 export interface VideosBatchStageState<T = unknown> {
   status: VideosBatchStageStatus;
   revision: number;
@@ -332,6 +342,7 @@ export interface VideosBatchStageState<T = unknown> {
   provider?: string | null;
   model?: string | null;
   attemptLog?: VideosBatchAttemptRecord[];
+  textDiagnostics?: VideosBatchTextDiagnostic[];
   errorInfo?: VideosBatchStageError;
   staleReason?: string;
   updatedAt?: string;

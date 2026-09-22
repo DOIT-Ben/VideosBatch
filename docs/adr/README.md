@@ -10,6 +10,7 @@
 | [0004](0004-durable-production-scheduler.md) | 持久化多任务调度与自动流水线 | Accepted | [P0—P2](automation-workspace-plan.md)，状态只见台账 |
 | [0005](0005-realtime-rendering-feedback.md) | 实时状态、渐进渲染与反馈 | Accepted | [P3/P6](automation-workspace-plan.md)，状态只见台账 |
 | [0006](0006-multitask-editing-workbench.md) | 多任务管理与编辑保存推进 | Accepted | [P4—P6](automation-workspace-plan.md)，状态只见台账 |
+| [0007](0007-provider-slots-and-same-model-repair.md) | 三槽文本路由与同模型 repair | Accepted | ADR 内 P0 验收记录 |
 
 本次自动化方案的[需求原文与解释边界](sources/20260922-automated-production-workspace.md)单独留存。报价确认、价格/费用/积分展示、计费与支付不在改造范围；已有 QUOTE 合同保持不变。
 
