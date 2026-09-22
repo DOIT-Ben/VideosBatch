@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import type { Asset, Session, Shot, VideosBatchRuntimeSummary } from "../../shared/types";
 import type {
@@ -120,6 +120,7 @@ function VideosBatchStudioView({
 }: VideosBatchStudioProps) {
   const currentStepId = workflow ? deriveCurrentProductStep(workflow) : "lesson";
   const [selectedStepId, setSelectedStepId] = useState<VideosBatchProductStepId>(currentStepId);
+  const previousCurrentStep = useRef(currentStepId);
   const [selectedAssetIds, setSelectedAssetIds] = useState<Record<string, string>>({});
   const [parsedLessonDraft, setParsedLessonDraft] = useState<VideosBatchLessonDraft | undefined>(() => readLessonDraft(sessionId));
   const [busy, setBusy] = useState("");
@@ -127,12 +128,14 @@ function VideosBatchStudioView({
   const [debugOpen, setDebugOpen] = useState(false);
 
   useEffect(() => {
+    const previous = previousCurrentStep.current;
+    previousCurrentStep.current = currentStepId;
     if (!workflow) {
       setSelectedStepId("lesson");
       setSelectedAssetIds({});
       return;
     }
-    if (workflow.stages[workflow.currentStage]?.status === "running") setSelectedStepId(deriveCurrentProductStep(workflow));
+    if (workflow.stages[workflow.currentStage]?.status === "running") setSelectedStepId(selected => selected === previous ? currentStepId : selected);
   }, [workflow?.currentStage, workflow?.completed]);
 
   useEffect(() => {
@@ -179,6 +182,7 @@ function VideosBatchStudioView({
   const selectedIndex = VIDEOS_BATCH_PRODUCT_STEPS.findIndex((step) => step.id === selectedStepId);
   const isAtCurrentStep = selectedStepId === currentStepId;
   const manualGate = workflow?.currentStage === "COURSE_INTRO_SELECTION" || workflow?.currentStage === "ASSET_CONFIRMATION";
+  const currentFailed = workflow?.stages[workflow.currentStage]?.status === "failed";
   const completedCount = workflow
     ? VIDEOS_BATCH_PRODUCT_STEPS.filter((step) => deriveProductStepStatus(workflow, step) === "ready").length
     : 0;
@@ -295,13 +299,13 @@ function VideosBatchStudioView({
   async function runNext() {
     if (!workflow) return;
     const next = await perform("next", () => api.runNextVideosBatch(sessionId));
-    if (next) setSelectedStepId(deriveCurrentProductStep(next));
+    if (next) setSelectedStepId(selected => selected === currentStepId ? deriveCurrentProductStep(next) : selected);
   }
 
   async function runAll() {
     if (!workflow) return;
     const next = await perform("all", () => api.runAllVideosBatch(sessionId));
-    if (next) setSelectedStepId(deriveCurrentProductStep(next));
+    if (next) setSelectedStepId(selected => selected === currentStepId ? deriveCurrentProductStep(next) : selected);
   }
 
   async function restartSelected() {
@@ -336,9 +340,10 @@ function VideosBatchStudioView({
         ? "流程已完成"
         : manualGate
           ? "请完成当前确认"
-          : "生成下一步 →";
+          : currentFailed ? "重试本步骤" : `生成${currentStep.label} →`;
 
-  const primaryDisabled = !workflow || (isAtCurrentStep && (workflow.completed || manualGate));
+  const primaryDisabled = !workflow || (isAtCurrentStep && (workflow.completed || manualGate || (currentFailed && !retryStageId)));
+  const footerHint = !workflow ? "先上传或粘贴教案，再确认开始。" : !isAtCurrentStep ? `正在查看${selectedStep.label}` : workflow.completed ? "制作完成，可预览或下载成片。" : manualGate ? (currentStepId === "intro" ? "请在上方选择并确认一个课程导入方案。" : "请为每个资产选择图片，并确认继续。") : currentFailed ? "请先核对错误提示，再选择重试或重新生成。" : undefined;
 
   const primaryAction = () => {
     if (!workflow) return;
@@ -346,7 +351,8 @@ function VideosBatchStudioView({
       setSelectedStepId(currentStepId);
       return;
     }
-    void runNext();
+    if (currentFailed) void retrySelected();
+    else void runNext();
   };
 
   const previous = () => {
@@ -418,9 +424,11 @@ function VideosBatchStudioView({
           canDebug={debugArtifact !== undefined}
           primaryLabel={primaryLabel}
           primaryDisabled={primaryDisabled}
+          hint={footerHint}
+          busyLabel={runInFlight || serverRunning ? `正在生成${currentStep.label}，可以查看其他步骤。` : "正在保存更改…"}
           onPrevious={previous}
           onPrimary={primaryAction}
-          onRunAll={workflow ? () => void runAll() : undefined}
+          onRunAll={workflow && !manualGate && !currentFailed ? () => void runAll() : undefined}
           onRestart={workflow ? () => void restartSelected() : undefined}
           onRetry={workflow ? () => void retrySelected() : undefined}
           onDebug={workflow ? () => setDebugOpen(true) : undefined}

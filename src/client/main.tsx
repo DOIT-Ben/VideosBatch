@@ -7,6 +7,7 @@ import "./videosBatchStudio/tokens.css";
 import "./videosBatchStudio/storyboardPrompt.css";
 import "./videosBatchStudio/guidedStudioV2.css";
 import "./videosBatchStudio/guidedStudioV2Focus.css";
+import "./videosBatchStudio/experience.css";
 
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { LessonStage } from "../src/client/videosBatchStudio/stages/LessonStage";
+import { ExecutionStage } from "../src/client/videosBatchStudio/stages/ExecutionStage";
 import { VideosBatchStudio } from "../src/client/videosBatchStudio/VideosBatchStudio";
 import { WorkflowProgressRail } from "../src/client/videosBatchStudio/components/WorkflowProgressRail";
 import { VIDEOS_BATCH_PRODUCT_STEPS } from "../src/client/videosBatchStudio/stageModel";
@@ -119,7 +120,7 @@ const footerSource = readFileSync(new URL("../src/client/videosBatchStudio/Workf
 const executionStageSource = readFileSync(new URL("../src/client/videosBatchStudio/stages/ExecutionStage.tsx", import.meta.url), "utf8");
 assert.match(
   footerSource,
-  /\{!completed && \([\s\S]*?vbs-v2-auto-run/,
+  /\{!completed && onRunAll && \([\s\S]*?vbs-v2-auto-run/,
   "a completed workflow must hide the auto-run control instead of showing it disabled"
 );
 assert.ok(
@@ -130,14 +131,9 @@ assert.ok(
   !existsSync(new URL("../src/client/videosBatchStudio/components/StudioStageToolbar.tsx", import.meta.url)),
   "the stage toolbar must stay removed so the footer is the only run-control surface"
 );
-assert.ok(
-  executionStageSource.includes("等待视频生成") && executionStageSource.includes("正在生成视频"),
-  "execution body must distinguish 'waiting for generation' from an active generation run"
-);
-assert.ok(
-  executionStageSource.includes("anyGenerating"),
-  "execution progress label must be derived from actual shot activity"
-);
+const renderShotStatus = (status: string) => renderToStaticMarkup(<ExecutionStage executionArtifact={{}} shots={[{ id: "shot", index: 0, status } as any]} onOpenCanvas={() => undefined} />);
+assert.ok(renderShotStatus("pending").includes("待生成") && !renderShotStatus("pending").includes("生成中"), "pending shots must not claim an active generation");
+assert.ok(renderShotStatus("generating").includes("生成中"), "actual generating shots must expose their running state");
 assert.ok(
   finalStageSource.includes("simulatedReady") && finalStageSource.includes("示例成片已就绪"),
   "final step must describe simulated media as ready instead of waiting for a stitch"

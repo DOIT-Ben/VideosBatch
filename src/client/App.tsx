@@ -1935,7 +1935,7 @@ export function App() {
 
   return (
     <PendingGenerationsProvider>
-    <main className={`app-shell ${selectedSession && videosBatchMode === "canvas" ? "videosbatch-canvas-mode" : ""}`} data-build={clientBuildStamp}>
+    <main className={`app-shell ${activeView === "tasks" ? "vb-tasks-mode" : ""} ${selectedSession && videosBatchMode === "canvas" ? "videosbatch-canvas-mode" : ""}`} data-build={clientBuildStamp}>
       <a className="skip-link" href="#workspace-main">{t.app.skipToContent}</a>
       {serverDown && (
         <div className="server-down-banner" role="alert">
@@ -2073,7 +2073,7 @@ export function App() {
       <section className="workspace" id="workspace-main" tabIndex={-1}>
         <header className="topbar">
           <div>
-        {activeView === "tasks" ? <h1>任务管理</h1> : activeView === "gallery" ? (
+        {activeView === "tasks" ? <span className="vb-task-brand">VideosBatch</span> : activeView === "gallery" ? (
               <h1>{t.app.galleryTitle}</h1>
             ) : selectedSession ? (
               <>

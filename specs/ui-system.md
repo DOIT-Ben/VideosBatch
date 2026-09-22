@@ -61,6 +61,16 @@ VideosBatch 的阶段语义、提示词和产物合同不在本 UI 规格中定�
 
 ## Acceptance Criteria
 
+### 2026-09-22 Task discovery and guided-workflow usability
+
+- Task discovery shares the studio's paper/ink tokens, with one page title and one primary creation action. Search, status filters and sort work locally on existing sessions; no mutation or hidden deletion is implied by filtering.
+- Task rows show a readable title, current step/status, last update and one continue action. Progress reflects the nine existing product-step states, never invented percentages. Empty search results offer a clear reset.
+- Workflow action labels identify the result to be generated. Manual confirmation and completed states use explanatory text instead of inert primary buttons. Browsing another step exposes a return-to-current action.
+- Long operations remain explicitly visible without claiming an ETA. Re-running a step and continuous generation explain their scope before dispatch; non-destructive step navigation does not prompt.
+- All rail statuses have Chinese accessible labels. The selected step remains in view on narrow screens, and left/right/Home/End keyboard navigation moves focus without starting a generation.
+- At 390, 768 and 1440px, task controls, document headings, editors and the footer fit without page-level horizontal overflow. Touch targets are at least 40px, keyboard focus is visible, and reduced motion is honored.
+- These are presentation and interaction contracts only; stage order, manual gates, provider selection and draft persistence remain governed by the canonical workflow spec.
+
 - [ ] Node title, status, and primary action controls are readable on a 390px-wide viewport.
 - [ ] Canvas background, node body, node border, selected node, and inspector panel have visible contrast.
 - [ ] Toolbars wrap, collapse, or scroll intentionally instead of hiding button labels.
