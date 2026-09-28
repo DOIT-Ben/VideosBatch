@@ -1,19 +1,23 @@
 # VideosBatch 运行事实
 
-更新时间：2026-09-03
+更新时间：2026-09-29（当前收尾状态）；下文专项证据保留原日期
 适用范围：本机 `E:\desktop\AI\11_Products\lab\VideosBatch` 的 Guided Studio 验收配置、参考图绑定和音频就绪门禁专项证据。
 
-## 当前 Git 现场
+## 2026-09-29 当前仓库状态
+
+当前目标为 `DOIT-Ben/VideosBatch` 的 `master`。本轮盘点时本地、origin/master 与在线远端均为 `f856a95`，工作树干净；最终交付与验证记录见 [仓库收尾报告](closeout-20260929.md)。本轮只复核 fake/fake/fake 开关和环境卫生，未重跑下文历史真实 Provider 验收，历史模型表不代表当前配置。
+
+## 2026-09-03 历史 Git 现场（已被后续交付取代）
 
 - 分支：`feature/videosbatch-audio-readiness-gate`
 - HEAD：`ce52a59b8e6a7a21163e5f1fedeb761001c08436`（音频门禁修复仍未提交）
 - 工作区保留本专项代码/文档未提交改动；本记录不代表这些改动已经推送。
 
-## 本机配置事实
+## 2026-09-03 历史配置快照
 
 配置文件位于仓库根目录 `.env`，该文件已被 `.gitignore` 忽略，不应提交。
 
-| 项目 | 当前值 | 说明 |
+| 项目 | 当时值 | 说明 |
 | --- | --- | --- |
 | `VIDEOSBATCH_EXECUTOR_MODE` | `fake` | 本地 UI/Workflow 验收，不调用真实文本接口 |
 | `VIDEOSBATCH_MEDIA_MODE` | `fake` | 本地 UI/Workflow 验收，不调用真实图片/视频接口 |

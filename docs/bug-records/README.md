@@ -13,3 +13,5 @@
 | [BUG-007](BUG-007-session-isolation.md) | 切项目继承输入及界面状态 | 已闭环（本地） | P2 / P3 |
 | [BUG-008](BUG-008-task-navigation.md) | 任务列表误进入作品广场 | 已闭环（本地） | P2 / P3 |
 | [BUG-009](BUG-009-production-lazy-import.md) | 生产构建工作台懒加载白屏 | 已闭环（本地） | P1 / P3 |
+| [BUG-010](BUG-010-stale-ci-contract-tests.md) / [#7](https://github.com/DOIT-Ben/VideosBatch/issues/7) | CI 旧阶段与折叠状态夹具 | 已修复，本地通过；远端结果见 #7 | P1 / CI，DOIT-Ben |
+| [BUG-011](BUG-011-verification-coverage-debt.md) / [#8](https://github.com/DOIT-Ben/VideosBatch/issues/8) | 验证覆盖及外部验收缺口 | 未修复，后续独立任务 | P2 / 验证与发布边界，DOIT-Ben |

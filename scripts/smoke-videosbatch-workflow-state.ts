@@ -40,7 +40,9 @@ assert(!("selectedStoryId" in workflow), "legacy selectedStoryId must not exist 
 assert(workflow.stages.LESSON_INPUT?.status === "ready", "lesson input must be persisted as a ready artifact");
 assert(workflow.stages.LESSON_INPUT?.artifact?.projectId === projectId, "lesson artifact must preserve project id");
 assert(workflow.stages.LESSON_INPUT?.artifact?.lessonText === lessonText, "lesson artifact must preserve full lesson text");
-assert(VIDEOS_BATCH_STAGE_ORDER.length === 13, "canonical VideosBatch rail must contain 13 visible stages including lesson input and stitch");
+assert(VIDEOS_BATCH_STAGE_ORDER.length === 14, "canonical workflow must contain 14 machine stages (distinct from the 9 product steps)");
+assert(VIDEOS_BATCH_STAGE_ORDER.indexOf("AUDIO_DELIVERY") === VIDEOS_BATCH_STAGE_ORDER.indexOf("EXECUTION") + 1, "audio delivery must follow execution");
+assert(VIDEOS_BATCH_STAGE_ORDER.indexOf("STITCH") === VIDEOS_BATCH_STAGE_ORDER.indexOf("AUDIO_DELIVERY") + 1, "stitch must follow audio delivery");
 assert(workflow.stages.COURSE_INTRO_CANDIDATES?.status === "pending", "next stage must start pending");
 
 const session = await store.createSession({

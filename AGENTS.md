@@ -133,13 +133,14 @@ or the web button "故事板 TOS".
 
 ## Verified VideosBatch Local Facts
 
-The current local acceptance configuration and evidence snapshot is maintained in
-`docs/videosbatch-runtime-facts.md`. As of 2026-08-31, the local `.env` keeps
-`VIDEOSBATCH_EXECUTOR_MODE=fake` and `VIDEOSBATCH_MEDIA_MODE=fake`; the text route is
-`gpt-5.6-terra` with `deepseek-v4-flash` as the bounded-retry fallback. Final storyboard
-requests are split into two ranges and validated after merge. The `.env` file is ignored
-by Git and must never be copied into source, logs, screenshots, or commits.
+Local acceptance evidence and dated configuration snapshots are maintained in
+`docs/videosbatch-runtime-facts.md`; current repository closeout is recorded in
+`docs/closeout-20260929.md`. Historical model names and Git branches in evidence
+must not be treated as current runtime configuration. Verify safe mode status with
+`npm run smoke:env-hygiene` before relying on the local environment. The `.env`
+file is ignored by Git and must never be copied into source, logs, screenshots,
+or commits.
 
 VideosBatch stage semantics and prompt contracts are defined only by
-`specs/videosbatch-workflow-canonical.md`. The runtime facts above are evidence, not a
+`specs/videosbatch-workflow-canonical.md`. Runtime facts are evidence, not a
 second workflow specification.

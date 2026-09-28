@@ -1,3 +1,4 @@
+import { writeView } from "../src/client/productionCenter/viewMemory";
 import React from "react";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -260,12 +261,17 @@ const storyboardMarkup = renderToStaticMarkup(
 );
 assert.ok(storyboardMarkup.includes("编辑分镜"), "storyboard page must expose structured editing");
 
+const collapsedCanonicalMarkup = renderToStaticMarkup(<StoryboardStage artifact={canonicalStoryboard} />);
+assert.ok(!collapsedCanonicalMarkup.includes("为什么会这样？"), "collapsed storyboard must not mount subshot details");
+writeView(":storyboard-open", ["segment-1"]);
 const canonicalStoryboardMarkup = renderToStaticMarkup(
   <StoryboardStage artifact={canonicalStoryboard} onSaveArtifact={() => undefined} />
 );
 assert.ok(canonicalStoryboardMarkup.includes("课堂观察区出现新的观察问题"), "canonical storyboard must render the scene field");
 assert.ok(canonicalStoryboardMarkup.includes("为什么会这样？"), "canonical storyboard must render visualEffects voice");
 assert.ok(!canonicalStoryboardMarkup.includes("暂无画面 Prompt"), "canonical storyboard must not fall back to the legacy empty prompt label");
+
+writeView(":storyboard-open", []);
 
 const shotMarkup = renderToStaticMarkup(
   <ExecutionStage

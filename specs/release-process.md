@@ -8,6 +8,16 @@ Last Reviewed: 2026-06-05
 
 Define the release path that keeps local, GitHub, Docker, ECS, and production behavior aligned.
 
+## Repository Applicability
+
+For this VideosBatch checkout, the verified repository is `DOIT-Ben/VideosBatch`
+and its default branch is `master`. The SeeReel `main`, public site, ECS, Vercel
+and npm runbook below is inherited upstream guidance; it is not evidence that
+this fork is deployed there and does not authorize those operations. Repository
+closeout uses local HEAD, `origin/master`, the online master SHA and this fork's
+Actions results. Production and package publishing require their own explicit
+scope. See [2026-09-29 closeout](../docs/closeout-20260929.md).
+
 ## Scope
 
 - Local verification, GitHub Actions, Docker builds, production deployment, npm package publishing, and post-release checks.
